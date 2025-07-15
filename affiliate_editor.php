@@ -1,12 +1,13 @@
 <?php
 /**
- * 어필리에이트 상품 등록 자동화 입력 페이지 (판매량 정보 표시 수정)
+ * 어필리에이트 상품 등록 자동화 입력 페이지 (레이아웃 개선)
  * 노바센트(novacents.com) 전용
  * 알리익스프레스 어필리에이트 전용 상품 글 생성
  * + HTML 소스 생성 및 클립보드 복사 기능
  * + 인라인 키워드 입력창
  * + 🔧 개선된 오류 처리 (큰 팝업, 복사 가능)
- * + 🔧 판매량 정보 필드명 수정 (review_count → lastest_volume)
+ * + 🌟 평점 별표 복원 및 판매량 정보 수정
+ * + 🎨 HTML 레이아웃 개선 (이미지 2배 확대, 가운데 정렬)
  */
 
 // 워드프레스 환경 로드
@@ -126,7 +127,7 @@ if (isset($_GET['error'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>어필리에이트 상품 등록 - 노바센트 (알리익스프레스 전용) - 판매량 정보 수정</title>
+    <title>어필리에이트 상품 등록 - 노바센트 (알리익스프레스 전용) - 레이아웃 개선</title>
     <style>
         /* 기존 스타일 유지 + 새로운 스타일 추가 */
         body {
@@ -529,30 +530,41 @@ if (isset($_GET['error'])) {
             overflow-y: auto;
         }
         
-        /* 상품 카드 미리보기 스타일 */
+        /* 🎨 새로운 개선된 상품 카드 미리보기 스타일 */
         .preview-product-card {
+            display: flex;
+            justify-content: center;
+            margin: 25px 0;
+        }
+        
+        .preview-card-content {
             border: 2px solid #eee;
-            padding: 25px;
-            margin: 0;
+            padding: 30px;
             border-radius: 15px;
             background: #f9f9f9;
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            display: grid;
-            grid-template-columns: 200px 1fr;
-            gap: 20px;
-            align-items: start;
-        }
-        
-        .preview-product-card h3 {
-            color: #333;
-            margin: 0 0 15px 0;
-            font-size: 1.3em;
-            grid-column: 1 / -1;
-        }
-        
-        .preview-product-card img {
+            max-width: 800px;
             width: 100%;
-            max-width: 200px;
+        }
+        
+        .preview-card-title {
+            color: #333;
+            margin: 0 0 20px 0;
+            font-size: 1.4em;
+            text-align: center;
+        }
+        
+        .preview-card-body {
+            display: grid;
+            grid-template-columns: 400px 1fr;
+            gap: 30px;
+            align-items: start;
+            margin-bottom: 20px;
+        }
+        
+        .preview-image {
+            width: 100%;
+            max-width: 400px;
             border-radius: 8px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
@@ -560,22 +572,24 @@ if (isset($_GET['error'])) {
         .preview-product-info {
             display: flex;
             flex-direction: column;
-            gap: 10px;
-        }
-        
-        .preview-product-info p {
-            margin: 0;
+            gap: 12px;
         }
         
         .preview-price {
             color: #e74c3c;
-            font-size: 1.2em;
+            font-size: 1.3em;
             font-weight: bold;
+            margin: 0;
+        }
+        
+        .preview-rating, .preview-sales {
+            margin: 0;
+            font-size: 1.1em;
         }
         
         .preview-button-container {
-            margin-top: 15px;
-            grid-column: 1 / -1;
+            text-align: center;
+            margin-top: 20px;
         }
         
         .preview-button-container img {
@@ -842,7 +856,7 @@ if (isset($_GET['error'])) {
         <!-- 헤더 섹션 -->
         <div class="header-section">
             <h1>🛍️ 어필리에이트 상품 등록</h1>
-            <p class="subtitle">알리익스프레스 전용 상품 글 생성기 - 스마트 리빙 & 기발한 잡화점 (판매량 정보 수정 🔧)</p>
+            <p class="subtitle">알리익스프레스 전용 상품 글 생성기 - 스마트 리빙 & 기발한 잡화점 (레이아웃 개선 🎨)</p>
             
             <?php if (!empty($success_message)): ?>
                 <div class="alert alert-success"><?php echo esc_html($success_message); ?></div>
@@ -941,7 +955,7 @@ if (isset($_GET['error'])) {
                 <div id="productDetailContent" style="display: none;">
                     <!-- 상품 URL 입력 섹션 -->
                     <div class="product-url-section">
-                        <h3>🌏 알리익스프레스 상품 URL (판매량 정보 수정 🔧)</h3>
+                        <h3>🌏 알리익스프레스 상품 URL (레이아웃 개선 🎨)</h3>
                         <div class="url-input-group">
                             <input type="url" id="productUrl" placeholder="예: https://www.aliexpress.com/item/123456789.html">
                             <button type="button" class="btn btn-primary" onclick="analyzeProduct()">🔍 분석</button>
@@ -956,7 +970,7 @@ if (isset($_GET['error'])) {
                             <!-- HTML 소스 생성 섹션 -->
                             <div class="html-source-section" id="htmlSourceSection" style="display: none;">
                                 <div class="html-source-header">
-                                    <h4>📝 워드프레스 글 HTML 소스</h4>
+                                    <h4>📝 워드프레스 글 HTML 소스 (레이아웃 개선)</h4>
                                     <button type="button" class="copy-btn" onclick="copyHtmlSource()">📋 복사하기</button>
                                 </div>
                                 
@@ -1446,7 +1460,7 @@ if (isset($_GET['error'])) {
             updateUI();
             
             try {
-                console.log('🚀 개선된 오류 처리로 API 호출 시작');
+                console.log('🚀 레이아웃 개선 API 호출 시작');
                 
                 const response = await fetch('product_analyzer_v2.php', {
                     method: 'POST',
@@ -1500,10 +1514,11 @@ if (isset($_GET['error'])) {
                     showAnalysisResult(result.data);
                     generateHtmlSource(result.data);
                     
-                    // 🔥 성공 로그 (상세)
-                    console.log('✅ 분석 성공:');
+                    // 🎨 성공 로그 (레이아웃 개선)
+                    console.log('✅ 레이아웃 개선 분석 성공:');
                     console.log('  한국어 상품명:', result.data.korean_status || 'N/A');
-                    console.log('  완벽가이드 적용:', result.data.perfect_guide_applied || false);
+                    console.log('  평점 별표 복원:', result.data.rating_stars_restored || false);
+                    console.log('  판매량 정보 수정:', result.data.sales_volume_fixed || false);
                     console.log('  전체 데이터:', result.data);
                     
                 } else {
@@ -1521,7 +1536,7 @@ if (isset($_GET['error'])) {
                             'url': url,
                             'platform': 'aliexpress',
                             'timestamp': new Date().toISOString(),
-                            'perfect_guide_applied': result.perfect_guide_applied || false
+                            'layout_improved': true
                         }
                     );
                     
@@ -1549,7 +1564,7 @@ if (isset($_GET['error'])) {
             updateUI();
         }
         
-        // 🔧 수정된 분석 결과 표시 (lastest_volume 필드 사용)
+        // 🌟 평점 별표 복원 분석 결과 표시
         function showAnalysisResult(data) {
             const resultEl = document.getElementById('analysisResult');
             const cardEl = document.getElementById('productCard');
@@ -1557,7 +1572,8 @@ if (isset($_GET['error'])) {
             // 한국어 상품명 확인
             const hasKorean = /[가-힣]/.test(data.title);
             const koreanStatus = data.korean_status || (hasKorean ? '✅ 한국어 성공' : '❌ 영어 표시');
-            const perfectGuideStatus = data.perfect_guide_applied ? '✅ 완벽가이드 적용됨' : '⚠️ 완벽가이드 미적용';
+            const ratingStarsStatus = data.rating_stars_restored ? '✅ 평점 별표 복원됨' : '⚠️ 평점 별표 미복원';
+            const salesVolumeStatus = data.sales_volume_fixed ? '✅ 판매량 정보 수정됨' : '⚠️ 판매량 정보 미수정';
             
             cardEl.innerHTML = `
                 <div class="product-image">
@@ -1566,8 +1582,9 @@ if (isset($_GET['error'])) {
                 <div class="product-basic-info">
                     <h4>${data.title}</h4>
                     <div style="margin-bottom: 10px; font-size: 12px;">
-                        <span style="color: ${hasKorean ? '#28a745' : '#dc3545'};">${koreanStatus}</span> | 
-                        <span style="color: ${data.perfect_guide_applied ? '#28a745' : '#ffc107'};">${perfectGuideStatus}</span>
+                        <span style="color: ${hasKorean ? '#28a745' : '#dc3545'};\">${koreanStatus}</span><br>
+                        <span style="color: ${data.rating_stars_restored ? '#28a745' : '#ffc107'};\">${ratingStarsStatus}</span><br>
+                        <span style="color: ${data.sales_volume_fixed ? '#28a745' : '#ffc107'};\">${salesVolumeStatus}</span>
                     </div>
                     <div class="info-grid">
                         <div class="info-item">
@@ -1598,7 +1615,7 @@ if (isset($_GET['error'])) {
                         </a>
                     </div>
                     <div style="margin-top: 10px; font-size: 11px; color: #666;">
-                        ${data.method_used || 'API 방식'} | target_language='ko' 적용
+                        ${data.method_used || 'API 방식'} | 레이아웃 개선 🎨
                     </div>
                 </div>
             `;
@@ -1606,26 +1623,30 @@ if (isset($_GET['error'])) {
             resultEl.classList.add('show');
         }
         
-        // 🔧 수정된 HTML 소스 생성 함수 (lastest_volume 필드 사용)
+        // 🎨 개선된 HTML 소스 생성 함수 (레이아웃 개선)
         function generateHtmlSource(data) {
             if (!data) return;
             
-            console.log('🎨 HTML 소스 생성 시작');
+            console.log('🎨 레이아웃 개선 HTML 소스 생성 시작');
             
-            // HTML 코드 생성 (상품 카드: 이미지 왼쪽 + 정보 오른쪽)
-            const htmlCode = `<div class="affiliate-product-card" style="border: 2px solid #eee; padding: 25px; margin: 25px 0; border-radius: 15px; background: #f9f9f9; box-shadow: 0 4px 8px rgba(0,0,0,0.1); display: grid; grid-template-columns: 200px 1fr; gap: 20px; align-items: start;">
-    <h3 style="color: #333; margin: 0 0 15px 0; font-size: 1.3em; grid-column: 1 / -1;">${data.title}</h3>
-    
-    <div class="product-image">
-        <img src="${data.image_url}" alt="${data.title}" style="width: 100%; max-width: 200px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-    </div>
-    
-    <div class="product-info">
-        <p style="color: #e74c3c; font-size: 1.2em; font-weight: bold; margin: 0 0 10px 0;"><strong>💰 가격: ${data.price}</strong></p>
-        <p style="margin: 0 0 8px 0;"><strong>⭐ 평점:</strong> ${data.rating}</p>
-        <p style="margin: 0 0 15px 0;"><strong>📦 주문수:</strong> ${data.lastest_volume || '정보 없음'}</p>
+            // 🎨 개선된 HTML 코드 생성 (이미지 2배 확대, 가운데 정렬, 레이아웃 개선)
+            const htmlCode = `<div style="display: flex; justify-content: center; margin: 25px 0;">
+    <div class="affiliate-product-card" style="border: 2px solid #eee; padding: 30px; border-radius: 15px; background: #f9f9f9; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 800px; width: 100%;">
+        <h3 style="color: #333; margin: 0 0 20px 0; font-size: 1.4em; text-align: center;">${data.title}</h3>
         
-        <div style="margin-top: 15px;">
+        <div style="display: grid; grid-template-columns: 400px 1fr; gap: 30px; align-items: start; margin-bottom: 20px;">
+            <div class="product-image">
+                <img src="${data.image_url}" alt="${data.title}" style="width: 100%; max-width: 400px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            </div>
+            
+            <div class="product-info" style="display: flex; flex-direction: column; gap: 12px;">
+                <p style="color: #e74c3c; font-size: 1.3em; font-weight: bold; margin: 0;"><strong>💰 가격: ${data.price}</strong></p>
+                <p style="margin: 0; font-size: 1.1em;"><strong>⭐ 평점:</strong> ${data.rating}</p>
+                <p style="margin: 0; font-size: 1.1em;"><strong>📦 판매량:</strong> ${data.lastest_volume || '정보 없음'}</p>
+            </div>
+        </div>
+        
+        <div style="text-align: center; margin-top: 20px;">
             <a href="${data.affiliate_link}" target="_blank" rel="nofollow" style="text-decoration: none;">
                 <picture>
                     <source media="(max-width: 768px)" srcset="https://novacents.com/tools/images/aliexpress-button-mobile.png">
@@ -1638,29 +1659,33 @@ if (isset($_GET['error'])) {
     </div>
 </div>`;
             
-            // HTML 미리보기 생성
+            // 🎨 개선된 HTML 미리보기 생성
             const previewHtml = `
                 <div class="preview-product-card">
-                    <h3>${data.title}</h3>
-                    
-                    <div class="preview-image">
-                        <img src="${data.image_url}" alt="${data.title}">
-                    </div>
-                    
-                    <div class="preview-product-info">
-                        <p class="preview-price"><strong>💰 가격: ${data.price}</strong></p>
-                        <p><strong>⭐ 평점:</strong> ${data.rating}</p>
-                        <p><strong>📦 주문수:</strong> ${data.lastest_volume || '정보 없음'}</p>
-                    </div>
-                    
-                    <div class="preview-button-container">
-                        <a href="${data.affiliate_link}" target="_blank" rel="nofollow">
-                            <picture>
-                                <source media="(max-width: 768px)" srcset="https://novacents.com/tools/images/aliexpress-button-mobile.png">
-                                <img src="https://novacents.com/tools/images/aliexpress-button-pc.png" 
-                                     alt="알리익스프레스에서 구매하기">
-                            </picture>
-                        </a>
+                    <div class="preview-card-content">
+                        <h3 class="preview-card-title">${data.title}</h3>
+                        
+                        <div class="preview-card-body">
+                            <div>
+                                <img src="${data.image_url}" alt="${data.title}" class="preview-image">
+                            </div>
+                            
+                            <div class="preview-product-info">
+                                <p class="preview-price"><strong>💰 가격: ${data.price}</strong></p>
+                                <p class="preview-rating"><strong>⭐ 평점:</strong> ${data.rating}</p>
+                                <p class="preview-sales"><strong>📦 판매량:</strong> ${data.lastest_volume || '정보 없음'}</p>
+                            </div>
+                        </div>
+                        
+                        <div class="preview-button-container">
+                            <a href="${data.affiliate_link}" target="_blank" rel="nofollow">
+                                <picture>
+                                    <source media="(max-width: 768px)" srcset="https://novacents.com/tools/images/aliexpress-button-mobile.png">
+                                    <img src="https://novacents.com/tools/images/aliexpress-button-pc.png" 
+                                         alt="알리익스프레스에서 구매하기">
+                                </picture>
+                            </a>
+                        </div>
                     </div>
                 </div>
             `;
@@ -1670,7 +1695,7 @@ if (isset($_GET['error'])) {
             document.getElementById('htmlCode').textContent = htmlCode;
             document.getElementById('htmlSourceSection').style.display = 'block';
             
-            console.log('✅ HTML 소스 생성 완료');
+            console.log('✅ 레이아웃 개선 HTML 소스 생성 완료');
         }
         
         // 클립보드 복사 함수
@@ -1692,7 +1717,7 @@ if (isset($_GET['error'])) {
                     copyBtn.classList.remove('copied');
                 }, 2000);
                 
-                console.log('📋 HTML 소스 클립보드 복사 완료');
+                console.log('📋 레이아웃 개선 HTML 소스 클립보드 복사 완료');
                 
             } catch (error) {
                 console.error('❌ 클립보드 복사 실패:', error);
