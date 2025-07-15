@@ -1,13 +1,13 @@
 <?php
 /**
- * 어필리에이트 상품 등록 자동화 입력 페이지 (레이아웃 개선)
+ * 어필리에이트 상품 등록 자동화 입력 페이지 (세련된 카드 디자인)
  * 노바센트(novacents.com) 전용
  * 알리익스프레스 어필리에이트 전용 상품 글 생성
  * + HTML 소스 생성 및 클립보드 복사 기능
  * + 인라인 키워드 입력창
  * + 🔧 개선된 오류 처리 (큰 팝업, 복사 가능)
- * + 🌟 평점 별표 복원 및 판매량 정보 수정
- * + 🎨 HTML 레이아웃 개선 (이미지 2배 확대, 가운데 정렬)
+ * + 🌟 5개 별 + 채우기 방식 평점 시스템
+ * + 🎨 세련된 카드 디자인 (상품명 길이 제한, 모던 스타일)
  */
 
 // 워드프레스 환경 로드
@@ -127,7 +127,7 @@ if (isset($_GET['error'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>어필리에이트 상품 등록 - 노바센트 (알리익스프레스 전용) - 레이아웃 개선</title>
+    <title>어필리에이트 상품 등록 - 노바센트 (세련된 카드 디자인) 🎨</title>
     <style>
         /* 기존 스타일 유지 + 새로운 스타일 추가 */
         body {
@@ -426,43 +426,114 @@ if (isset($_GET['error'])) {
             display: block;
         }
         
+        /* 🎨 세련된 상품 카드 스타일 */
         .product-card {
             display: grid;
-            grid-template-columns: 200px 1fr;
-            gap: 20px;
+            grid-template-columns: 320px 1fr;
+            gap: 25px;
             margin-bottom: 20px;
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+            border: 1px solid #f0f0f0;
         }
         
         .product-image img {
             width: 100%;
-            max-width: 200px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            max-width: 320px;
+            border-radius: 10px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
         }
         
+        .product-basic-info {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        /* 🎨 상품명 스타일 개선 */
         .product-basic-info h4 {
-            margin: 0 0 10px 0;
-            color: #333;
+            margin: 0;
+            color: #1a1a1a;
             font-size: 18px;
+            font-weight: 600;
+            line-height: 1.4;
+            max-height: 4.2em;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
         }
         
+        /* 🌟 새로운 5개 별 + 채우기 방식 스타일 */
+        .star-rating {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 8px 0;
+        }
+        
+        .stars-container {
+            position: relative;
+            display: inline-block;
+            font-size: 18px;
+            line-height: 1;
+        }
+        
+        .stars-background {
+            color: #e0e0e0;
+            position: relative;
+        }
+        
+        .stars-fill {
+            position: absolute;
+            top: 0;
+            left: 0;
+            color: #ffd700;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+        
+        .rating-text {
+            font-size: 14px;
+            color: #666;
+            font-weight: 500;
+        }
+        
+        /* 🎨 정보 그리드 개선 */
         .info-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 10px;
+            gap: 12px;
             margin-top: 15px;
         }
         
         .info-item {
             background: #f8f9fa;
-            padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 14px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
         }
         
         .info-label {
-            font-weight: bold;
-            color: #555;
+            font-weight: 600;
+            color: #495057;
+            font-size: 13px;
+            margin-bottom: 4px;
+        }
+        
+        .info-value {
+            color: #212529;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .price-info {
+            font-size: 20px;
+            font-weight: 700;
+            color: #e74c3c;
+            margin: 8px 0;
         }
         
         /* HTML 소스 관련 스타일 */
@@ -530,7 +601,7 @@ if (isset($_GET['error'])) {
             overflow-y: auto;
         }
         
-        /* 🎨 새로운 개선된 상품 카드 미리보기 스타일 */
+        /* 🎨 새로운 세련된 상품 카드 미리보기 스타일 */
         .preview-product-card {
             display: flex;
             justify-content: center;
@@ -543,20 +614,27 @@ if (isset($_GET['error'])) {
             border-radius: 15px;
             background: #f9f9f9;
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            max-width: 800px;
+            max-width: 900px;
             width: 100%;
         }
         
         .preview-card-title {
             color: #333;
             margin: 0 0 20px 0;
-            font-size: 1.4em;
+            font-size: 1.3em;
+            font-weight: 600;
             text-align: center;
+            line-height: 1.4;
+            max-height: 4.2em;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
         }
         
         .preview-card-body {
             display: grid;
-            grid-template-columns: 400px 1fr;
+            grid-template-columns: 350px 1fr;
             gap: 30px;
             align-items: start;
             margin-bottom: 20px;
@@ -564,27 +642,30 @@ if (isset($_GET['error'])) {
         
         .preview-image {
             width: 100%;
-            max-width: 400px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            max-width: 350px;
+            border-radius: 10px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
         }
         
         .preview-product-info {
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 15px;
         }
         
         .preview-price {
             color: #e74c3c;
-            font-size: 1.3em;
-            font-weight: bold;
+            font-size: 1.4em;
+            font-weight: 700;
             margin: 0;
         }
         
         .preview-rating, .preview-sales {
             margin: 0;
             font-size: 1.1em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
         
         .preview-button-container {
@@ -856,7 +937,7 @@ if (isset($_GET['error'])) {
         <!-- 헤더 섹션 -->
         <div class="header-section">
             <h1>🛍️ 어필리에이트 상품 등록</h1>
-            <p class="subtitle">알리익스프레스 전용 상품 글 생성기 - 스마트 리빙 & 기발한 잡화점 (레이아웃 개선 🎨)</p>
+            <p class="subtitle">알리익스프레스 전용 상품 글 생성기 - 세련된 카드 디자인 🎨 + 5개 별 평점 시스템 🌟</p>
             
             <?php if (!empty($success_message)): ?>
                 <div class="alert alert-success"><?php echo esc_html($success_message); ?></div>
@@ -955,7 +1036,7 @@ if (isset($_GET['error'])) {
                 <div id="productDetailContent" style="display: none;">
                     <!-- 상품 URL 입력 섹션 -->
                     <div class="product-url-section">
-                        <h3>🌏 알리익스프레스 상품 URL (레이아웃 개선 🎨)</h3>
+                        <h3>🌏 알리익스프레스 상품 URL (세련된 카드 디자인 🎨)</h3>
                         <div class="url-input-group">
                             <input type="url" id="productUrl" placeholder="예: https://www.aliexpress.com/item/123456789.html">
                             <button type="button" class="btn btn-primary" onclick="analyzeProduct()">🔍 분석</button>
@@ -970,7 +1051,7 @@ if (isset($_GET['error'])) {
                             <!-- HTML 소스 생성 섹션 -->
                             <div class="html-source-section" id="htmlSourceSection" style="display: none;">
                                 <div class="html-source-header">
-                                    <h4>📝 워드프레스 글 HTML 소스 (레이아웃 개선)</h4>
+                                    <h4>📝 워드프레스 글 HTML 소스 (세련된 디자인)</h4>
                                     <button type="button" class="copy-btn" onclick="copyHtmlSource()">📋 복사하기</button>
                                 </div>
                                 
@@ -1118,6 +1199,27 @@ if (isset($_GET['error'])) {
         document.addEventListener('DOMContentLoaded', function() {
             updateUI();
         });
+        
+        // 🌟 새로운 5개 별 + 채우기 방식 함수
+        function generateStarRating(ratingValue) {
+            if (!ratingValue || ratingValue === 0) {
+                return '<span class="rating-text">평점 정보 없음</span>';
+            }
+            
+            // 0-100 범위를 0-5 범위로 변환
+            const stars = (ratingValue / 100) * 5;
+            const percentage = (stars / 5) * 100;
+            
+            return `
+                <div class="star-rating">
+                    <div class="stars-container">
+                        <div class="stars-background">★★★★★</div>
+                        <div class="stars-fill" style="width: ${percentage}%;">★★★★★</div>
+                    </div>
+                    <span class="rating-text">(${ratingValue}%)</span>
+                </div>
+            `;
+        }
         
         // 🔧 개선된 오류 처리 함수들 (복사 가능한 큰 팝업)
         function showDetailedError(title, message, debugData = null) {
@@ -1460,7 +1562,7 @@ if (isset($_GET['error'])) {
             updateUI();
             
             try {
-                console.log('🚀 레이아웃 개선 API 호출 시작');
+                console.log('🚀 세련된 카드 디자인 API 호출 시작');
                 
                 const response = await fetch('product_analyzer_v2.php', {
                     method: 'POST',
@@ -1514,11 +1616,11 @@ if (isset($_GET['error'])) {
                     showAnalysisResult(result.data);
                     generateHtmlSource(result.data);
                     
-                    // 🎨 성공 로그 (레이아웃 개선)
-                    console.log('✅ 레이아웃 개선 분석 성공:');
+                    // 🎨 성공 로그 (세련된 카드 디자인)
+                    console.log('✅ 세련된 카드 디자인 분석 성공:');
                     console.log('  한국어 상품명:', result.data.korean_status || 'N/A');
-                    console.log('  평점 별표 복원:', result.data.rating_stars_restored || false);
-                    console.log('  판매량 정보 수정:', result.data.sales_volume_fixed || false);
+                    console.log('  5개 별 평점:', result.data.star_system_upgraded || false);
+                    console.log('  판매량 정보:', result.data.lastest_volume || 'N/A');
                     console.log('  전체 데이터:', result.data);
                     
                 } else {
@@ -1536,7 +1638,7 @@ if (isset($_GET['error'])) {
                             'url': url,
                             'platform': 'aliexpress',
                             'timestamp': new Date().toISOString(),
-                            'layout_improved': true
+                            'modern_design_applied': true
                         }
                     );
                     
@@ -1564,7 +1666,7 @@ if (isset($_GET['error'])) {
             updateUI();
         }
         
-        // 🌟 평점 별표 복원 분석 결과 표시
+        // 🌟 세련된 분석 결과 표시
         function showAnalysisResult(data) {
             const resultEl = document.getElementById('analysisResult');
             const cardEl = document.getElementById('productCard');
@@ -1572,8 +1674,8 @@ if (isset($_GET['error'])) {
             // 한국어 상품명 확인
             const hasKorean = /[가-힣]/.test(data.title);
             const koreanStatus = data.korean_status || (hasKorean ? '✅ 한국어 성공' : '❌ 영어 표시');
-            const ratingStarsStatus = data.rating_stars_restored ? '✅ 평점 별표 복원됨' : '⚠️ 평점 별표 미복원';
-            const salesVolumeStatus = data.sales_volume_fixed ? '✅ 판매량 정보 수정됨' : '⚠️ 판매량 정보 미수정';
+            const starSystemStatus = data.star_system_upgraded ? '✅ 5개 별 평점 시스템' : '⚠️ 기존 평점 시스템';
+            const salesVolumeStatus = data.lastest_volume && data.lastest_volume !== '판매량 정보 없음' ? '✅ 판매량 정보 표시' : '⚠️ 판매량 정보 없음';
             
             cardEl.innerHTML = `
                 <div class="product-image">
@@ -1581,30 +1683,28 @@ if (isset($_GET['error'])) {
                 </div>
                 <div class="product-basic-info">
                     <h4>${data.title}</h4>
-                    <div style="margin-bottom: 10px; font-size: 12px;">
-                        <span style="color: ${hasKorean ? '#28a745' : '#dc3545'};\">${koreanStatus}</span><br>
-                        <span style="color: ${data.rating_stars_restored ? '#28a745' : '#ffc107'};\">${ratingStarsStatus}</span><br>
-                        <span style="color: ${data.sales_volume_fixed ? '#28a745' : '#ffc107'};\">${salesVolumeStatus}</span>
+                    <div style="margin-bottom: 15px; font-size: 12px; line-height: 1.4;">
+                        <span style="color: ${hasKorean ? '#28a745' : '#dc3545'};">${koreanStatus}</span><br>
+                        <span style="color: ${data.star_system_upgraded ? '#28a745' : '#ffc107'};">${starSystemStatus}</span><br>
+                        <span style="color: ${salesVolumeStatus.includes('✅') ? '#28a745' : '#ffc107'};">${salesVolumeStatus}</span>
                     </div>
+                    
+                    <div class="price-info">${data.price}</div>
+                    
+                    ${generateStarRating(data.rating_value || 0)}
+                    
                     <div class="info-grid">
                         <div class="info-item">
-                            <div class="info-label">가격</div>
-                            <div>${data.price}</div>
-                        </div>
-                        <div class="info-item">
-                            <div class="info-label">평점</div>
-                            <div>${data.rating}</div>
-                        </div>
-                        <div class="info-item">
                             <div class="info-label">판매량</div>
-                            <div>${data.lastest_volume || '정보 없음'}</div>
+                            <div class="info-value">${data.lastest_volume || '정보 없음'}</div>
                         </div>
                         <div class="info-item">
                             <div class="info-label">상품 ID</div>
-                            <div>${data.product_id}</div>
+                            <div class="info-value">${data.product_id}</div>
                         </div>
                     </div>
-                    <div style="margin-top: 15px;">
+                    
+                    <div style="margin-top: 20px;">
                         <a href="${data.affiliate_link}" target="_blank" style="text-decoration: none;">
                             <picture>
                                 <source media="(max-width: 768px)" srcset="https://novacents.com/tools/images/aliexpress-button-mobile.png">
@@ -1615,7 +1715,7 @@ if (isset($_GET['error'])) {
                         </a>
                     </div>
                     <div style="margin-top: 10px; font-size: 11px; color: #666;">
-                        ${data.method_used || 'API 방식'} | 레이아웃 개선 🎨
+                        ${data.method_used || 'API 방식'} | 세련된 카드 디자인 🎨
                     </div>
                 </div>
             `;
@@ -1623,26 +1723,45 @@ if (isset($_GET['error'])) {
             resultEl.classList.add('show');
         }
         
-        // 🎨 개선된 HTML 소스 생성 함수 (레이아웃 개선)
+        // 🎨 세련된 HTML 소스 생성 함수
         function generateHtmlSource(data) {
             if (!data) return;
             
-            console.log('🎨 레이아웃 개선 HTML 소스 생성 시작');
+            console.log('🎨 세련된 카드 디자인 HTML 소스 생성 시작');
             
-            // 🎨 개선된 HTML 코드 생성 (이미지 2배 확대, 가운데 정렬, 레이아웃 개선)
+            // 🌟 5개 별 + 채우기 방식 HTML 생성
+            const stars = (data.rating_value / 100) * 5;
+            const percentage = (stars / 5) * 100;
+            
+            const starRatingHtml = `
+                <div style="display: flex; align-items: center; gap: 8px; margin: 8px 0;">
+                    <div style="position: relative; display: inline-block; font-size: 16px; line-height: 1;">
+                        <div style="color: #e0e0e0; position: relative;">★★★★★</div>
+                        <div style="position: absolute; top: 0; left: 0; color: #ffd700; overflow: hidden; white-space: nowrap; width: ${percentage}%;">★★★★★</div>
+                    </div>
+                    <span style="font-size: 14px; color: #666; font-weight: 500;">(${data.rating_value || 0}%)</span>
+                </div>
+            `;
+            
+            // 🎨 세련된 HTML 코드 생성
             const htmlCode = `<div style="display: flex; justify-content: center; margin: 25px 0;">
-    <div class="affiliate-product-card" style="border: 2px solid #eee; padding: 30px; border-radius: 15px; background: #f9f9f9; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 800px; width: 100%;">
-        <h3 style="color: #333; margin: 0 0 20px 0; font-size: 1.4em; text-align: center;">${data.title}</h3>
+    <div class="affiliate-product-card" style="border: 2px solid #eee; padding: 30px; border-radius: 15px; background: #f9f9f9; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 900px; width: 100%;">
+        <h3 style="color: #333; margin: 0 0 20px 0; font-size: 1.3em; font-weight: 600; text-align: center; line-height: 1.4; max-height: 4.2em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;">${data.title}</h3>
         
-        <div style="display: grid; grid-template-columns: 400px 1fr; gap: 30px; align-items: start; margin-bottom: 20px;">
+        <div style="display: grid; grid-template-columns: 350px 1fr; gap: 30px; align-items: start; margin-bottom: 20px;">
             <div class="product-image">
-                <img src="${data.image_url}" alt="${data.title}" style="width: 100%; max-width: 400px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <img src="${data.image_url}" alt="${data.title}" style="width: 100%; max-width: 350px; border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);">
             </div>
             
-            <div class="product-info" style="display: flex; flex-direction: column; gap: 12px;">
-                <p style="color: #e74c3c; font-size: 1.3em; font-weight: bold; margin: 0;"><strong>💰 가격: ${data.price}</strong></p>
-                <p style="margin: 0; font-size: 1.1em;"><strong>⭐ 평점:</strong> ${data.rating}</p>
-                <p style="margin: 0; font-size: 1.1em;"><strong>📦 판매량:</strong> ${data.lastest_volume || '정보 없음'}</p>
+            <div class="product-info" style="display: flex; flex-direction: column; gap: 15px;">
+                <p style="color: #e74c3c; font-size: 1.4em; font-weight: 700; margin: 0;"><strong>💰 가격: ${data.price}</strong></p>
+                
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <strong style="color: #333;">⭐ 평점:</strong>
+                    ${starRatingHtml}
+                </div>
+                
+                <p style="margin: 0; font-size: 1.1em;"><strong>📦 판매량:</strong> ${data.lastest_volume || '판매량 정보 없음'}</p>
             </div>
         </div>
         
@@ -1659,7 +1778,7 @@ if (isset($_GET['error'])) {
     </div>
 </div>`;
             
-            // 🎨 개선된 HTML 미리보기 생성
+            // 🎨 세련된 HTML 미리보기 생성
             const previewHtml = `
                 <div class="preview-product-card">
                     <div class="preview-card-content">
@@ -1672,8 +1791,13 @@ if (isset($_GET['error'])) {
                             
                             <div class="preview-product-info">
                                 <p class="preview-price"><strong>💰 가격: ${data.price}</strong></p>
-                                <p class="preview-rating"><strong>⭐ 평점:</strong> ${data.rating}</p>
-                                <p class="preview-sales"><strong>📦 판매량:</strong> ${data.lastest_volume || '정보 없음'}</p>
+                                
+                                <div class="preview-rating">
+                                    <strong>⭐ 평점:</strong>
+                                    ${generateStarRating(data.rating_value || 0)}
+                                </div>
+                                
+                                <p class="preview-sales"><strong>📦 판매량:</strong> ${data.lastest_volume || '판매량 정보 없음'}</p>
                             </div>
                         </div>
                         
@@ -1695,7 +1819,7 @@ if (isset($_GET['error'])) {
             document.getElementById('htmlCode').textContent = htmlCode;
             document.getElementById('htmlSourceSection').style.display = 'block';
             
-            console.log('✅ 레이아웃 개선 HTML 소스 생성 완료');
+            console.log('✅ 세련된 카드 디자인 HTML 소스 생성 완료');
         }
         
         // 클립보드 복사 함수
@@ -1717,7 +1841,7 @@ if (isset($_GET['error'])) {
                     copyBtn.classList.remove('copied');
                 }, 2000);
                 
-                console.log('📋 레이아웃 개선 HTML 소스 클립보드 복사 완료');
+                console.log('📋 세련된 카드 디자인 HTML 소스 클립보드 복사 완료');
                 
             } catch (error) {
                 console.error('❌ 클립보드 복사 실패:', error);
