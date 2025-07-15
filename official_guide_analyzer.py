@@ -2,10 +2,11 @@
 # -*- coding: utf-8 -*-
 
 """
-🛡️ 평점 정보 복구 + 알리익스프레스 스타일 디자인
-- 평점 정보를 확실하게 추출하여 5개 별 + 채우기 방식으로 표시
-- 판매량 정보 필드명 일치 (lastest_volume)
-- API에서 받은 정보를 정확하게 포맷팅
+🌟 평점 정보 복구 강화 + 분석화면 스타일 단순화
+- 평점 정보를 확실하게 추출하여 안정적으로 표시
+- 원가/할인 정보 제거 (단순한 가격만)
+- 분석화면과 HTML 소스 일치를 위한 단순화
+- lastest_volume 필드명 정확히 유지
 """
 
 import os
@@ -88,11 +89,33 @@ def parse_rating_value(evaluate_rate):
         safe_log(f"❌ 평점 파싱 실패: {e}")
         return 0
 
+def format_rating_with_stars(rating_value):
+    """🌟 평점을 별표 형태로 변환 (5개 별 + 채우기 방식)"""
+    if not rating_value or rating_value == 0:
+        return "평점 정보 없음"
+    
+    # 0-100을 0-5로 변환
+    stars = (rating_value / 100) * 5
+    
+    if rating_value >= 95:
+        return f"⭐⭐⭐⭐⭐ ({rating_value}%)"
+    elif rating_value >= 80:
+        return f"⭐⭐⭐⭐ ({rating_value}%)"
+    elif rating_value >= 60:
+        return f"⭐⭐⭐ ({rating_value}%)"
+    elif rating_value >= 40:
+        return f"⭐⭐ ({rating_value}%)"
+    elif rating_value >= 20:
+        return f"⭐ ({rating_value}%)"
+    else:
+        return f"({rating_value}%)"
+
 class SimpleAliexpressAnalyzer:
     """
-    🛡️ 평점 정보 복구 + 알리익스프레스 스타일 분석기
-    - 평점 정보를 확실하게 추출하여 5개 별 + 채우기 방식으로 표시
-    - 판매량 정보 필드명 일치
+    🌟 평점 정보 복구 강화 + 단순화된 분석기
+    - 평점 정보를 확실하게 추출
+    - 단순한 가격 정보만 제공 (원가/할인 정보 제거)
+    - 분석화면과 HTML 소스 일치
     """
     
     def __init__(self, app_key, app_secret, tracking_id="blog"):
@@ -108,7 +131,7 @@ class SimpleAliexpressAnalyzer:
             'country': 'KR'
         }
         
-        safe_log("🛡️ 평점 정보 복구 + 알리익스프레스 스타일 분석기 초기화 완료")
+        safe_log("🌟 평점 정보 복구 + 단순화된 분석기 초기화 완료")
 
     def generate_signature(self, params):
         """MD5 서명 생성"""
@@ -138,9 +161,9 @@ class SimpleAliexpressAnalyzer:
 
     def get_product_info(self, url: str) -> dict:
         """
-        🎯 평점 정보 복구 + 상품 정보 추출
+        🎯 평점 정보 복구 + 단순화된 상품 정보 추출
         """
-        safe_log(f"🚀 평점 정보 복구 분석 시작: {url}")
+        safe_log(f"🚀 단순화된 분석 시작: {url}")
         
         # 상품 ID 추출
         product_id = self.extract_product_id(url)
@@ -157,7 +180,7 @@ class SimpleAliexpressAnalyzer:
                 'v': '2.0',
                 'sign_method': 'md5',
                 'product_ids': product_id,
-                'fields': 'product_id,product_title,product_main_image_url,target_sale_price,target_original_price,evaluate_rate,lastest_volume,first_level_category_name,promotion_link,shop_id,shop_url,shop_name',
+                'fields': 'product_id,product_title,product_main_image_url,target_sale_price,evaluate_rate,lastest_volume,promotion_link',
                 'tracking_id': self.tracking_id
             }
             
@@ -181,7 +204,7 @@ class SimpleAliexpressAnalyzer:
                 
                 if response.status == 200:
                     data = json.loads(response_text)
-                    return self.format_response_with_rating_recovery(data, url)
+                    return self.format_simple_response(data, url)
                 else:
                     raise ValueError(f"HTTP 오류: {response.status}")
                     
@@ -189,13 +212,15 @@ class SimpleAliexpressAnalyzer:
             safe_log(f"❌ API 호출 실패: {e}")
             raise ValueError(f"상품 분석 중 오류가 발생했습니다: {str(e)}")
 
-    def format_response_with_rating_recovery(self, data, original_url):
+    def format_simple_response(self, data, original_url):
         """
-        🌟 평점 정보 복구 + 알리익스프레스 스타일 응답 포맷팅
+        🌟 단순화된 응답 포맷팅 (분석화면 스타일)
+        - 평점 정보 확실하게 추출
+        - 단순한 가격 정보만 제공
+        - 디버그 메시지 제거
         """
         try:
-            safe_log("🔍 API 전체 응답 구조 확인...")
-            safe_log(f"응답 키들: {list(data.keys())}")
+            safe_log("🔍 API 응답 구조 확인...")
             
             # 성공 검증된 응답 구조 파싱
             if 'aliexpress_affiliate_productdetail_get_response' in data:
@@ -214,17 +239,15 @@ class SimpleAliexpressAnalyzer:
                         else:
                             raise ValueError("상품 데이터 구조 오류")
                         
-                        safe_log("🌟 평점 정보 복구 포맷팅 시작")
-                        safe_log(f"🔍 상품 원본 데이터: {json.dumps(product, ensure_ascii=False, indent=2)}")
+                        safe_log("🌟 단순화된 포맷팅 시작")
                         
                         # 🔥 한국어 상품명 (완벽가이드 성공 결과)
                         title = product.get('product_title', '')
                         has_korean = bool(re.search(r'[가-힣]', title))
                         safe_log(f"📝 상품명: {title[:50]}... (한국어: {'✅' if has_korean else '❌'})")
                         
-                        # 🔥 KRW 가격 처리
+                        # 🔥 단순한 KRW 가격 처리 (원가/할인 정보 없음)
                         price_str = product.get('target_sale_price', '0')
-                        original_price_str = product.get('target_original_price', '0')
                         
                         try:
                             if isinstance(price_str, str) and ',' in price_str:
@@ -233,46 +256,28 @@ class SimpleAliexpressAnalyzer:
                                 price_clean = str(price_str)
                             price_krw = int(float(price_clean))
                             price_display = f"₩{price_krw:,}"
-                            
-                            # 원가 처리
-                            if isinstance(original_price_str, str) and ',' in original_price_str:
-                                original_price_clean = original_price_str.replace(',', '')
-                            else:
-                                original_price_clean = str(original_price_str)
-                            original_price_krw = int(float(original_price_clean))
-                            
-                            # 할인율 계산
-                            if original_price_krw > price_krw and original_price_krw > 0:
-                                discount_rate = int(((original_price_krw - price_krw) / original_price_krw) * 100)
-                                discount_info = f"{discount_rate}% 할인"
-                                original_price_display = f"₩{original_price_krw:,}"
-                            else:
-                                discount_info = ""
-                                original_price_display = ""
-                                
                         except:
                             price_display = "가격 정보 없음"
-                            discount_info = ""
-                            original_price_display = ""
                         
                         safe_log(f"💰 가격: {price_display}")
                         
-                        # 🌟 평점 정보 강화된 추출 (여러 방법 시도)
+                        # 🌟 평점 정보 강화된 추출
                         evaluate_rate = product.get('evaluate_rate')
                         safe_log(f"🔍 평점 원본: {evaluate_rate}")
                         
-                        # 평점이 없으면 다른 필드도 확인
-                        if not evaluate_rate or str(evaluate_rate) == '0':
+                        # 평점이 없거나 0이면 다른 필드도 확인
+                        if not evaluate_rate or str(evaluate_rate) == '0' or str(evaluate_rate).lower() == 'none':
                             # 다른 가능한 평점 필드들 확인
-                            alternative_fields = ['rating', 'product_rating', 'evaluation_rate', 'score']
+                            alternative_fields = ['rating', 'product_rating', 'evaluation_rate', 'score', 'rate']
                             for field in alternative_fields:
-                                if field in product and product[field]:
+                                if field in product and product[field] and str(product[field]) != '0':
                                     evaluate_rate = product[field]
                                     safe_log(f"🔍 대체 평점 필드 '{field}'에서 발견: {evaluate_rate}")
                                     break
                         
                         rating_value = parse_rating_value(evaluate_rate)
-                        safe_log(f"⭐ 최종 평점: {rating_value}%")
+                        rating_display = format_rating_with_stars(rating_value)
+                        safe_log(f"⭐ 최종 평점: {rating_display}")
                         
                         # 🔥 판매량 처리 - API 필드명 그대로 사용!
                         lastest_volume = product.get('lastest_volume', '')
@@ -286,34 +291,26 @@ class SimpleAliexpressAnalyzer:
                         # 어필리에이트 링크
                         affiliate_link = product.get('promotion_link', original_url)
                         
-                        # 🌟 평점 정보 복구 + 알리익스프레스 스타일 최종 결과
+                        # 🌟 단순화된 최종 결과 (분석화면 스타일)
                         result = {
                             'platform': 'AliExpress',
                             'product_id': product.get('product_id', ''),
                             'title': title,                          # 🔥 한국어 상품명
-                            'price': price_display,                  # 🔥 KRW 가격 (₩16,800)
-                            'original_price': original_price_display, # 🔥 원가 (₩69,896)
-                            'discount_info': discount_info,          # 🔥 할인 정보 (1% 할인)
+                            'price': price_display,                  # 🔥 단순한 KRW 가격만
                             'image_url': product.get('product_main_image_url', ''),
                             'original_url': original_url,
                             'affiliate_link': affiliate_link,        # 🔥 어필리에이트 링크
                             'rating_value': rating_value,            # 🌟 숫자 평점 (0-100)
-                            'rating_display': f"{rating_value}%" if rating_value > 0 else "평점 정보 없음",
+                            'rating_display': rating_display,        # 🌟 별표 형태 평점
                             'lastest_volume': volume_display,       # 🔥 판매량 (API 필드명 그대로)
-                            'shop_name': product.get('shop_name', '상점명 정보 없음'),
-                            'method_used': '평점정보복구_알리익스프레스스타일',
-                            'korean_status': '✅ 한국어 성공' if has_korean else '❌ 영어 표시',
-                            'perfect_guide_applied': True,
-                            'star_system_upgraded': True,           # 🌟 새로운 별점 시스템 적용
-                            'rating_recovered': rating_value > 0    # 🌟 평점 복구 성공 여부
+                            'method_used': '단순화된_분석화면_스타일'
                         }
                         
-                        safe_log(f"✅ 평점 정보 복구 완료")
+                        safe_log(f"✅ 단순화된 분석 완료")
                         safe_log(f"  한국어 상품명: {'✅' if has_korean else '❌'}")
                         safe_log(f"  가격: {price_display}")
-                        safe_log(f"  평점: {rating_value}% (복구: {'✅' if rating_value > 0 else '❌'})")
+                        safe_log(f"  평점: {rating_display}")
                         safe_log(f"  판매량: {volume_display}")
-                        safe_log(f"  어필리에이트 링크: {'✅' if 's.click.aliexpress.com' in affiliate_link else '❌'}")
                         
                         return result
                     else:
@@ -328,7 +325,7 @@ class SimpleAliexpressAnalyzer:
             raise ValueError(f"응답 파싱 중 오류: {str(e)}")
 
 def main():
-    """🛡️ 평점 정보 복구 메인 함수"""
+    """🌟 단순화된 메인 함수"""
     if len(sys.argv) != 3:
         print(json.dumps({"success": False, "message": "인수 개수가 올바르지 않습니다."}, ensure_ascii=False))
         return
@@ -351,16 +348,16 @@ def main():
         if not app_key or not app_secret:
             raise ValueError("알리익스프레스 API 키가 설정되지 않았습니다.")
             
-        safe_log(f"🌟 평점 정보 복구 분석 시작 (조용한 모드: {QUIET_MODE})")
+        safe_log(f"🌟 단순화된 분석 시작 (조용한 모드: {QUIET_MODE})")
         
-        # 🌟 평점 정보 복구 분석기 사용
+        # 🌟 단순화된 분석기 사용
         analyzer = SimpleAliexpressAnalyzer(app_key, app_secret, tracking_id)
         product_info = analyzer.get_product_info(url)
         
         # 🎯 성공 시, 순수 JSON만 stdout으로 출력
         result = {"success": True, "data": product_info}
         print(json.dumps(result, ensure_ascii=False))
-        safe_log(f"✅ 평점 정보 복구 완료: 평점({product_info.get('rating_value', 'N/A')}%), 판매량({product_info.get('lastest_volume', 'N/A')})")
+        safe_log(f"✅ 단순화된 분석 완료: 평점({product_info.get('rating_display', 'N/A')}), 판매량({product_info.get('lastest_volume', 'N/A')})")
 
     except Exception as e:
         safe_log(f"❌ 오류 발생: {e}")
