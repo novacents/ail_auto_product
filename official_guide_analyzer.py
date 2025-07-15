@@ -2,10 +2,10 @@
 # -*- coding: utf-8 -*-
 
 """
-🔧 API 응답 구조 문제 긴급 수정
-- 원래 작동하던 로직 기반으로 복원
-- 평점 정보 추출만 강화
-- API 응답 구조 파싱 안정화
+🌟 평점 정보 추출 강화 + 원래 별 개수 방식 복원
+- 평점 정보 추출 로직 대폭 강화
+- 원래 방식 (평점 %에 따라 별 개수 조절) 복원
+- 더 많은 평점 필드 확인
 """
 
 import os
@@ -57,17 +57,44 @@ def load_env_safe():
         safe_log(f"❌ 환경변수 로드 실패: {e}")
         return {}
 
-def parse_rating_value(evaluate_rate):
-    """🌟 평점 값을 0-100 숫자로 파싱"""
+def parse_rating_value_enhanced(product_data):
+    """🌟 평점 값 추출 대폭 강화 - 모든 가능한 필드 확인"""
     try:
-        if not evaluate_rate:
+        safe_log("🔍 평점 정보 대폭 강화된 추출 시작")
+        
+        # 🔥 모든 가능한 평점 필드들 체크
+        rating_fields = [
+            'evaluate_rate',      # 기본 필드
+            'evaluation_rate',    # 대안 1
+            'rating',            # 대안 2
+            'product_rating',    # 대안 3
+            'score',             # 대안 4
+            'rate',              # 대안 5
+            'product_score',     # 대안 6
+            'seller_score',      # 대안 7
+            'quality_score',     # 대안 8
+            'average_rating',    # 대안 9
+            'star_rating'        # 대안 10
+        ]
+        
+        found_rating = None
+        found_field = None
+        
+        for field in rating_fields:
+            if field in product_data:
+                value = product_data[field]
+                if value and str(value) != '0' and str(value).lower() != 'none' and str(value) != 'null':
+                    found_rating = value
+                    found_field = field
+                    safe_log(f"🎯 평점 필드 '{field}'에서 발견: {value}")
+                    break
+        
+        if not found_rating:
+            safe_log("⚠️ 모든 평점 필드에서 데이터를 찾을 수 없음")
             return 0
         
         # 평점 값 파싱
-        rate_str = str(evaluate_rate).strip()
-        
-        if not rate_str or rate_str == '0' or rate_str.lower() == 'none':
-            return 0
+        rate_str = str(found_rating).strip()
         
         # %가 있는 경우 제거
         if rate_str.endswith('%'):
@@ -77,36 +104,37 @@ def parse_rating_value(evaluate_rate):
         
         # 0-100 범위로 제한
         final_value = max(0, min(100, rate_value))
-        safe_log(f"✅ 평점 파싱 성공: {rate_str} → {final_value}%")
+        safe_log(f"✅ 평점 파싱 성공: {found_field}={rate_str} → {final_value}%")
         return final_value
         
     except Exception as e:
         safe_log(f"❌ 평점 파싱 실패: {e}")
         return 0
 
-def format_rating_with_stars(rating_value):
-    """🌟 평점을 별표 형태로 변환"""
+def format_rating_original_style(rating_value):
+    """🌟 원래 방식 - 평점 %에 따라 별 개수 조절"""
     if not rating_value or rating_value == 0:
         return "평점 정보 없음"
     
-    if rating_value >= 95:
+    # 🔥 원래 방식: 평점에 따라 별 개수 결정
+    if rating_value >= 90:
         return f"⭐⭐⭐⭐⭐ ({rating_value}%)"
-    elif rating_value >= 80:
+    elif rating_value >= 70:
         return f"⭐⭐⭐⭐ ({rating_value}%)"
-    elif rating_value >= 60:
+    elif rating_value >= 50:
         return f"⭐⭐⭐ ({rating_value}%)"
-    elif rating_value >= 40:
+    elif rating_value >= 30:
         return f"⭐⭐ ({rating_value}%)"
-    elif rating_value >= 20:
+    elif rating_value >= 10:
         return f"⭐ ({rating_value}%)"
     else:
-        return f"({rating_value}%)"
+        return f"⭐ ({rating_value}%)"  # 최소 1개 별
 
-class SafeAliexpressAnalyzer:
+class EnhancedAliexpressAnalyzer:
     """
-    🔧 안전한 알리익스프레스 분석기 (긴급 수정)
-    - 원래 작동하던 로직 기반
-    - API 응답 구조 안정화
+    🌟 평점 정보 추출 대폭 강화 + 원래 별 방식
+    - 모든 가능한 평점 필드 확인
+    - 원래 별 개수 조절 방식 복원
     """
     
     def __init__(self, app_key, app_secret, tracking_id="blog"):
@@ -122,7 +150,7 @@ class SafeAliexpressAnalyzer:
             'country': 'KR'
         }
         
-        safe_log("🔧 안전한 분석기 초기화 완료")
+        safe_log("🌟 평점 정보 강화 분석기 초기화 완료")
 
     def generate_signature(self, params):
         """MD5 서명 생성"""
@@ -152,9 +180,9 @@ class SafeAliexpressAnalyzer:
 
     def get_product_info(self, url: str) -> dict:
         """
-        🔧 안전한 상품 정보 추출 (긴급 수정)
+        🌟 평점 정보 강화 추출
         """
-        safe_log(f"🚀 안전한 분석 시작: {url}")
+        safe_log(f"🚀 평점 정보 강화 분석 시작: {url}")
         
         # 상품 ID 추출
         product_id = self.extract_product_id(url)
@@ -162,7 +190,7 @@ class SafeAliexpressAnalyzer:
             raise ValueError("URL에서 상품 ID를 찾을 수 없습니다.")
         
         try:
-            # 🔥 성공 검증된 API 파라미터 조합
+            # 🔥 평점 정보를 위한 확장된 필드 요청
             base_params = {
                 'method': 'aliexpress.affiliate.productdetail.get',
                 'app_key': self.app_key,
@@ -171,14 +199,14 @@ class SafeAliexpressAnalyzer:
                 'v': '2.0',
                 'sign_method': 'md5',
                 'product_ids': product_id,
-                'fields': 'product_id,product_title,product_main_image_url,target_sale_price,target_original_price,evaluate_rate,lastest_volume,first_level_category_name,promotion_link',
+                'fields': 'product_id,product_title,product_main_image_url,target_sale_price,target_original_price,evaluate_rate,evaluation_rate,rating,product_rating,score,rate,lastest_volume,first_level_category_name,promotion_link,seller_score,quality_score,average_rating,star_rating',  # 🔥 평점 필드 대폭 확장
                 'tracking_id': self.tracking_id
             }
             
             # 완벽가이드 핵심 파라미터 적용
             params = {**base_params, **self.perfect_params}
             
-            safe_log(f"📋 API 파라미터 설정 완료")
+            safe_log(f"📋 확장된 평점 필드로 API 파라미터 설정 완료")
             
             # 서명 생성
             params['sign'] = self.generate_signature(params)
@@ -196,7 +224,7 @@ class SafeAliexpressAnalyzer:
                 if response.status == 200:
                     data = json.loads(response_text)
                     safe_log(f"📨 API 응답 수신 성공")
-                    return self.format_safe_response(data, url)
+                    return self.format_enhanced_response(data, url)
                 else:
                     raise ValueError(f"HTTP 오류: {response.status}")
                     
@@ -204,20 +232,16 @@ class SafeAliexpressAnalyzer:
             safe_log(f"❌ API 호출 실패: {e}")
             raise ValueError(f"상품 분석 중 오류가 발생했습니다: {str(e)}")
 
-    def format_safe_response(self, data, original_url):
+    def format_enhanced_response(self, data, original_url):
         """
-        🔧 안전한 응답 포맷팅 (긴급 수정)
-        - 모든 가능한 응답 구조 처리
-        - 안전한 필드 접근
+        🌟 평점 정보 강화 응답 포맷팅
         """
         try:
-            safe_log("🔍 API 응답 구조 안전 확인...")
-            safe_log(f"응답 최상위 키들: {list(data.keys())}")
+            safe_log("🔍 평점 정보 강화 응답 구조 확인...")
             
-            # 🔧 안전한 응답 구조 파싱 (모든 경우 처리)
+            # 🔧 안전한 응답 구조 파싱
             product = None
             
-            # 가능한 응답 구조들을 순차적으로 확인
             if 'aliexpress_affiliate_productdetail_get_response' in data:
                 response_obj = data['aliexpress_affiliate_productdetail_get_response']
                 safe_log(f"표준 응답 구조 발견")
@@ -239,28 +263,19 @@ class SafeAliexpressAnalyzer:
                                 elif isinstance(products, dict):
                                     product = products
             
-            # 🔧 대안 응답 구조도 확인
             if not product:
-                # 다른 가능한 구조들 확인
-                for key in data.keys():
-                    if 'response' in key.lower():
-                        safe_log(f"대안 응답 구조 확인: {key}")
-                        # 추가 파싱 로직...
-            
-            if not product:
-                safe_log(f"❌ 모든 응답 구조에서 상품 데이터를 찾을 수 없음")
-                safe_log(f"전체 응답 구조: {json.dumps(data, ensure_ascii=False, indent=2)}")
+                safe_log(f"❌ 상품 데이터를 찾을 수 없음")
                 raise ValueError("API 응답에서 상품 데이터를 찾을 수 없습니다.")
             
-            safe_log("🔧 안전한 포맷팅 시작")
-            safe_log(f"🔍 상품 데이터 확인: {json.dumps(product, ensure_ascii=False, indent=2)[:500]}...")
+            safe_log("🌟 평점 정보 강화 포맷팅 시작")
+            safe_log(f"🔍 전체 상품 데이터: {json.dumps(product, ensure_ascii=False, indent=2)}")
             
-            # 🔥 안전한 필드 추출
+            # 🔥 한국어 상품명
             title = product.get('product_title', '상품명 정보 없음')
             has_korean = bool(re.search(r'[가-힣]', title))
             safe_log(f"📝 상품명: {title[:50]}... (한국어: {'✅' if has_korean else '❌'})")
             
-            # 🔥 안전한 가격 처리
+            # 🔥 가격 처리
             price_str = product.get('target_sale_price', '0')
             try:
                 if isinstance(price_str, str) and ',' in price_str:
@@ -274,25 +289,12 @@ class SafeAliexpressAnalyzer:
             
             safe_log(f"💰 가격: {price_display}")
             
-            # 🌟 안전한 평점 정보 추출
-            evaluate_rate = product.get('evaluate_rate')
-            safe_log(f"🔍 평점 원본: {evaluate_rate}")
+            # 🌟 평점 정보 대폭 강화된 추출
+            rating_value = parse_rating_value_enhanced(product)
+            rating_display = format_rating_original_style(rating_value)
+            safe_log(f"⭐ 최종 평점 (원래 방식): {rating_display}")
             
-            # 평점이 없거나 0이면 다른 필드도 확인
-            if not evaluate_rate or str(evaluate_rate) == '0' or str(evaluate_rate).lower() == 'none':
-                # 다른 가능한 평점 필드들 확인
-                alternative_fields = ['rating', 'product_rating', 'evaluation_rate', 'score', 'rate']
-                for field in alternative_fields:
-                    if field in product and product[field] and str(product[field]) != '0':
-                        evaluate_rate = product[field]
-                        safe_log(f"🔍 대체 평점 필드 '{field}'에서 발견: {evaluate_rate}")
-                        break
-            
-            rating_value = parse_rating_value(evaluate_rate)
-            rating_display = format_rating_with_stars(rating_value)
-            safe_log(f"⭐ 최종 평점: {rating_display}")
-            
-            # 🔥 안전한 판매량 처리
+            # 🔥 판매량 처리
             lastest_volume = product.get('lastest_volume', '')
             if lastest_volume and str(lastest_volume) != '0':
                 volume_display = f"{lastest_volume}개 판매"
@@ -301,10 +303,10 @@ class SafeAliexpressAnalyzer:
             
             safe_log(f"📦 판매량: {volume_display}")
             
-            # 안전한 어필리에이트 링크
+            # 어필리에이트 링크
             affiliate_link = product.get('promotion_link', original_url)
             
-            # 🔧 안전한 최종 결과
+            # 🌟 최종 결과 (원래 별 방식)
             result = {
                 'platform': 'AliExpress',
                 'product_id': product.get('product_id', ''),
@@ -313,13 +315,15 @@ class SafeAliexpressAnalyzer:
                 'image_url': product.get('product_main_image_url', ''),
                 'original_url': original_url,
                 'affiliate_link': affiliate_link,
-                'rating_value': rating_value,
-                'rating_display': rating_display,
+                'rating_value': rating_value,           # 🌟 숫자 평점 (0-100)
+                'rating_display': rating_display,       # 🌟 원래 별 방식 (⭐⭐⭐⭐⭐)
                 'lastest_volume': volume_display,
-                'method_used': '안전한_분석_긴급수정'
+                'method_used': '평점정보강화_원래별방식',
+                'rating_fields_checked': 10,            # 체크한 평점 필드 수
+                'original_star_style': True             # 원래 별 방식 적용
             }
             
-            safe_log(f"✅ 안전한 분석 완료")
+            safe_log(f"✅ 평점 정보 강화 완료")
             safe_log(f"  한국어 상품명: {'✅' if has_korean else '❌'}")
             safe_log(f"  가격: {price_display}")
             safe_log(f"  평점: {rating_display}")
@@ -329,11 +333,10 @@ class SafeAliexpressAnalyzer:
                 
         except Exception as e:
             safe_log(f"❌ 응답 파싱 실패: {e}")
-            safe_log(f"전체 응답: {json.dumps(data, ensure_ascii=False, indent=2)[:1000]}...")
             raise ValueError(f"응답 파싱 중 오류: {str(e)}")
 
 def main():
-    """🔧 안전한 메인 함수"""
+    """🌟 평점 정보 강화 메인 함수"""
     if len(sys.argv) != 3:
         print(json.dumps({"success": False, "message": "인수 개수가 올바르지 않습니다."}, ensure_ascii=False))
         return
@@ -356,16 +359,16 @@ def main():
         if not app_key or not app_secret:
             raise ValueError("알리익스프레스 API 키가 설정되지 않았습니다.")
             
-        safe_log(f"🔧 안전한 분석 시작 (조용한 모드: {QUIET_MODE})")
+        safe_log(f"🌟 평점 정보 강화 분석 시작 (조용한 모드: {QUIET_MODE})")
         
-        # 🔧 안전한 분석기 사용
-        analyzer = SafeAliexpressAnalyzer(app_key, app_secret, tracking_id)
+        # 🌟 평점 정보 강화 분석기 사용
+        analyzer = EnhancedAliexpressAnalyzer(app_key, app_secret, tracking_id)
         product_info = analyzer.get_product_info(url)
         
         # 🎯 성공 시, 순수 JSON만 stdout으로 출력
         result = {"success": True, "data": product_info}
         print(json.dumps(result, ensure_ascii=False))
-        safe_log(f"✅ 안전한 분석 완료: 평점({product_info.get('rating_display', 'N/A')}), 판매량({product_info.get('lastest_volume', 'N/A')})")
+        safe_log(f"✅ 평점 정보 강화 완료: 평점({product_info.get('rating_display', 'N/A')}), 판매량({product_info.get('lastest_volume', 'N/A')})")
 
     except Exception as e:
         safe_log(f"❌ 오류 발생: {e}")
