@@ -3,7 +3,7 @@
 
 """
 🛡️ 평점 별표 복원 및 판매량 정보 수정된 알리익스프레스 분석기 
-- 평점 정보를 별표 형태로 표시 (⭐⭐⭐⭐⭐ 100%)
+- 평점 정보를 5개 별 + 채우기 방식으로 표시
 - 판매량 정보 필드명 일치 (lastest_volume)
 - API에서 받은 정보를 정확하게 포맷팅
 """
@@ -57,11 +57,11 @@ def load_env_safe():
         safe_log(f"❌ 환경변수 로드 실패: {e}")
         return {}
 
-def format_rating_with_stars(evaluate_rate):
-    """🌟 평점을 별표 형태로 포맷팅"""
+def parse_rating_value(evaluate_rate):
+    """🌟 평점 값을 0-100 숫자로 파싱"""
     try:
         if not evaluate_rate or str(evaluate_rate) == '0':
-            return "평점 정보 없음"
+            return 0
         
         # 평점 값 파싱
         rate_str = str(evaluate_rate)
@@ -70,29 +70,17 @@ def format_rating_with_stars(evaluate_rate):
         else:
             rate_value = float(rate_str)
         
-        # 100점 만점을 5점 만점으로 변환
-        if rate_value > 5:
-            star_count = int(rate_value / 20)  # 100점 -> 5점
-        else:
-            star_count = int(rate_value)
-        
-        # 별표 개수 제한 (1~5)
-        star_count = max(1, min(5, star_count))
-        
-        # 별표 생성
-        stars = "⭐" * star_count
-        
-        # 최종 포맷
-        return f"{stars} ({rate_value}%)"
+        # 0-100 범위로 제한
+        return max(0, min(100, rate_value))
         
     except Exception as e:
-        safe_log(f"❌ 평점 포맷팅 실패: {e}")
-        return f"{evaluate_rate}%" if evaluate_rate else "평점 정보 없음"
+        safe_log(f"❌ 평점 파싱 실패: {e}")
+        return 0
 
 class SimpleAliexpressAnalyzer:
     """
     🛡️ 평점 별표 복원된 알리익스프레스 분석기
-    - 평점 정보를 별표 형태로 표시
+    - 평점 정보를 5개 별 + 채우기 방식으로 표시
     - 판매량 정보 필드명 일치
     """
     
@@ -109,7 +97,7 @@ class SimpleAliexpressAnalyzer:
             'country': 'KR'
         }
         
-        safe_log("🛡️ 평점 별표 복원 분석기 초기화 완료")
+        safe_log("🛡️ 5개 별 + 채우기 방식 분석기 초기화 완료")
 
     def generate_signature(self, params):
         """MD5 서명 생성"""
@@ -139,9 +127,9 @@ class SimpleAliexpressAnalyzer:
 
     def get_product_info(self, url: str) -> dict:
         """
-        🎯 평점 별표 복원된 상품 정보 추출
+        🎯 5개 별 + 채우기 방식 상품 정보 추출
         """
-        safe_log(f"🚀 평점 별표 복원 분석 시작: {url}")
+        safe_log(f"🚀 5개 별 + 채우기 방식 분석 시작: {url}")
         
         # 상품 ID 추출
         product_id = self.extract_product_id(url)
@@ -182,7 +170,7 @@ class SimpleAliexpressAnalyzer:
                 
                 if response.status == 200:
                     data = json.loads(response_text)
-                    return self.format_response_with_stars(data, url)
+                    return self.format_response_with_rating_stars(data, url)
                 else:
                     raise ValueError(f"HTTP 오류: {response.status}")
                     
@@ -190,9 +178,9 @@ class SimpleAliexpressAnalyzer:
             safe_log(f"❌ API 호출 실패: {e}")
             raise ValueError(f"상품 분석 중 오류가 발생했습니다: {str(e)}")
 
-    def format_response_with_stars(self, data, original_url):
+    def format_response_with_rating_stars(self, data, original_url):
         """
-        🌟 평점 별표 복원된 응답 포맷팅
+        🌟 5개 별 + 채우기 방식 응답 포맷팅
         """
         try:
             # 성공 검증된 응답 구조 파싱
@@ -212,7 +200,7 @@ class SimpleAliexpressAnalyzer:
                         else:
                             raise ValueError("상품 데이터 구조 오류")
                         
-                        safe_log("🌟 평점 별표 복원 포맷팅 시작")
+                        safe_log("🌟 5개 별 + 채우기 방식 포맷팅 시작")
                         
                         # 🔥 한국어 상품명 (완벽가이드 성공 결과)
                         title = product.get('product_title', '')
@@ -233,10 +221,10 @@ class SimpleAliexpressAnalyzer:
                         
                         safe_log(f"💰 가격: {price_display}")
                         
-                        # 🌟 평점 별표 복원 처리
+                        # 🌟 평점 숫자 값 파싱 (5개 별 + 채우기용)
                         evaluate_rate = product.get('evaluate_rate', '')
-                        rating_display = format_rating_with_stars(evaluate_rate)
-                        safe_log(f"⭐ 평점: {rating_display}")
+                        rating_value = parse_rating_value(evaluate_rate)
+                        safe_log(f"⭐ 평점 숫자: {rating_value}%")
                         
                         # 🔥 판매량 처리 - API 필드명 그대로 사용!
                         lastest_volume = product.get('lastest_volume', '')
@@ -250,7 +238,7 @@ class SimpleAliexpressAnalyzer:
                         # 어필리에이트 링크
                         affiliate_link = product.get('promotion_link', original_url)
                         
-                        # 🌟 평점 별표 복원된 최종 결과
+                        # 🌟 5개 별 + 채우기 방식 최종 결과
                         result = {
                             'platform': 'AliExpress',
                             'product_id': product.get('product_id', ''),
@@ -259,18 +247,20 @@ class SimpleAliexpressAnalyzer:
                             'image_url': product.get('product_main_image_url', ''),
                             'original_url': original_url,
                             'affiliate_link': affiliate_link,        # 🔥 어필리에이트 링크
-                            'rating': rating_display,               # 🌟 별표 복원된 평점
+                            'rating_value': rating_value,            # 🌟 숫자 평점 (0-100)
+                            'rating_display': f"{rating_value}%",    # 🌟 표시용 평점
                             'lastest_volume': volume_display,       # 🔥 판매량 (API 필드명 그대로)
                             'shop_name': product.get('shop_name', '상점명 정보 없음'),
-                            'method_used': '평점별표복원_판매량수정',
+                            'method_used': '5개별_채우기방식',
                             'korean_status': '✅ 한국어 성공' if has_korean else '❌ 영어 표시',
-                            'perfect_guide_applied': True
+                            'perfect_guide_applied': True,
+                            'star_system_upgraded': True           # 🌟 새로운 별점 시스템 적용
                         }
                         
-                        safe_log(f"✅ 평점 별표 복원 완료")
+                        safe_log(f"✅ 5개 별 + 채우기 방식 완료")
                         safe_log(f"  한국어 상품명: {'✅' if has_korean else '❌'}")
                         safe_log(f"  가격: {price_display}")
-                        safe_log(f"  평점: {rating_display}")
+                        safe_log(f"  평점: {rating_value}%")
                         safe_log(f"  판매량: {volume_display}")
                         safe_log(f"  어필리에이트 링크: {'✅' if 's.click.aliexpress.com' in affiliate_link else '❌'}")
                         
@@ -287,7 +277,7 @@ class SimpleAliexpressAnalyzer:
             raise ValueError(f"응답 파싱 중 오류: {str(e)}")
 
 def main():
-    """🛡️ 평점 별표 복원 메인 함수"""
+    """🛡️ 5개 별 + 채우기 방식 메인 함수"""
     if len(sys.argv) != 3:
         print(json.dumps({"success": False, "message": "인수 개수가 올바르지 않습니다."}, ensure_ascii=False))
         return
@@ -310,16 +300,16 @@ def main():
         if not app_key or not app_secret:
             raise ValueError("알리익스프레스 API 키가 설정되지 않았습니다.")
             
-        safe_log(f"🌟 평점 별표 복원 분석 시작 (조용한 모드: {QUIET_MODE})")
+        safe_log(f"🌟 5개 별 + 채우기 방식 분석 시작 (조용한 모드: {QUIET_MODE})")
         
-        # 🌟 평점 별표 복원 분석기 사용
+        # 🌟 5개 별 + 채우기 방식 분석기 사용
         analyzer = SimpleAliexpressAnalyzer(app_key, app_secret, tracking_id)
         product_info = analyzer.get_product_info(url)
         
         # 🎯 성공 시, 순수 JSON만 stdout으로 출력
         result = {"success": True, "data": product_info}
         print(json.dumps(result, ensure_ascii=False))
-        safe_log(f"✅ 평점 별표 복원 완료: 평점({product_info.get('rating', 'N/A')}), 판매량({product_info.get('lastest_volume', 'N/A')})")
+        safe_log(f"✅ 5개 별 + 채우기 방식 완료: 평점({product_info.get('rating_value', 'N/A')}%), 판매량({product_info.get('lastest_volume', 'N/A')})")
 
     except Exception as e:
         safe_log(f"❌ 오류 발생: {e}")
