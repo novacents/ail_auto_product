@@ -1,13 +1,12 @@
 <?php
 /**
- * 어필리에이트 상품 등록 자동화 입력 페이지 (알리익스프레스 스타일)
+ * 어필리에이트 상품 등록 자동화 입력 페이지 (분석화면 스타일)
  * 노바센트(novacents.com) 전용
  * 알리익스프레스 어필리에이트 전용 상품 글 생성
  * + HTML 소스 생성 및 클립보드 복사 기능
  * + 인라인 키워드 입력창
- * + 🔧 평점 정보 복구 및 강화된 오류 처리
- * + 🌟 5개 별 + 채우기 방식 평점 시스템 (복구)
- * + 🎨 실제 알리익스프레스 스타일 디자인 (가격 강조, 할인 정보)
+ * + 🌟 분석화면 스타일 HTML 레이아웃 (단순화)
+ * + 🎨 상품명 폰트 크기 증가 + 가격 검은색 + 디버그 메시지 제거
  */
 
 // 워드프레스 환경 로드
@@ -127,7 +126,7 @@ if (isset($_GET['error'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>어필리에이트 상품 등록 - 노바센트 (알리익스프레스 스타일) 🛒</title>
+    <title>어필리에이트 상품 등록 - 노바센트 (분석화면 스타일) 🛒</title>
     <style>
         /* 기존 스타일 유지 + 새로운 스타일 추가 */
         body {
@@ -426,7 +425,7 @@ if (isset($_GET['error'])) {
             display: block;
         }
         
-        /* 🛒 알리익스프레스 스타일 상품 카드 */
+        /* 🎨 분석화면 스타일 상품 카드 (단순화) */
         .product-card {
             display: grid;
             grid-template-columns: 350px 1fr;
@@ -452,91 +451,44 @@ if (isset($_GET['error'])) {
             gap: 15px;
         }
         
-        /* 🛒 알리익스프레스 스타일 상품명 */
+        /* 🎨 분석화면 스타일 상품명 (폰트 크기 증가) */
         .product-basic-info h4 {
-            margin: 0 0 10px 0;
+            margin: 0 0 15px 0;
             color: #1a1a1a;
-            font-size: 18px;
+            font-size: 22px;           /* 🔥 폰트 크기 증가 (18px → 22px) */
             font-weight: 600;
             line-height: 1.4;
-            max-height: 4.2em;
-            overflow: hidden;
-            display: -webkit-box;
-            -webkit-line-clamp: 3;
-            -webkit-box-orient: vertical;
+            word-break: keep-all;      /* 🔥 자연스러운 줄바꿈 */
+            overflow-wrap: break-word; /* 🔥 긴 단어 자동 줄바꿈 */
         }
         
-        /* 🛒 알리익스프레스 스타일 가격 (메인 강조) */
-        .aliexpress-price-main {
-            font-size: 28px;
+        /* 🎨 분석화면 스타일 가격 (크게, 검은색) */
+        .analysis-price-display {
+            font-size: 28px;          /* 🔥 가격 크기 증가 */
             font-weight: 700;
-            color: #ff4747;
-            margin: 8px 0;
-            display: flex;
-            align-items: baseline;
-            gap: 10px;
+            color: #000000;           /* 🔥 검은색으로 변경 */
+            margin: 10px 0;
         }
         
-        .aliexpress-discount {
-            background: #ff4747;
-            color: white;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        
-        .aliexpress-original-price {
-            color: #999;
-            text-decoration: line-through;
-            font-size: 16px;
-            font-weight: 400;
-        }
-        
-        /* 🌟 알리익스프레스 스타일 별점 */
-        .aliexpress-rating {
+        /* 🌟 분석화면 스타일 별점 */
+        .analysis-rating {
             display: flex;
             align-items: center;
             gap: 8px;
             margin: 8px 0;
-        }
-        
-        .stars-container {
-            position: relative;
-            display: inline-block;
             font-size: 16px;
-            line-height: 1;
+            color: #333;
         }
         
-        .stars-background {
-            color: #e0e0e0;
-            position: relative;
-        }
-        
-        .stars-fill {
-            position: absolute;
-            top: 0;
-            left: 0;
-            color: #ffa500;
-            overflow: hidden;
-            white-space: nowrap;
-        }
-        
-        .rating-text {
-            font-size: 14px;
+        /* 🎨 분석화면 스타일 판매량 */
+        .analysis-sales {
             color: #666;
-            font-weight: 500;
+            font-size: 16px;
+            margin: 8px 0;
         }
         
-        /* 🛒 알리익스프레스 스타일 판매량 */
-        .aliexpress-sales {
-            color: #666;
-            font-size: 14px;
-            margin: 5px 0;
-        }
-        
-        /* 🛒 알리익스프레스 스타일 정보 그리드 */
-        .aliexpress-info-grid {
+        /* 🎨 분석화면 스타일 정보 그리드 */
+        .analysis-info-grid {
             display: grid;
             grid-template-columns: 1fr;
             gap: 8px;
@@ -546,7 +498,7 @@ if (isset($_GET['error'])) {
             border-radius: 8px;
         }
         
-        .aliexpress-info-item {
+        .analysis-info-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -555,7 +507,7 @@ if (isset($_GET['error'])) {
             font-size: 14px;
         }
         
-        .aliexpress-info-item:last-child {
+        .analysis-info-item:last-child {
             border-bottom: none;
         }
         
@@ -634,7 +586,7 @@ if (isset($_GET['error'])) {
             overflow-y: auto;
         }
         
-        /* 🛒 알리익스프레스 스타일 미리보기 */
+        /* 🎨 분석화면 스타일 미리보기 (단순화) */
         .preview-product-card {
             display: flex;
             justify-content: center;
@@ -654,15 +606,12 @@ if (isset($_GET['error'])) {
         .preview-card-title {
             color: #333;
             margin: 0 0 20px 0;
-            font-size: 1.3em;
+            font-size: 22px;           /* 🔥 상품명 폰트 크기 증가 */
             font-weight: 600;
             text-align: center;
             line-height: 1.4;
-            max-height: 4.2em;
-            overflow: hidden;
-            display: -webkit-box;
-            -webkit-line-clamp: 3;
-            -webkit-box-orient: vertical;
+            word-break: keep-all;      /* 🔥 자연스러운 줄바꿈 */
+            overflow-wrap: break-word; /* 🔥 긴 단어 자동 줄바꿈 */
         }
         
         .preview-card-body {
@@ -687,21 +636,19 @@ if (isset($_GET['error'])) {
         }
         
         .preview-price-main {
-            font-size: 24px;
+            font-size: 28px;          /* 🔥 가격 크기 증가 */
             font-weight: 700;
-            color: #ff4747;
+            color: #000000;           /* 🔥 검은색으로 변경 */
             margin: 0;
-            display: flex;
-            align-items: baseline;
-            gap: 10px;
         }
         
         .preview-rating, .preview-sales {
             margin: 0;
-            font-size: 1em;
+            font-size: 16px;
             display: flex;
             align-items: center;
             gap: 8px;
+            color: #333;
         }
         
         .preview-button-container {
@@ -973,7 +920,7 @@ if (isset($_GET['error'])) {
         <!-- 헤더 섹션 -->
         <div class="header-section">
             <h1>🛍️ 어필리에이트 상품 등록</h1>
-            <p class="subtitle">알리익스프레스 전용 상품 글 생성기 - 알리익스프레스 스타일 🛒 + 평점 정보 복구 🌟</p>
+            <p class="subtitle">알리익스프레스 전용 상품 글 생성기 - 분석화면 스타일 🎨</p>
             
             <?php if (!empty($success_message)): ?>
                 <div class="alert alert-success"><?php echo esc_html($success_message); ?></div>
@@ -1072,7 +1019,7 @@ if (isset($_GET['error'])) {
                 <div id="productDetailContent" style="display: none;">
                     <!-- 상품 URL 입력 섹션 -->
                     <div class="product-url-section">
-                        <h3>🌏 알리익스프레스 상품 URL (알리익스프레스 스타일 🛒)</h3>
+                        <h3>🌏 알리익스프레스 상품 URL (분석화면 스타일 🎨)</h3>
                         <div class="url-input-group">
                             <input type="url" id="productUrl" placeholder="예: https://www.aliexpress.com/item/123456789.html">
                             <button type="button" class="btn btn-primary" onclick="analyzeProduct()">🔍 분석</button>
@@ -1087,7 +1034,7 @@ if (isset($_GET['error'])) {
                             <!-- HTML 소스 생성 섹션 -->
                             <div class="html-source-section" id="htmlSourceSection" style="display: none;">
                                 <div class="html-source-header">
-                                    <h4>📝 워드프레스 글 HTML 소스 (알리익스프레스 스타일)</h4>
+                                    <h4>📝 워드프레스 글 HTML 소스 (분석화면 스타일)</h4>
                                     <button type="button" class="copy-btn" onclick="copyHtmlSource()">📋 복사하기</button>
                                 </div>
                                 
@@ -1235,27 +1182,6 @@ if (isset($_GET['error'])) {
         document.addEventListener('DOMContentLoaded', function() {
             updateUI();
         });
-        
-        // 🌟 알리익스프레스 스타일 별점 생성 함수 (평점 복구)
-        function generateAliexpressStarRating(ratingValue) {
-            if (!ratingValue || ratingValue === 0) {
-                return '<span class="rating-text">평점 정보 없음</span>';
-            }
-            
-            // 0-100 범위를 0-5 범위로 변환
-            const stars = (ratingValue / 100) * 5;
-            const percentage = (stars / 5) * 100;
-            
-            return `
-                <div class="aliexpress-rating">
-                    <div class="stars-container">
-                        <div class="stars-background">★★★★★</div>
-                        <div class="stars-fill" style="width: ${percentage}%;">★★★★★</div>
-                    </div>
-                    <span class="rating-text">(${ratingValue}%)</span>
-                </div>
-            `;
-        }
         
         // 🔧 개선된 오류 처리 함수들 (복사 가능한 큰 팝업)
         function showDetailedError(title, message, debugData = null) {
@@ -1578,7 +1504,7 @@ if (isset($_GET['error'])) {
             contentEl.style.display = 'block';
         }
         
-        // 🔧 개선된 상품 분석 (오류 처리 강화)
+        // 🔧 개선된 상품 분석 (분석화면 스타일)
         async function analyzeProduct() {
             const url = document.getElementById('productUrl').value.trim();
             
@@ -1598,7 +1524,7 @@ if (isset($_GET['error'])) {
             updateUI();
             
             try {
-                console.log('🚀 알리익스프레스 스타일 API 호출 시작');
+                console.log('🚀 분석화면 스타일 API 호출 시작');
                 
                 const response = await fetch('product_analyzer_v2.php', {
                     method: 'POST',
@@ -1650,13 +1576,13 @@ if (isset($_GET['error'])) {
                     currentProductData = result.data;
                     
                     showAnalysisResult(result.data);
-                    generateAliexpressStyleHtml(result.data);
+                    generateAnalysisStyleHtml(result.data);
                     
-                    // 🛒 성공 로그 (알리익스프레스 스타일)
-                    console.log('✅ 알리익스프레스 스타일 분석 성공:');
-                    console.log('  한국어 상품명:', result.data.korean_status || 'N/A');
-                    console.log('  평점 복구:', result.data.rating_recovered || false);
-                    console.log('  할인 정보:', result.data.discount_info || 'N/A');
+                    // 🎨 성공 로그 (분석화면 스타일)
+                    console.log('✅ 분석화면 스타일 분석 성공:');
+                    console.log('  한국어 상품명:', result.data.title || 'N/A');
+                    console.log('  평점 표시:', result.data.rating_display || 'N/A');
+                    console.log('  판매량:', result.data.lastest_volume || 'N/A');
                     console.log('  전체 데이터:', result.data);
                     
                 } else {
@@ -1674,7 +1600,7 @@ if (isset($_GET['error'])) {
                             'url': url,
                             'platform': 'aliexpress',
                             'timestamp': new Date().toISOString(),
-                            'aliexpress_style_applied': true
+                            'analysis_style_applied': true
                         }
                     );
                     
@@ -1702,46 +1628,37 @@ if (isset($_GET['error'])) {
             updateUI();
         }
         
-        // 🛒 알리익스프레스 스타일 분석 결과 표시
+        // 🎨 분석화면 스타일 분석 결과 표시
         function showAnalysisResult(data) {
             const resultEl = document.getElementById('analysisResult');
             const cardEl = document.getElementById('productCard');
             
-            // 한국어 상품명 확인
-            const hasKorean = /[가-힣]/.test(data.title);
-            const koreanStatus = data.korean_status || (hasKorean ? '✅ 한국어 성공' : '❌ 영어 표시');
-            const ratingRecovered = data.rating_recovered ? '✅ 평점 복구 성공' : '⚠️ 평점 복구 실패';
-            const discountStatus = data.discount_info ? '✅ 할인 정보 표시' : '⚠️ 할인 정보 없음';
-            
+            // 디버그 메시지 제거, 단순한 상품 정보만 표시
             cardEl.innerHTML = `
                 <div class="product-image">
                     <img src="${data.image_url}" alt="${data.title}" onerror="this.style.display='none'">
                 </div>
                 <div class="product-basic-info">
                     <h4>${data.title}</h4>
-                    <div style="margin-bottom: 15px; font-size: 12px; line-height: 1.4;">
-                        <span style="color: ${hasKorean ? '#28a745' : '#dc3545'};">${koreanStatus}</span><br>
-                        <span style="color: ${data.rating_recovered ? '#28a745' : '#ffc107'};">${ratingRecovered}</span><br>
-                        <span style="color: ${data.discount_info ? '#28a745' : '#ffc107'};">${discountStatus}</span>
-                    </div>
                     
-                    <div class="aliexpress-price-main">
+                    <div class="analysis-price-display">
                         ${data.price}
-                        ${data.discount_info ? `<span class="aliexpress-discount">${data.discount_info}</span>` : ''}
                     </div>
                     
-                    ${data.original_price ? `<div class="aliexpress-original-price">${data.original_price}</div>` : ''}
+                    <div class="analysis-rating">
+                        <strong>⭐ 평점:</strong> ${data.rating_display || '평점 정보 없음'}
+                    </div>
                     
-                    ${generateAliexpressStarRating(data.rating_value || 0)}
+                    <div class="analysis-sales">
+                        <strong>📦 판매량:</strong> ${data.lastest_volume || '판매량 정보 없음'}
+                    </div>
                     
-                    <div class="aliexpress-sales">${data.lastest_volume || '판매량 정보 없음'}</div>
-                    
-                    <div class="aliexpress-info-grid">
-                        <div class="aliexpress-info-item">
+                    <div class="analysis-info-grid">
+                        <div class="analysis-info-item">
                             <span class="info-label">상품 ID</span>
                             <span class="info-value">${data.product_id}</span>
                         </div>
-                        <div class="aliexpress-info-item">
+                        <div class="analysis-info-item">
                             <span class="info-label">플랫폼</span>
                             <span class="info-value">${data.platform}</span>
                         </div>
@@ -1757,47 +1674,22 @@ if (isset($_GET['error'])) {
                             </picture>
                         </a>
                     </div>
-                    <div style="margin-top: 10px; font-size: 11px; color: #666;">
-                        ${data.method_used || 'API 방식'} | 알리익스프레스 스타일 🛒
-                    </div>
                 </div>
             `;
             
             resultEl.classList.add('show');
         }
         
-        // 🛒 알리익스프레스 스타일 HTML 소스 생성 함수
-        function generateAliexpressStyleHtml(data) {
+        // 🎨 분석화면 스타일 HTML 소스 생성 함수
+        function generateAnalysisStyleHtml(data) {
             if (!data) return;
             
-            console.log('🛒 알리익스프레스 스타일 HTML 소스 생성 시작');
+            console.log('🎨 분석화면 스타일 HTML 소스 생성 시작');
             
-            // 🌟 5개 별 + 채우기 방식 HTML 생성
-            const stars = (data.rating_value / 100) * 5;
-            const percentage = (stars / 5) * 100;
-            
-            const starRatingHtml = data.rating_value > 0 ? `
-                <div style="display: flex; align-items: center; gap: 8px; margin: 8px 0;">
-                    <div style="position: relative; display: inline-block; font-size: 16px; line-height: 1;">
-                        <div style="color: #e0e0e0; position: relative;">★★★★★</div>
-                        <div style="position: absolute; top: 0; left: 0; color: #ffa500; overflow: hidden; white-space: nowrap; width: ${percentage}%;">★★★★★</div>
-                    </div>
-                    <span style="font-size: 14px; color: #666; font-weight: 500;">(${data.rating_value || 0}%)</span>
-                </div>
-            ` : '<div style="color: #999; font-size: 14px;">평점 정보 없음</div>';
-            
-            // 할인 정보 HTML
-            const discountHtml = data.discount_info ? `
-                <div style="display: flex; align-items: baseline; gap: 10px; margin: 5px 0;">
-                    <span style="background: #ff4747; color: white; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-weight: 600;">${data.discount_info}</span>
-                    <span style="color: #999; text-decoration: line-through; font-size: 16px;">${data.original_price}</span>
-                </div>
-            ` : '';
-            
-            // 🛒 알리익스프레스 스타일 HTML 코드 생성
+            // 🎨 분석화면 스타일 HTML 코드 생성 (단순화)
             const htmlCode = `<div style="display: flex; justify-content: center; margin: 25px 0;">
-    <div class="aliexpress-product-card" style="border: 2px solid #eee; padding: 30px; border-radius: 15px; background: #f9f9f9; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 900px; width: 100%;">
-        <h3 style="color: #333; margin: 0 0 20px 0; font-size: 1.3em; font-weight: 600; text-align: center; line-height: 1.4; max-height: 4.2em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;">${data.title}</h3>
+    <div class="analysis-product-card" style="border: 2px solid #eee; padding: 30px; border-radius: 15px; background: #f9f9f9; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 900px; width: 100%;">
+        <h3 style="color: #333; margin: 0 0 20px 0; font-size: 22px; font-weight: 600; text-align: center; line-height: 1.4; word-break: keep-all; overflow-wrap: break-word;">${data.title}</h3>
         
         <div style="display: grid; grid-template-columns: 350px 1fr; gap: 30px; align-items: start; margin-bottom: 20px;">
             <div class="product-image">
@@ -1805,19 +1697,16 @@ if (isset($_GET['error'])) {
             </div>
             
             <div class="product-info" style="display: flex; flex-direction: column; gap: 15px;">
-                <div style="font-size: 24px; font-weight: 700; color: #ff4747; margin: 0; display: flex; align-items: baseline; gap: 10px;">
+                <div style="font-size: 28px; font-weight: 700; color: #000000; margin: 0;">
                     <strong>💰 ${data.price}</strong>
-                    ${data.discount_info ? `<span style="background: #ff4747; color: white; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-weight: 600;">${data.discount_info}</span>` : ''}
                 </div>
-                
-                ${data.original_price ? `<div style="color: #999; text-decoration: line-through; font-size: 16px; margin: -10px 0 5px 0;">${data.original_price}</div>` : ''}
                 
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <strong style="color: #333;">⭐ 평점:</strong>
-                    ${starRatingHtml}
+                    <span style="color: #333;">${data.rating_display || '평점 정보 없음'}</span>
                 </div>
                 
-                <p style="margin: 0; font-size: 1.1em;"><strong>📦 판매량:</strong> ${data.lastest_volume || '판매량 정보 없음'}</p>
+                <p style="margin: 0; font-size: 16px;"><strong>📦 판매량:</strong> ${data.lastest_volume || '판매량 정보 없음'}</p>
             </div>
         </div>
         
@@ -1834,7 +1723,7 @@ if (isset($_GET['error'])) {
     </div>
 </div>`;
             
-            // 🛒 알리익스프레스 스타일 HTML 미리보기 생성
+            // 🎨 분석화면 스타일 HTML 미리보기 생성
             const previewHtml = `
                 <div class="preview-product-card">
                     <div class="preview-card-content">
@@ -1848,14 +1737,11 @@ if (isset($_GET['error'])) {
                             <div class="preview-product-info">
                                 <div class="preview-price-main">
                                     <strong>💰 ${data.price}</strong>
-                                    ${data.discount_info ? `<span class="aliexpress-discount">${data.discount_info}</span>` : ''}
                                 </div>
-                                
-                                ${data.original_price ? `<div class="aliexpress-original-price">${data.original_price}</div>` : ''}
                                 
                                 <div class="preview-rating">
                                     <strong>⭐ 평점:</strong>
-                                    ${generateAliexpressStarRating(data.rating_value || 0)}
+                                    <span>${data.rating_display || '평점 정보 없음'}</span>
                                 </div>
                                 
                                 <p class="preview-sales"><strong>📦 판매량:</strong> ${data.lastest_volume || '판매량 정보 없음'}</p>
@@ -1880,7 +1766,7 @@ if (isset($_GET['error'])) {
             document.getElementById('htmlCode').textContent = htmlCode;
             document.getElementById('htmlSourceSection').style.display = 'block';
             
-            console.log('✅ 알리익스프레스 스타일 HTML 소스 생성 완료');
+            console.log('✅ 분석화면 스타일 HTML 소스 생성 완료');
         }
         
         // 클립보드 복사 함수
@@ -1902,7 +1788,7 @@ if (isset($_GET['error'])) {
                     copyBtn.classList.remove('copied');
                 }, 2000);
                 
-                console.log('📋 알리익스프레스 스타일 HTML 소스 클립보드 복사 완료');
+                console.log('📋 분석화면 스타일 HTML 소스 클립보드 복사 완료');
                 
             } catch (error) {
                 console.error('❌ 클립보드 복사 실패:', error);
