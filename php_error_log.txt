@@ -1,0 +1,2 @@
+[10-Jul-2025 18:55:41 Asia/Pyongyang] PHP Warning:  Undefined array key "REQUEST_METHOD" in /var/www/novacents/tools/keyword_processor.php on line 389
+[10-Jul-2025 18:55:41 Asia/Pyongyang] PHP Warning:  Cannot modify header information - headers already sent by (output started at /var/www/novacents/tools/keyword_processor.php:389) in /var/www/novacents/tools/keyword_processor.php on line 273

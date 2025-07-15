@@ -1,0 +1,16 @@
+[2025-07-05 22:34:06] INFO: Input data received: Title='물놀이용품 고민 끝! 2025년 인기템 BEST 5', Category=356, Keywords=1.
+[2025-07-05 22:34:07] INFO: Data validation failed: 키워드 '수경'에 유효한 어필리에이트 링크가 없습니다.
+[2025-07-05 22:35:10] INFO: Input data received: Title='물놀이용품 고민 끝! 2025년 인기템 BEST 5', Category=356, Keywords=1.
+[2025-07-05 22:35:11] INFO: Item successfully added to queue. Queue stats: {"total":1,"pending":1,"processing":0,"completed":0,"failed":0}
+[2025-07-09 21:07:51] INFO: Input data received: Title='지금 당장 사야 할 2025년 혁신적인 물놀이용품 추천', Category=356, Keywords=2.
+[2025-07-09 21:07:52] INFO: Item successfully added to queue. Queue stats: {"total":2,"pending":1,"processing":0,"completed":0,"failed":1}
+[2025-07-09 21:34:31] INFO: Input data received: Title='2025년 여름휴가 피서 준비, 실패 없는 스마트 아이템 완벽 가이드', Category=356, Keywords=2.
+[2025-07-09 21:34:32] INFO: Item successfully added to queue. Queue stats: {"total":3,"pending":2,"processing":0,"completed":0,"failed":1}
+[2025-07-10 13:39:10] INFO: Input data received: Title='더 스마트한 여름휴가, 2025년 신상 물놀이용품 완벽 가이드', Category=356, Keywords=1.
+[2025-07-10 13:39:11] INFO: Item successfully added to queue. Queue stats: {"total":2,"pending":1,"processing":0,"completed":1,"failed":0}
+[2025-07-10 19:25:11] INFO: Input data received: Title='2025년 여름휴가 피서의 질을 바꿀 신상! 안 보면 무조건 손해.', Category=356, Keywords=1.
+[2025-07-10 19:25:12] INFO: Item successfully added to queue. Queue stats: {"total":1,"pending":1,"processing":0,"completed":0,"failed":0}
+[2025-07-10 19:27:16] INFO: Input data received: Title='2025년 여름휴가, 놓치면 후회! 당신의 피서를 책임질 신상 스마트템', Category=356, Keywords=1.
+[2025-07-10 19:27:17] INFO: Item successfully added to queue. Queue stats: {"total":2,"pending":2,"processing":0,"completed":0,"failed":0}
+[2025-07-10 19:28:35] INFO: Input data received: Title='놓치면 후회! 2025년 여름휴가 피서를 위한 필수 신상 리스트', Category=356, Keywords=1.
+[2025-07-10 19:28:36] INFO: Item successfully added to queue. Queue stats: {"total":3,"pending":3,"processing":0,"completed":0,"failed":0}

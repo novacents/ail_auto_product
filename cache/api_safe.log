@@ -1,0 +1,57 @@
+[2025-07-15 16:25:58] ✅ 환경변수 로드 성공
+[2025-07-15 16:25:58] 🛡️ 보안 안전 방식으로 분석 시작
+[2025-07-15 16:25:58] 🛡️ 보안 안전 분석기 초기화 완료
+[2025-07-15 16:25:58] 🎯 성공 검증된 파라미터: {'target_language': 'ko', 'target_currency': 'KRW', 'country': 'KR'}
+[2025-07-15 16:25:58] 🚀 보안 안전 방식으로 분석 시작: https://ko.aliexpress.com/item/1005008869366603.html?spm=a2g0o.best.0.0.6acd423a8IROd6&afTraceInfo=1005008869366603__pc__pcBestMore2Love__PhTl4Kq__1752558964452&_gl=1*1ieeune*_gcl_aw*R0NMLjE3NTIxMzkxMDkuQ2p3S0NBand5YjNEQmhCbEVpd0FxWkxlNU1tVEg2SXhSY0hjNkp5aXF3OWZLT2VrNUJoVVdMUDEzM1R4czFkQjNFUE41d2ExOW1VM3FSb0M4V1VRQXZEX0J3RQ..*_gcl_au*MTIyMTExMzM3MS4xNzUxNjA0MjE5*_ga*MTEwMzc0NjI1Ni4xNzUxNjA0MjE5*_ga_VED1YSGNC7*czE3NTI1NTg5NjEkbzQyJGcwJHQxNzUyNTU4OTYxJGo2MCRsMCRoMA..&gatewayAdapt=glo2kor
+[2025-07-15 16:25:58] 🆔 상품 ID 추출 성공: 1005008869366603
+[2025-07-15 16:25:58] 📋 API 파라미터 설정 완료:
+[2025-07-15 16:25:58]   ✅ target_language: ko (핵심!)
+[2025-07-15 16:25:58]   ✅ target_currency: KRW
+[2025-07-15 16:25:58]   ✅ country: KR
+[2025-07-15 16:25:58] 📡 성공 검증된 urllib.request 방식으로 API 호출
+[2025-07-15 16:25:58] 🎨 성공 검증된 방식으로 응답 포맷팅 시작
+[2025-07-15 16:25:58] 📝 상품명: 1Pcs 91×75cm 컵 홀더와 U 모양의 물 소파 수영장 파티 액세서리에 대 한 편안한... (한국어: ✅)
+[2025-07-15 16:25:58] 💰 가격: 10,050원
+[2025-07-15 16:25:58] ✅ 보안 안전 방식으로 포맷팅 완료
+[2025-07-15 16:25:58]   한국어 상품명: ✅
+[2025-07-15 16:25:58]   KRW 가격: 10,050원
+[2025-07-15 16:25:58]   어필리에이트 링크: ✅
+[2025-07-15 16:25:58] ✅ 보안 안전 방식으로 분석 완료: 보안안전_urllib_성공검증
+[2025-07-15 16:39:38] ✅ 환경변수 로드 성공
+[2025-07-15 16:39:38] 🛡️ 보안 안전 방식으로 분석 시작
+[2025-07-15 16:39:38] 🛡️ 보안 안전 분석기 초기화 완료
+[2025-07-15 16:39:38] 🎯 성공 검증된 파라미터: {'target_language': 'ko', 'target_currency': 'KRW', 'country': 'KR'}
+[2025-07-15 16:39:38] 🚀 보안 안전 방식으로 분석 시작: https://ko.aliexpress.com/item/1005008869366603.html?spm=a2g0o.best.0.0.6acd423a8IROd6&afTraceInfo=1005008869366603__pc__pcBestMore2Love__PhTl4Kq__1752558964452&_gl=1*1wl0jw6*_gcl_aw*R0NMLjE3NTIxMzkxMDkuQ2p3S0NBand5YjNEQmhCbEVpd0FxWkxlNU1tVEg2SXhSY0hjNkp5aXF3OWZLT2VrNUJoVVdMUDEzM1R4czFkQjNFUE41d2ExOW1VM3FSb0M4V1VRQXZEX0J3RQ..*_gcl_au*MTIyMTExMzM3MS4xNzUxNjA0MjE5*_ga*MTEwMzc0NjI1Ni4xNzUxNjA0MjE5*_ga_VED1YSGNC7*czE3NTI1NjQzNjMkbzQzJGcwJHQxNzUyNTY0MzYzJGo2MCRsMCRoMA..&gatewayAdapt=glo2kor
+[2025-07-15 16:39:38] 🆔 상품 ID 추출 성공: 1005008869366603
+[2025-07-15 16:39:38] 📋 API 파라미터 설정 완료:
+[2025-07-15 16:39:38]   ✅ target_language: ko (핵심!)
+[2025-07-15 16:39:38]   ✅ target_currency: KRW
+[2025-07-15 16:39:38]   ✅ country: KR
+[2025-07-15 16:39:38] 📡 성공 검증된 urllib.request 방식으로 API 호출
+[2025-07-15 16:39:39] 🎨 성공 검증된 방식으로 응답 포맷팅 시작
+[2025-07-15 16:39:39] 📝 상품명: 1Pcs 91×75cm 컵 홀더와 U 모양의 물 소파 수영장 파티 액세서리에 대 한 편안한... (한국어: ✅)
+[2025-07-15 16:39:39] 💰 가격: 10,050원
+[2025-07-15 16:39:39] ✅ 보안 안전 방식으로 포맷팅 완료
+[2025-07-15 16:39:39]   한국어 상품명: ✅
+[2025-07-15 16:39:39]   KRW 가격: 10,050원
+[2025-07-15 16:39:39]   어필리에이트 링크: ✅
+[2025-07-15 16:39:39] ✅ 보안 안전 방식으로 분석 완료: 보안안전_urllib_성공검증
+[2025-07-15 17:12:15] ✅ 환경변수 로드 성공
+[2025-07-15 17:12:15] 🛡️ 보안 안전 방식으로 분석 시작
+[2025-07-15 17:12:15] 🛡️ 보안 안전 분석기 초기화 완료
+[2025-07-15 17:12:15] 🎯 성공 검증된 파라미터: {'target_language': 'ko', 'target_currency': 'KRW', 'country': 'KR'}
+[2025-07-15 17:12:15] 🚀 보안 안전 방식으로 분석 시작: https://ko.aliexpress.com/item/1005008869366603.html?spm=a2g0o.best.0.0.6acd423a8IROd6&afTraceInfo=1005008869366603__pc__pcBestMore2Love__PhTl4Kq__1752558964452&_gl=1*1wl0jw6*_gcl_aw*R0NMLjE3NTIxMzkxMDkuQ2p3S0NBand5YjNEQmhCbEVpd0FxWkxlNU1tVEg2SXhSY0hjNkp5aXF3OWZLT2VrNUJoVVdMUDEzM1R4czFkQjNFUE41d2ExOW1VM3FSb0M4V1VRQXZEX0J3RQ..*_gcl_au*MTIyMTExMzM3MS4xNzUxNjA0MjE5*_ga*MTEwMzc0NjI1Ni4xNzUxNjA0MjE5*_ga_VED1YSGNC7*czE3NTI1NjQzNjMkbzQzJGcwJHQxNzUyNTY0MzYzJGo2MCRsMCRoMA..&gatewayAdapt=glo2kor
+[2025-07-15 17:12:15] 🆔 상품 ID 추출 성공: 1005008869366603
+[2025-07-15 17:12:15] 📋 API 파라미터 설정 완료:
+[2025-07-15 17:12:15]   ✅ target_language: ko (핵심!)
+[2025-07-15 17:12:15]   ✅ target_currency: KRW
+[2025-07-15 17:12:15]   ✅ country: KR
+[2025-07-15 17:12:15] 📡 성공 검증된 urllib.request 방식으로 API 호출
+[2025-07-15 17:12:16] 🎨 성공 검증된 방식으로 응답 포맷팅 시작
+[2025-07-15 17:12:16] 📝 상품명: 1Pcs 91×75cm 컵 홀더와 U 모양의 물 소파 수영장 파티 액세서리에 대 한 편안한... (한국어: ✅)
+[2025-07-15 17:12:16] 💰 가격: 10,050원
+[2025-07-15 17:12:16] ✅ 보안 안전 방식으로 포맷팅 완료
+[2025-07-15 17:12:16]   한국어 상품명: ✅
+[2025-07-15 17:12:16]   KRW 가격: 10,050원
+[2025-07-15 17:12:16]   어필리에이트 링크: ✅
+[2025-07-15 17:12:16] ✅ 보안 안전 방식으로 분석 완료: 보안안전_urllib_성공검증

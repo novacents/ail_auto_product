@@ -1,0 +1,61 @@
+{
+  "707_1": {
+    "post_id": "707",
+    "post_title": "놓치면 후회! 2025년 여름휴가 피서를 위한 필수 신상 리스트",
+    "post_url": "https://novacents.com/%eb%ac%bc%eb%86%80%ec%9d%b4%ed%8c%90%ec%b4%88-2025-%ed%95%84%ec%88%98-2025/",
+    "link_index": 1,
+    "product_url": "https://link.coupang.com/a/cEi8PB",
+    "platform": "쿠팡",
+    "status": "error",
+    "details": {
+      "error": "HTTPSConnectionPool(host='www.coupang.com', port=443): Read timed out. (read timeout=10)"
+    },
+    "last_checked": "2025-07-14T09:00:13.347183",
+    "check_count": 3
+  },
+  "707_2": {
+    "post_id": "707",
+    "post_title": "놓치면 후회! 2025년 여름휴가 피서를 위한 필수 신상 리스트",
+    "post_url": "https://novacents.com/%eb%ac%bc%eb%86%80%ec%9d%b4%ed%8c%90%ec%b4%88-2025-%ed%95%84%ec%88%98-2025/",
+    "link_index": 2,
+    "product_url": "https://ads-partners.coupang.com/image1/zVboDvBmmbma3V_szTLuFdF4vZ1EXz5VcC2oEhDWxCT1-7DFdlmaE8mHL3nugk4lWU-sxqCAkw7e4XT2stFBEv3A__1Vm7roI3AoU-iiQkMeKxxL_Ae3v4b4jtJrMNJnmArwPMEys8wAZ3YTlUO3zJ5IpiqUrousidfcmlrrHvv6hUFkdv7yOnCeva-Y6MCIb_VuXM6k7k9H1bwRWY44AqKNIhPnFMMXq8XhgxBwsgtefHWfw2EeJs0QwEtIEs7-SUPft2RPxrTzgUjBrg==",
+    "platform": "쿠팡",
+    "status": "unknown",
+    "details": {
+      "http_status": "200",
+      "note": "HTTP는 정상이지만 상품 상태 미확인"
+    },
+    "last_checked": "2025-07-14T09:00:14.536460",
+    "check_count": 3
+  },
+  "707_3": {
+    "post_id": "707",
+    "post_title": "놓치면 후회! 2025년 여름휴가 피서를 위한 필수 신상 리스트",
+    "post_url": "https://novacents.com/%eb%ac%bc%eb%86%80%ec%9d%b4%ed%8c%90%ec%b4%88-2025-%ed%95%84%ec%88%98-2025/",
+    "link_index": 3,
+    "product_url": "https://s.click.aliexpress.com/e/_ooniEYU",
+    "platform": "알리익스프레스",
+    "status": "unknown",
+    "details": {
+      "http_status": "200",
+      "note": "HTTP는 정상이지만 상품 상태 미확인"
+    },
+    "last_checked": "2025-07-14T09:00:19.975322",
+    "check_count": 3
+  },
+  "706_1": {
+    "post_id": "706",
+    "post_title": "2025년 여름휴가, 놓치면 후회! 당신의 피서를 책임질 신상 스마트템",
+    "post_url": "https://novacents.com/%eb%ac%bc%eb%86%80%ec%9d%b4%ed%8c%90%ec%b4%88-2025-%ec%8b%a0%ec%83%81-2025/",
+    "link_index": 1,
+    "product_url": "https://s.click.aliexpress.com/e/_opKLZdw",
+    "platform": "알리익스프레스",
+    "status": "unknown",
+    "details": {
+      "http_status": "200",
+      "note": "HTTP는 정상이지만 상품 상태 미확인"
+    },
+    "last_checked": "2025-07-14T09:00:26.104355",
+    "check_count": 3
+  }
+}
