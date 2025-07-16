@@ -126,7 +126,7 @@ if (isset($_GET['error'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>어필리에이트 상품 등록 - 노바센트 (AliExpress 좌우분할 스타일) 🛒</title>
+    <title>어필리에이트 상품 등록 - 노바센트</title>
     <style>
         /* 기존 스타일 유지 + 새로운 스타일 추가 */
         body {
@@ -995,7 +995,7 @@ if (isset($_GET['error'])) {
         <!-- 헤더 섹션 -->
         <div class="header-section">
             <h1>🛍️ 어필리에이트 상품 등록</h1>
-            <p class="subtitle">알리익스프레스 전용 상품 글 생성기 - AliExpress 좌우분할 스타일 🎨</p>
+            <p class="subtitle">알리익스프레스 전용 상품 글 생성기</p>
             
             <?php if (!empty($success_message)): ?>
                 <div class="alert alert-success"><?php echo esc_html($success_message); ?></div>
@@ -1094,7 +1094,7 @@ if (isset($_GET['error'])) {
                 <div id="productDetailContent" style="display: none;">
                     <!-- 상품 URL 입력 섹션 -->
                     <div class="product-url-section">
-                        <h3>🌏 알리익스프레스 상품 URL (AliExpress 좌우분할 스타일 🎨)</h3>
+                        <h3>🌏 알리익스프레스 상품 URL</h3>
                         <div class="url-input-group">
                             <input type="url" id="productUrl" placeholder="예: https://www.aliexpress.com/item/123456789.html">
                             <button type="button" class="btn btn-primary" onclick="analyzeProduct()">🔍 분석</button>
@@ -1109,7 +1109,7 @@ if (isset($_GET['error'])) {
                             <!-- HTML 소스 생성 섹션 -->
                             <div class="html-source-section" id="htmlSourceSection" style="display: none;">
                                 <div class="html-source-header">
-                                    <h4>📝 워드프레스 글 HTML 소스 (AliExpress 좌우분할 스타일)</h4>
+                                    <h4>📝 워드프레스 글 HTML 소스</h4>
                                     <button type="button" class="copy-btn" onclick="copyHtmlSource()">📋 복사하기</button>
                                 </div>
                                 
