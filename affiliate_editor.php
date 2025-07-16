@@ -486,11 +486,11 @@ if (isset($_GET['error'])) {
             overflow-wrap: break-word;
         }
         
-        /* 💰 가격 (오른쪽, 지정된 배경색) - 40px로 증가, 세로 패딩 18px로 조정 */
+        /* 💰 가격 (오른쪽, 지정된 배경색) - 40px로 증가, 세로 패딩 16px로 조정 */
         .product-price-right {
             background: linear-gradient(135deg, #e62e04 0%, #ff9900 100%);
             color: white;
-            padding: 18px 30px;
+            padding: 16px 30px;
             border-radius: 10px;
             font-size: 40px;
             font-weight: 700;
@@ -692,11 +692,11 @@ if (isset($_GET['error'])) {
             overflow-wrap: break-word;
         }
         
-        /* 💰 미리보기 가격 - 40px로 증가, 세로 패딩 18px로 조정 */
+        /* 💰 미리보기 가격 - 40px로 증가, 세로 패딩 16px로 조정 */
         .preview-price-main {
             background: linear-gradient(135deg, #e62e04 0%, #ff9900 100%);
             color: white;
-            padding: 18px 30px;
+            padding: 16px 30px;
             border-radius: 10px;
             font-size: 40px;
             font-weight: 700;
@@ -1709,7 +1709,7 @@ if (isset($_GET['error'])) {
             // 평점 처리 (고객만족도 형태) - 중복 괄호 제거
             const ratingDisplay = data.rating_display ? data.rating_display.replace(/⭐/g, '').replace(/[()]/g, '').trim() : '정보 없음';
             
-            // AliExpress 좌우분할 스타일 카드 디자인 - 여백 조정
+            // AliExpress 좌우분할 스타일 카드 디자인 - 세로 패딩 16px로 조정
             cardEl.innerHTML = `
                 <!-- 좌우 분할 레이아웃 (큰 이미지 왼쪽, 모든 정보 오른쪽) -->
                 <div class="product-content-split">
@@ -1782,7 +1782,7 @@ if (isset($_GET['error'])) {
             // 평점 처리 (고객만족도 형태) - 중복 괄호 제거
             const ratingDisplay = data.rating_display ? data.rating_display.replace(/⭐/g, '').replace(/[()]/g, '').trim() : '정보 없음';
             
-            // 🎨 AliExpress 좌우분할 스타일 HTML 코드 생성 - 여백 조정
+            // 🎨 AliExpress 좌우분할 스타일 HTML 코드 생성 - 세로 패딩 16px로 조정
             const htmlCode = `<div style="display: flex; justify-content: center; margin: 25px 0;">
     <div style="border: 2px solid #eee; padding: 30px; border-radius: 15px; background: #f9f9f9; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 1000px; width: 100%;">
         
@@ -1803,8 +1803,8 @@ if (isset($_GET['error'])) {
                 <!-- 상품명 -->
                 <h3 style="color: #1c1c1c; margin: 0 0 20px 0; font-size: 24px; font-weight: 600; line-height: 1.4; word-break: keep-all; overflow-wrap: break-word;">${data.title}</h3>
                 
-                <!-- 가격 (지정된 배경색) - 40px로 증가, 세로 패딩 18px로 조정 -->
-                <div style="background: linear-gradient(135deg, #e62e04 0%, #ff9900 100%); color: white; padding: 18px 30px; border-radius: 10px; font-size: 40px; font-weight: 700; text-align: center; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(230, 46, 4, 0.3);">
+                <!-- 가격 (지정된 배경색) - 40px로 증가, 세로 패딩 16px로 조정 -->
+                <div style="background: linear-gradient(135deg, #e62e04 0%, #ff9900 100%); color: white; padding: 16px 30px; border-radius: 10px; font-size: 40px; font-weight: 700; text-align: center; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(230, 46, 4, 0.3);">
                     <strong>${data.price}</strong>
                 </div>
                 
