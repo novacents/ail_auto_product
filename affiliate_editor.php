@@ -436,28 +436,28 @@ if (isset($_GET['error'])) {
             margin-bottom: 20px;
         }
         
-        /* 🖼️ 좌우 분할 레이아웃 (큰 이미지 왼쪽, 모든 정보 오른쪽) - 여백 조정 */
+        /* 🖼️ 좌우 분할 레이아웃 (이미지 400px, 정보 영역 확대) */
         .product-content-split {
             display: grid;
-            grid-template-columns: 500px 1fr;
+            grid-template-columns: 400px 1fr;
             gap: 30px;
             align-items: start;
             margin-bottom: 25px;
         }
         
-        /* 🖼️ 왼쪽 큰 이미지 */
+        /* 🖼️ 왼쪽 이미지 (400px로 조정) */
         .product-image-large {
             width: 100%;
         }
         
         .product-image-large img {
             width: 100%;
-            max-width: 500px;
+            max-width: 400px;
             border-radius: 12px;
             box-shadow: 0 6px 20px rgba(0,0,0,0.15);
         }
         
-        /* 📋 오른쪽 정보 영역 */
+        /* 📋 오른쪽 정보 영역 (더 넓어짐) */
         .product-info-all {
             display: flex;
             flex-direction: column;
@@ -651,9 +651,10 @@ if (isset($_GET['error'])) {
             width: 100%;
         }
         
+        /* 미리보기도 동일하게 400px로 조정 */
         .preview-content-split {
             display: grid;
-            grid-template-columns: 500px 1fr;
+            grid-template-columns: 400px 1fr;
             gap: 30px;
             align-items: start;
             margin-bottom: 25px;
@@ -661,7 +662,7 @@ if (isset($_GET['error'])) {
         
         .preview-image-large {
             width: 100%;
-            max-width: 500px;
+            max-width: 400px;
             border-radius: 12px;
             box-shadow: 0 6px 20px rgba(0,0,0,0.15);
         }
@@ -1720,16 +1721,16 @@ if (isset($_GET['error'])) {
             // 🔧 가격 공백 추가 처리
             const formattedPrice = formatPrice(data.price);
             
-            // AliExpress 좌우분할 스타일 카드 디자인 - 분석화면 블록
+            // AliExpress 좌우분할 스타일 카드 디자인 - 분석화면 블록 (400px 이미지)
             cardEl.innerHTML = `
-                <!-- 좌우 분할 레이아웃 (큰 이미지 왼쪽, 모든 정보 오른쪽) -->
+                <!-- 좌우 분할 레이아웃 (이미지 400px, 정보 영역 확대) -->
                 <div class="product-content-split">
-                    <!-- 왼쪽: 큰 이미지 -->
+                    <!-- 왼쪽: 이미지 (400px로 조정) -->
                     <div class="product-image-large">
                         <img src="${data.image_url}" alt="${data.title}" onerror="this.style.display='none'">
                     </div>
                     
-                    <!-- 오른쪽: 모든 정보 -->
+                    <!-- 오른쪽: 모든 정보 (더 넓어진 영역) -->
                     <div class="product-info-all">
                         <!-- AliExpress 로고 -->
                         <div class="aliexpress-logo-right">
@@ -1796,28 +1797,28 @@ if (isset($_GET['error'])) {
             // 🔧 가격 공백 추가 처리
             const formattedPrice = formatPrice(data.price);
             
-            // 🎨 AliExpress 좌우분할 스타일 HTML 코드 생성 - 상품명 21px, 세로 패딩 14px로 조정
+            // 🎨 AliExpress 좌우분할 스타일 HTML 코드 생성 - 이미지 400px, 상품명 21px
             const htmlCode = `<div style="display: flex; justify-content: center; margin: 25px 0;">
     <div style="border: 2px solid #eee; padding: 30px; border-radius: 15px; background: #f9f9f9; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 1000px; width: 100%;">
         
-        <!-- 좌우 분할 레이아웃 (큰 이미지 왼쪽, 모든 정보 오른쪽) -->
-        <div style="display: grid; grid-template-columns: 500px 1fr; gap: 30px; align-items: start; margin-bottom: 25px;">
-            <!-- 왼쪽: 큰 이미지 -->
+        <!-- 좌우 분할 레이아웃 (이미지 400px, 정보 영역 확대) -->
+        <div style="display: grid; grid-template-columns: 400px 1fr; gap: 30px; align-items: start; margin-bottom: 25px;">
+            <!-- 왼쪽: 이미지 (400px로 조정) -->
             <div>
-                <img src="${data.image_url}" alt="${data.title}" style="width: 100%; max-width: 500px; border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,0.15);">
+                <img src="${data.image_url}" alt="${data.title}" style="width: 100%; max-width: 400px; border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,0.15);">
             </div>
             
-            <!-- 오른쪽: 모든 정보 -->
+            <!-- 오른쪽: 모든 정보 (더 넓어진 영역) -->
             <div style="display: flex; flex-direction: column; gap: 20px;">
                 <!-- AliExpress 로고 -->
                 <div style="margin-bottom: 15px;">
                     <img src="https://novacents.com/tools/images/Ali_black_logo.webp" alt="AliExpress" style="width: 250px; height: 60px; object-fit: contain;" />
                 </div>
                 
-                <!-- 상품명 - 21px로 수정 -->
+                <!-- 상품명 - 21px -->
                 <h3 style="color: #1c1c1c; margin: 0 0 20px 0; font-size: 21px; font-weight: 600; line-height: 1.4; word-break: keep-all; overflow-wrap: break-word;">${data.title}</h3>
                 
-                <!-- 가격 (지정된 배경색) - 40px로 증가, 세로 패딩 14px로 수정 -->
+                <!-- 가격 (지정된 배경색) - 40px, 세로 패딩 14px -->
                 <div style="background: linear-gradient(135deg, #e62e04 0%, #ff9900 100%); color: white; padding: 14px 30px; border-radius: 10px; font-size: 40px; font-weight: 700; text-align: center; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(230, 46, 4, 0.3);">
                     <strong>${formattedPrice}</strong>
                 </div>
@@ -1851,14 +1852,14 @@ if (isset($_GET['error'])) {
             const previewHtml = `
                 <div class="preview-product-card">
                     <div class="preview-card-content">
-                        <!-- 좌우 분할 레이아웃 (분석화면과 동일) -->
+                        <!-- 좌우 분할 레이아웃 (분석화면과 동일, 400px) -->
                         <div class="product-content-split">
-                            <!-- 왼쪽: 큰 이미지 -->
+                            <!-- 왼쪽: 이미지 (400px로 조정) -->
                             <div class="product-image-large">
                                 <img src="${data.image_url}" alt="${data.title}" onerror="this.style.display='none'">
                             </div>
                             
-                            <!-- 오른쪽: 모든 정보 -->
+                            <!-- 오른쪽: 모든 정보 (더 넓어진 영역) -->
                             <div class="product-info-all">
                                 <!-- AliExpress 로고 -->
                                 <div class="aliexpress-logo-right">
@@ -1907,7 +1908,7 @@ if (isset($_GET['error'])) {
             document.getElementById('htmlCode').textContent = htmlCode;
             document.getElementById('htmlSourceSection').style.display = 'block';
             
-            console.log('✅ AliExpress 좌우분할 스타일 HTML 소스 생성 완료');
+            console.log('✅ AliExpress 좌우분할 스타일 HTML 소스 생성 완료 (400px 이미지)');
         }
         
         // 클립보드 복사 함수
