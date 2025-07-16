@@ -1,12 +1,13 @@
 <?php
 /**
- * 어필리에이트 상품 등록 자동화 입력 페이지 (AliExpress 공식 스타일 - 좌우 분할)
+ * 어필리에이트 상품 등록 자동화 입력 페이지 (AliExpress 공식 스타일 - 좌우 분할 + 📱 반응형)
  * 노바센트(novacents.com) 전용
  * 알리익스프레스 어필리에이트 전용 상품 글 생성
  * + HTML 소스 생성 및 클립보드 복사 기능
  * + 인라인 키워드 입력창
  * + 🌟 AliExpress 공식 스타일 HTML 레이아웃 (좌우 분할)
  * + 🎨 왼쪽 큰 이미지, 오른쪽 모든 정보, 하단 구매 버튼
+ * + 📱 모바일/태블릿 완전 반응형 지원
  */
 
 // 워드프레스 환경 로드
@@ -988,6 +989,219 @@ if (isset($_GET['error'])) {
                 margin-top: -50px;
             }
         }
+        
+        /* 📱 모바일/태블릿 반응형 CSS (768px 이하) */
+        @media (max-width: 768px) {
+            /* 기본 레이아웃 모바일 최적화 */
+            body {
+                min-width: unset;
+                padding: 10px;
+            }
+            
+            .main-container {
+                width: 100%;
+                transform: none;
+                margin-top: 0;
+            }
+            
+            .header-section {
+                padding: 20px;
+            }
+            
+            .header-section h1 {
+                font-size: 24px;
+            }
+            
+            .header-form {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+            
+            .main-content {
+                flex-direction: column;
+            }
+            
+            .products-sidebar {
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid #e0e0e0;
+            }
+            
+            .detail-panel {
+                width: 100%;
+                padding: 20px;
+            }
+            
+            /* 📱 모바일 상품 카드 레이아웃 - 세로 배치 */
+            .product-content-split {
+                display: block !important;
+                grid-template-columns: none !important;
+                gap: 20px;
+            }
+            
+            /* 📱 모바일 이미지 크기 최적화 (300px) */
+            .product-image-large {
+                text-align: center;
+                margin-bottom: 20px;
+            }
+            
+            .product-image-large img {
+                max-width: 300px !important;
+                width: 90%;
+            }
+            
+            /* 📱 모바일 AliExpress 로고 - 좌측정렬 */
+            .aliexpress-logo-right {
+                text-align: left !important;
+                margin-bottom: 15px;
+            }
+            
+            .aliexpress-logo-right img {
+                width: 200px;
+                height: 48px;
+            }
+            
+            /* 📱 모바일 상품명 - 좌측정렬, 크기 조정 */
+            .product-title-right {
+                text-align: left !important;
+                font-size: 18px !important;
+                line-height: 1.3;
+                margin-bottom: 15px !important;
+            }
+            
+            /* 📱 모바일 가격 박스 최적화 */
+            .product-price-right {
+                font-size: 28px !important;
+                padding: 12px 20px !important;
+                margin-bottom: 15px !important;
+            }
+            
+            /* 📱 모바일 평점 최적화 */
+            .product-rating-right {
+                font-size: 16px !important;
+                flex-direction: column;
+                align-items: flex-start !important;
+                gap: 5px !important;
+                margin-bottom: 12px !important;
+            }
+            
+            /* 📱 모바일 판매량 최적화 */
+            .product-sales-right {
+                font-size: 16px !important;
+                margin-bottom: 12px !important;
+            }
+            
+            /* 📱 모바일 기타 정보 숨기기 */
+            .product-extra-info-right {
+                display: none;
+            }
+            
+            /* 📱 모바일 구매 버튼 최적화 */
+            .purchase-button-full {
+                margin-top: 20px;
+            }
+            
+            /* 📱 모바일 미리보기도 동일하게 적용 */
+            .preview-content-split {
+                display: block !important;
+                grid-template-columns: none !important;
+                gap: 20px;
+            }
+            
+            .preview-image-large {
+                max-width: 300px !important;
+                width: 90%;
+                margin: 0 auto 20px auto;
+                display: block;
+            }
+            
+            .preview-aliexpress-logo {
+                text-align: left !important;
+            }
+            
+            .preview-aliexpress-logo img {
+                width: 200px;
+                height: 48px;
+            }
+            
+            .preview-card-title {
+                text-align: left !important;
+                font-size: 18px !important;
+                line-height: 1.3;
+            }
+            
+            .preview-price-main {
+                font-size: 28px !important;
+                padding: 12px 20px !important;
+                margin-bottom: 15px !important;
+            }
+            
+            .preview-rating {
+                font-size: 16px !important;
+                flex-direction: column;
+                align-items: flex-start !important;
+                gap: 5px !important;
+            }
+            
+            .preview-sales {
+                font-size: 16px !important;
+            }
+            
+            /* 📱 모바일 폼 최적화 */
+            .url-input-group {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .form-row.two-col,
+            .form-row.three-col {
+                grid-template-columns: 1fr;
+            }
+            
+            .html-source-header {
+                flex-direction: column;
+                gap: 10px;
+                align-items: stretch;
+            }
+            
+            .html-code {
+                font-size: 11px;
+                max-height: 200px;
+            }
+        }
+        
+        /* 📱 추가 모바일 최적화 (480px 이하) */
+        @media (max-width: 480px) {
+            .header-section {
+                padding: 15px;
+            }
+            
+            .header-section h1 {
+                font-size: 20px;
+            }
+            
+            .detail-panel {
+                padding: 15px;
+            }
+            
+            .product-image-large img {
+                max-width: 280px !important;
+            }
+            
+            .aliexpress-logo-right img {
+                width: 180px;
+                height: 43px;
+            }
+            
+            .product-title-right {
+                font-size: 16px !important;
+            }
+            
+            .product-price-right {
+                font-size: 24px !important;
+                padding: 10px 15px !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1658,7 +1872,7 @@ if (isset($_GET['error'])) {
                     currentProductData = result.data;
                     
                     showAnalysisResult(result.data);
-                    generateAliExpressSplitStyleHtml(result.data);
+                    generateResponsiveAliExpressHtml(result.data);
                     
                     // 🎨 성공 로그 (AliExpress 좌우분할 스타일)
                     console.log('✅ AliExpress 좌우분할 스타일 분석 성공:');
@@ -1682,7 +1896,7 @@ if (isset($_GET['error'])) {
                             'url': url,
                             'platform': 'aliexpress',
                             'timestamp': new Date().toISOString(),
-                            'split_style_applied': true
+                            'responsive_style_applied': true
                         }
                     );
                     
@@ -1785,11 +1999,11 @@ if (isset($_GET['error'])) {
             resultEl.classList.add('show');
         }
         
-        // 🎨 AliExpress 좌우분할 스타일 HTML 소스 생성 함수
-        function generateAliExpressSplitStyleHtml(data) {
+        // 📱 반응형 AliExpress HTML 소스 생성 함수 (모바일 최적화)
+        function generateResponsiveAliExpressHtml(data) {
             if (!data) return;
             
-            console.log('🎨 AliExpress 좌우분할 스타일 HTML 소스 생성 시작');
+            console.log('📱 반응형 AliExpress HTML 소스 생성 시작');
             
             // 평점 처리 (고객만족도 형태) - 중복 괄호 제거
             const ratingDisplay = data.rating_display ? data.rating_display.replace(/⭐/g, '').replace(/[()]/g, '').trim() : '정보 없음';
@@ -1797,40 +2011,40 @@ if (isset($_GET['error'])) {
             // 🔧 가격 공백 추가 처리
             const formattedPrice = formatPrice(data.price);
             
-            // 🎨 AliExpress 좌우분할 스타일 HTML 코드 생성 - 이미지 400px, 상품명 21px
+            // 📱 완전 반응형 AliExpress HTML 코드 생성 (모바일 좌측정렬)
             const htmlCode = `<div style="display: flex; justify-content: center; margin: 25px 0;">
     <div style="border: 2px solid #eee; padding: 30px; border-radius: 15px; background: #f9f9f9; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 1000px; width: 100%;">
         
-        <!-- 좌우 분할 레이아웃 (이미지 400px, 정보 영역 확대) -->
+        <!-- 📱 반응형 좌우 분할 레이아웃 -->
         <div style="display: grid; grid-template-columns: 400px 1fr; gap: 30px; align-items: start; margin-bottom: 25px;">
-            <!-- 왼쪽: 이미지 (400px로 조정) -->
-            <div>
+            <!-- 왼쪽: 이미지 (PC: 400px, 모바일: 300px) -->
+            <div style="text-align: center;">
                 <img src="${data.image_url}" alt="${data.title}" style="width: 100%; max-width: 400px; border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,0.15);">
             </div>
             
-            <!-- 오른쪽: 모든 정보 (더 넓어진 영역) -->
+            <!-- 오른쪽: 모든 정보 -->
             <div style="display: flex; flex-direction: column; gap: 20px;">
-                <!-- AliExpress 로고 -->
-                <div style="margin-bottom: 15px;">
+                <!-- AliExpress 로고 (PC: 중앙, 모바일: 좌측) -->
+                <div style="margin-bottom: 15px; text-align: center;">
                     <img src="https://novacents.com/tools/images/Ali_black_logo.webp" alt="AliExpress" style="width: 250px; height: 60px; object-fit: contain;" />
                 </div>
                 
-                <!-- 상품명 - 21px -->
-                <h3 style="color: #1c1c1c; margin: 0 0 20px 0; font-size: 21px; font-weight: 600; line-height: 1.4; word-break: keep-all; overflow-wrap: break-word;">${data.title}</h3>
+                <!-- 상품명 (PC: 중앙, 모바일: 좌측) -->
+                <h3 style="color: #1c1c1c; margin: 0 0 20px 0; font-size: 21px; font-weight: 600; line-height: 1.4; word-break: keep-all; overflow-wrap: break-word; text-align: center;">${data.title}</h3>
                 
-                <!-- 가격 (지정된 배경색) - 40px, 세로 패딩 14px -->
+                <!-- 가격 (지정된 배경색) -->
                 <div style="background: linear-gradient(135deg, #e62e04 0%, #ff9900 100%); color: white; padding: 14px 30px; border-radius: 10px; font-size: 40px; font-weight: 700; text-align: center; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(230, 46, 4, 0.3);">
                     <strong>${formattedPrice}</strong>
                 </div>
                 
                 <!-- 평점 (고객만족도 형태) -->
-                <div style="color: #1c1c1c; font-size: 20px; display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                <div style="color: #1c1c1c; font-size: 20px; display: flex; align-items: center; gap: 10px; margin-bottom: 15px; justify-content: center;">
                     <span style="color: #ff9900;">⭐⭐⭐⭐⭐</span>
                     <span>(고객만족도: ${ratingDisplay})</span>
                 </div>
                 
                 <!-- 판매량 -->
-                <p style="color: #1c1c1c; font-size: 18px; margin: 0 0 15px 0;"><strong>📦 판매량:</strong> ${data.lastest_volume || '판매량 정보 없음'}</p>
+                <p style="color: #1c1c1c; font-size: 18px; margin: 0 0 15px 0; text-align: center;"><strong>📦 판매량:</strong> ${data.lastest_volume || '판매량 정보 없음'}</p>
             </div>
         </div>
         
@@ -1846,20 +2060,87 @@ if (isset($_GET['error'])) {
             </a>
         </div>
     </div>
-</div>`;
+</div>
+
+<style>
+/* 📱 모바일 반응형 CSS */
+@media (max-width: 768px) {
+    /* 좌우 분할을 세로 배치로 변경 */
+    div[style*="grid-template-columns: 400px 1fr"] {
+        display: block !important;
+        grid-template-columns: none !important;
+    }
+    
+    /* 모바일 이미지 크기 최적화 */
+    img[style*="max-width: 400px"] {
+        max-width: 300px !important;
+    }
+    
+    /* 모바일 로고 좌측정렬 */
+    div[style*="text-align: center"] img[alt="AliExpress"] {
+        display: block;
+        margin: 0 !important;
+    }
+    div[style*="text-align: center"]:has(img[alt="AliExpress"]) {
+        text-align: left !important;
+    }
+    
+    /* 모바일 상품명 좌측정렬 */
+    h3[style*="text-align: center"] {
+        text-align: left !important;
+        font-size: 18px !important;
+    }
+    
+    /* 모바일 가격 크기 조정 */
+    div[style*="font-size: 40px"] {
+        font-size: 28px !important;
+        padding: 12px 20px !important;
+    }
+    
+    /* 모바일 평점 세로 배치 */
+    div[style*="justify-content: center"] {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 5px !important;
+        justify-content: flex-start !important;
+        font-size: 16px !important;
+    }
+    
+    /* 모바일 판매량 좌측정렬 */
+    p[style*="text-align: center"] {
+        text-align: left !important;
+        font-size: 16px !important;
+    }
+}
+
+@media (max-width: 480px) {
+    /* 더 작은 화면 최적화 */
+    img[style*="max-width: 300px"] {
+        max-width: 280px !important;
+    }
+    
+    h3[style*="font-size: 18px"] {
+        font-size: 16px !important;
+    }
+    
+    div[style*="font-size: 28px"] {
+        font-size: 24px !important;
+    }
+}
+</style>`;
             
-            // 🎨 AliExpress 좌우분할 스타일 HTML 미리보기 생성 - 분석화면과 동일한 구조 (상품 ID, 플랫폼 제외)
+            // 📱 반응형 HTML 미리보기 생성 (CSS 효과 적용됨)
             const previewHtml = `
                 <div class="preview-product-card">
                     <div class="preview-card-content">
-                        <!-- 좌우 분할 레이아웃 (분석화면과 동일, 400px) -->
+                        <!-- 좌우 분할 레이아웃 (모바일에서 세로 배치) -->
                         <div class="product-content-split">
-                            <!-- 왼쪽: 이미지 (400px로 조정) -->
+                            <!-- 왼쪽: 이미지 -->
                             <div class="product-image-large">
                                 <img src="${data.image_url}" alt="${data.title}" onerror="this.style.display='none'">
                             </div>
                             
-                            <!-- 오른쪽: 모든 정보 (더 넓어진 영역) -->
+                            <!-- 오른쪽: 모든 정보 -->
                             <div class="product-info-all">
                                 <!-- AliExpress 로고 -->
                                 <div class="aliexpress-logo-right">
@@ -1884,8 +2165,6 @@ if (isset($_GET['error'])) {
                                 <div class="product-sales-right">
                                     <strong>📦 판매량:</strong> ${data.lastest_volume || '판매량 정보 없음'}
                                 </div>
-                                
-                                <!-- 기타 정보 제외 (HTML 소스에서는 상품 ID, 플랫폼 정보 표시 안함) -->
                             </div>
                         </div>
                         
@@ -1908,7 +2187,7 @@ if (isset($_GET['error'])) {
             document.getElementById('htmlCode').textContent = htmlCode;
             document.getElementById('htmlSourceSection').style.display = 'block';
             
-            console.log('✅ AliExpress 좌우분할 스타일 HTML 소스 생성 완료 (400px 이미지)');
+            console.log('✅ 📱 반응형 AliExpress HTML 소스 생성 완료 (모바일 좌측정렬)');
         }
         
         // 클립보드 복사 함수
@@ -1930,7 +2209,7 @@ if (isset($_GET['error'])) {
                     copyBtn.classList.remove('copied');
                 }, 2000);
                 
-                console.log('📋 AliExpress 좌우분할 스타일 HTML 소스 클립보드 복사 완료');
+                console.log('📋 📱 반응형 AliExpress HTML 소스 클립보드 복사 완료');
                 
             } catch (error) {
                 console.error('❌ 클립보드 복사 실패:', error);
