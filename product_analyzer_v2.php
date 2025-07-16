@@ -5,6 +5,7 @@
  * 공식 가이드 기반 정확한 구현 + 완벽가이드 핵심 해결책 적용
  * 🔥 조용한 모드로 Python 호출하여 순수 JSON만 받음
  * 🌟 평점 별표 표시 및 판매량 정보 필드명 일치
+ * 🔧 rating_display 필드명 올바른 매핑으로 평점 별표 표시 문제 해결
  */
 
 // 워드프레스 환경 로드
@@ -103,7 +104,7 @@ function analyzeProduct($url, $platform) {
             // 한국어 상품명 확인
             $hasKorean = preg_match('/[가-힣]/', $product_data['title']);
             
-            // 🌟 평점 별표 복원 응답 포맷 (필드명 일치)
+            // 🌟 평점 별표 복원 응답 포맷 (필드명 올바른 매핑)
             $formatted_result = [
                 'success' => true,
                 'data' => [
@@ -113,40 +114,45 @@ function analyzeProduct($url, $platform) {
                     'price' => $product_data['price'],  // 🔥 정확한 KRW 가격
                     'image_url' => $product_data['image_url'],
                     'category_name' => '알리익스프레스 상품',
-                    'rating' => $product_data['rating'],  // 🌟 별표 형태 평점
+                    'rating' => $product_data['rating_display'],  // 🔧 수정: rating_display 필드 매핑
+                    'rating_display' => $product_data['rating_display'],  // 🌟 추가: 별표 형태 평점
                     'lastest_volume' => $product_data['lastest_volume'],  // 🔥 판매량 필드명 일치!
                     'original_url' => $product_data['original_url'],
                     'affiliate_link' => $product_data['affiliate_link'],  // 🔥 어필리에이트 링크
                     'brand_name' => '',
                     'original_price' => '원가 정보 없음',
                     'discount_rate' => '할인율 정보 없음',
-                    'method_used' => $product_data['method_used'] ?? 'rating_stars_restored',
+                    'method_used' => $product_data['method_used'] ?? 'rating_stars_restored_fixed',
                     'korean_status' => $hasKorean ? '✅ 한국어 성공' : '❌ 영어 표시',
                     'perfect_guide_applied' => true,  // 🔥 완벽가이드 적용 표시
                     'rating_stars_restored' => true,  // 🌟 평점 별표 복원 표시
-                    'sales_volume_fixed' => true  // 🔥 판매량 정보 수정 표시
+                    'sales_volume_fixed' => true,  // 🔥 판매량 정보 수정 표시
+                    'field_mapping_fixed' => true  // 🔧 필드명 매핑 수정 표시
                 ],
                 'debug_info' => [
                     'has_korean_title' => $hasKorean,
                     'title_preview' => mb_substr($product_data['title'], 0, 50) . '...',
-                    'api_method' => $product_data['method_used'] ?? 'rating_stars_restored',
+                    'api_method' => $product_data['method_used'] ?? 'rating_stars_restored_fixed',
                     'target_language' => 'ko',  // 완벽가이드 핵심
-                    'guide_version' => 'perfect_guide_v2.0',
-                    'rating_format' => 'stars_restored',  // 🌟 평점 별표 복원 정보
+                    'guide_version' => 'perfect_guide_v2.1',
+                    'rating_format' => 'stars_restored_field_fixed',  // 🌟 평점 별표 복원 + 필드명 수정
                     'sales_volume_field' => 'lastest_volume_matched',  // 🔥 판매량 필드명 일치
-                    'json_parsing' => 'pure_json_success'  // 🔥 순수 JSON 파싱 성공
+                    'json_parsing' => 'pure_json_success',  // 🔥 순수 JSON 파싱 성공
+                    'rating_field_mapping' => 'rating_display_correctly_mapped'  // 🔧 올바른 필드명 매핑
                 ]
             ];
             
-            error_log("✅ 평점 별표 복원 포맷팅 완료:");
+            error_log("✅ 평점 별표 복원 포맷팅 완료 (필드명 수정):");
             error_log("  한국어 상품명: " . ($hasKorean ? 'YES' : 'NO'));
             error_log("  제목: " . mb_substr($product_data['title'], 0, 50));
             error_log("  가격: " . $product_data['price']);
-            error_log("  평점: " . $product_data['rating']);
+            error_log("  평점 (rating): " . ($product_data['rating_display'] ?? 'NULL'));
+            error_log("  평점 (rating_display): " . ($product_data['rating_display'] ?? 'NULL'));
             error_log("  판매량: " . $product_data['lastest_volume']);
             error_log("  어필리에이트 링크: " . (strpos($product_data['affiliate_link'], 's.click.aliexpress.com') !== false ? 'YES' : 'NO'));
             error_log("  평점 별표 복원: ENABLED");
             error_log("  판매량 필드명 일치: ENABLED");
+            error_log("  필드명 매핑 수정: ENABLED");
             
             echo json_encode($formatted_result);
         } 
@@ -163,6 +169,7 @@ function analyzeProduct($url, $platform) {
                     'image_url' => $product_info['image_url'],
                     'category_name' => $product_info['category'],
                     'rating' => '정보 없음',
+                    'rating_display' => '정보 없음',  // 🌟 추가: 별표 형태 평점
                     'lastest_volume' => '정보 없음',  // 🔥 판매량 필드명 일치
                     'is_rocket' => $product_info['is_rocket'],
                     'is_free_shipping' => $product_info['is_free_shipping'],
@@ -200,6 +207,7 @@ function analyzeProduct($url, $platform) {
                 'perfect_guide_applied' => $platform === 'aliexpress',
                 'rating_stars_attempted' => true,  // 🌟 평점 별표 시도 표시
                 'sales_volume_fix_attempted' => true,  // 🔥 판매량 수정 시도 표시
+                'field_mapping_fix_attempted' => true,  // 🔧 필드명 매핑 수정 시도 표시
                 'error_type' => 'analysis_error'
             ]
         ]);
@@ -207,7 +215,7 @@ function analyzeProduct($url, $platform) {
 }
 
 /**
- * 🌟 평점 별표 복원 상품 정보 검증 함수
+ * 🌟 평점 별표 복원 상품 정보 검증 함수 (필드명 수정)
  */
 function validateStarRestoredResult($data) {
     $validation = [
@@ -237,8 +245,11 @@ function validateStarRestoredResult($data) {
         $validation['score'] += 20;
     }
     
-    // 🌟 평점 별표 검증
-    if (isset($data['rating']) && strpos($data['rating'], '⭐') !== false) {
+    // 🌟 평점 별표 검증 (수정된 필드명 체크)
+    if (isset($data['rating_display']) && strpos($data['rating_display'], '⭐') !== false) {
+        $validation['has_star_rating'] = true;
+        $validation['score'] += 20;
+    } else if (isset($data['rating']) && strpos($data['rating'], '⭐') !== false) {
         $validation['has_star_rating'] = true;
         $validation['score'] += 20;
     }
@@ -253,7 +264,7 @@ function validateStarRestoredResult($data) {
 }
 
 /**
- * 🌟 평점 별표 복원 디버그 정보 로깅 함수
+ * 🌟 평점 별표 복원 디버그 정보 로깅 함수 (필드명 수정)
  */
 function logStarRestoredDebugInfo($platform, $result, $url) {
     $log_entry = [
@@ -266,26 +277,28 @@ function logStarRestoredDebugInfo($platform, $result, $url) {
         'has_sales_volume' => false,  // 🔥 판매량 정보 로깅
         'method_used' => 'unknown',
         'rating_stars_restored' => false,
-        'sales_volume_fixed' => false
+        'sales_volume_fixed' => false,
+        'field_mapping_fixed' => false  // 🔧 필드명 매핑 수정 로깅
     ];
     
     if ($platform === 'aliexpress' && isset($result['data'])) {
         $log_entry['has_korean'] = preg_match('/[가-힣]/', $result['data']['title'] ?? '');
-        $log_entry['has_star_rating'] = strpos($result['data']['rating'] ?? '', '⭐') !== false;
+        $log_entry['has_star_rating'] = strpos($result['data']['rating_display'] ?? '', '⭐') !== false;
         $log_entry['has_sales_volume'] = !empty($result['data']['lastest_volume']) && $result['data']['lastest_volume'] !== '정보 없음';
         $log_entry['method_used'] = $result['data']['method_used'] ?? 'unknown';
         $log_entry['title_preview'] = mb_substr($result['data']['title'] ?? '', 0, 30);
-        $log_entry['rating_preview'] = $result['data']['rating'] ?? '';
+        $log_entry['rating_preview'] = $result['data']['rating_display'] ?? '';
         $log_entry['sales_volume_preview'] = $result['data']['lastest_volume'] ?? '';
         $log_entry['rating_stars_restored'] = $result['data']['rating_stars_restored'] ?? false;
         $log_entry['sales_volume_fixed'] = $result['data']['sales_volume_fixed'] ?? false;
+        $log_entry['field_mapping_fixed'] = $result['data']['field_mapping_fixed'] ?? false;
     }
     
-    $log_file = '/var/www/novacents/tools/cache/analysis_star_restored.log';
+    $log_file = '/var/www/novacents/tools/cache/analysis_star_restored_field_fixed.log';
     file_put_contents($log_file, json_encode($log_entry) . "\n", FILE_APPEND | LOCK_EX);
 }
 
-// 🌟 평점 별표 복원 및 판매량 정보 수정 완료!
-// 이제 Python에서 별표 형태 평점을 생성하고,
-// PHP에서는 lastest_volume 필드명으로 올바르게 매핑합니다.
+// 🌟 평점 별표 복원 및 판매량 정보 수정 + 필드명 매핑 수정 완료!
+// 이제 Python에서 rating_display로 별표 형태 평점을 생성하고,
+// PHP에서는 rating과 rating_display 필드 모두에 올바르게 매핑합니다.
 ?>
