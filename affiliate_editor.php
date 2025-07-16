@@ -990,8 +990,8 @@ if (isset($_GET['error'])) {
             }
         }
         
-        /* 📱 모바일/태블릿 반응형 CSS (768px 이하) - 개선된 버전 */
-        @media (max-width: 768px) {
+        /* 📱 모바일/태블릿 반응형 CSS (1600px 이하) - 갤럭시탭 S7 FE 세로모드 지원 */
+        @media (max-width: 1600px) {
             /* 기본 레이아웃 모바일 최적화 */
             body {
                 min-width: unset;
@@ -2013,7 +2013,7 @@ if (isset($_GET['error'])) {
                 <div class="purchase-button-full">
                     <a href="${data.affiliate_link}" target="_blank" rel="nofollow">
                         <picture>
-                            <source media="(max-width: 768px)" srcset="https://novacents.com/tools/images/aliexpress-button-mobile.png">
+                            <source media="(max-width: 1600px)" srcset="https://novacents.com/tools/images/aliexpress-button-mobile.png">
                             <img src="https://novacents.com/tools/images/aliexpress-button-pc.png" 
                                  alt="알리익스프레스에서 구매하기">
                         </picture>
@@ -2077,7 +2077,7 @@ if (isset($_GET['error'])) {
         <div style="text-align: center; margin-top: 30px; width: 100%;">
             <a href="${data.affiliate_link}" target="_blank" rel="nofollow" style="text-decoration: none;">
                 <picture>
-                    <source media="(max-width: 768px)" srcset="https://novacents.com/tools/images/aliexpress-button-mobile.png">
+                    <source media="(max-width: 1600px)" srcset="https://novacents.com/tools/images/aliexpress-button-mobile.png">
                     <img src="https://novacents.com/tools/images/aliexpress-button-pc.png" 
                          alt="알리익스프레스에서 구매하기" 
                          style="max-width: 100%; height: auto; cursor: pointer;">
@@ -2089,7 +2089,7 @@ if (isset($_GET['error'])) {
 
 <style>
 /* 📱 모바일 반응형 CSS - 이미지 확대 및 간격 최적화 */
-@media (max-width: 768px) {
+@media (max-width: 1600px) {
     /* 좌우 분할을 세로 배치로 변경 */
     div[style*="grid-template-columns: 400px 1fr"] {
         display: block !important;
@@ -2213,7 +2213,7 @@ if (isset($_GET['error'])) {
                         <div class="purchase-button-full">
                             <a href="${data.affiliate_link}" target="_blank" rel="nofollow">
                                 <picture>
-                                    <source media="(max-width: 768px)" srcset="https://novacents.com/tools/images/aliexpress-button-mobile.png">
+                                    <source media="(max-width: 1600px)" srcset="https://novacents.com/tools/images/aliexpress-button-mobile.png">
                                     <img src="https://novacents.com/tools/images/aliexpress-button-pc.png" 
                                          alt="알리익스프레스에서 구매하기">
                                 </picture>
