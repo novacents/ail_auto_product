@@ -7,7 +7,7 @@
  * + 인라인 키워드 입력창
  * + 🌟 AliExpress 공식 스타일 HTML 레이아웃 (좌우 분할)
  * + 🎨 왼쪽 큰 이미지, 오른쪽 모든 정보, 하단 구매 버튼
- * + 📱 모바일/태블릿 완전 반응형 지원
+ * + 📱 모바일/태블릿 완전 반응형 지원 (이미지 확대 + 간격 최적화)
  */
 
 // 워드프레스 환경 로드
@@ -990,7 +990,7 @@ if (isset($_GET['error'])) {
             }
         }
         
-        /* 📱 모바일/태블릿 반응형 CSS (768px 이하) */
+        /* 📱 모바일/태블릿 반응형 CSS (768px 이하) - 개선된 버전 */
         @media (max-width: 768px) {
             /* 기본 레이아웃 모바일 최적화 */
             body {
@@ -1036,24 +1036,29 @@ if (isset($_GET['error'])) {
             .product-content-split {
                 display: block !important;
                 grid-template-columns: none !important;
-                gap: 20px;
+                gap: 15px; /* 20px → 15px로 축소 */
             }
             
-            /* 📱 모바일 이미지 크기 최적화 (300px) */
+            /* 📱 모바일 이미지 크기 최적화 - 화면에 꽉차게 */
             .product-image-large {
                 text-align: center;
-                margin-bottom: 20px;
+                margin-bottom: 30px; /* 🎯 이미지와 로고 사이 공백 추가 */
             }
             
             .product-image-large img {
-                max-width: 300px !important;
-                width: 90%;
+                width: 95% !important; /* 🎯 화면에 꽉차도록 확대 */
+                max-width: none !important; /* max-width 제한 제거 */
+            }
+            
+            /* 📱 모바일 상품 정보 영역 - 간격 축소 */
+            .product-info-all {
+                gap: 10px !important; /* 🎯 20px → 10px로 절반 축소 */
             }
             
             /* 📱 모바일 AliExpress 로고 - 좌측정렬 */
             .aliexpress-logo-right {
                 text-align: left !important;
-                margin-bottom: 15px;
+                margin-bottom: 10px !important; /* 15px → 10px */
             }
             
             .aliexpress-logo-right img {
@@ -1066,29 +1071,31 @@ if (isset($_GET['error'])) {
                 text-align: left !important;
                 font-size: 18px !important;
                 line-height: 1.3;
-                margin-bottom: 15px !important;
+                margin-bottom: 10px !important; /* 20px → 10px */
             }
             
             /* 📱 모바일 가격 박스 최적화 */
             .product-price-right {
                 font-size: 28px !important;
                 padding: 12px 20px !important;
-                margin-bottom: 15px !important;
+                margin-bottom: 10px !important; /* 20px → 10px */
             }
             
-            /* 📱 모바일 평점 최적화 */
+            /* 📱 모바일 평점 최적화 - 한 줄에 표시 */
             .product-rating-right {
                 font-size: 16px !important;
-                flex-direction: column;
-                align-items: flex-start !important;
-                gap: 5px !important;
-                margin-bottom: 12px !important;
+                display: flex !important;
+                flex-direction: row !important; /* 🎯 가로 배치 강제 */
+                align-items: center !important;
+                gap: 8px !important; /* 간격 축소 */
+                margin-bottom: 10px !important; /* 15px → 10px */
+                flex-wrap: nowrap !important; /* 🎯 줄바꿈 방지 */
             }
             
             /* 📱 모바일 판매량 최적화 */
             .product-sales-right {
                 font-size: 16px !important;
-                margin-bottom: 12px !important;
+                margin-bottom: 10px !important; /* 15px → 10px */
             }
             
             /* 📱 모바일 기타 정보 숨기기 */
@@ -1098,25 +1105,30 @@ if (isset($_GET['error'])) {
             
             /* 📱 모바일 구매 버튼 최적화 */
             .purchase-button-full {
-                margin-top: 20px;
+                margin-top: 15px; /* 30px → 15px */
             }
             
             /* 📱 모바일 미리보기도 동일하게 적용 */
             .preview-content-split {
                 display: block !important;
                 grid-template-columns: none !important;
-                gap: 20px;
+                gap: 15px; /* 20px → 15px */
             }
             
             .preview-image-large {
-                max-width: 300px !important;
-                width: 90%;
-                margin: 0 auto 20px auto;
+                width: 95% !important; /* 🎯 화면에 꽉차도록 확대 */
+                max-width: none !important; /* max-width 제한 제거 */
+                margin: 0 auto 30px auto; /* 이미지와 로고 사이 공백 */
                 display: block;
+            }
+            
+            .preview-info-all {
+                gap: 10px !important; /* 🎯 20px → 10px로 절반 축소 */
             }
             
             .preview-aliexpress-logo {
                 text-align: left !important;
+                margin-bottom: 10px !important;
             }
             
             .preview-aliexpress-logo img {
@@ -1128,23 +1140,32 @@ if (isset($_GET['error'])) {
                 text-align: left !important;
                 font-size: 18px !important;
                 line-height: 1.3;
+                margin-bottom: 10px !important;
             }
             
             .preview-price-main {
                 font-size: 28px !important;
                 padding: 12px 20px !important;
-                margin-bottom: 15px !important;
+                margin-bottom: 10px !important;
             }
             
             .preview-rating {
                 font-size: 16px !important;
-                flex-direction: column;
-                align-items: flex-start !important;
-                gap: 5px !important;
+                display: flex !important;
+                flex-direction: row !important; /* 🎯 가로 배치 강제 */
+                align-items: center !important;
+                gap: 8px !important;
+                margin-bottom: 10px !important;
+                flex-wrap: nowrap !important; /* 🎯 줄바꿈 방지 */
             }
             
             .preview-sales {
                 font-size: 16px !important;
+                margin-bottom: 10px !important;
+            }
+            
+            .preview-button-container {
+                margin-top: 15px;
             }
             
             /* 📱 모바일 폼 최적화 */
@@ -1185,7 +1206,7 @@ if (isset($_GET['error'])) {
             }
             
             .product-image-large img {
-                max-width: 280px !important;
+                width: 100% !important; /* 480px 이하에서는 100% */
             }
             
             .aliexpress-logo-right img {
@@ -1200,6 +1221,10 @@ if (isset($_GET['error'])) {
             .product-price-right {
                 font-size: 24px !important;
                 padding: 10px 15px !important;
+            }
+            
+            .preview-image-large {
+                width: 100% !important;
             }
         }
     </style>
@@ -1872,7 +1897,7 @@ if (isset($_GET['error'])) {
                     currentProductData = result.data;
                     
                     showAnalysisResult(result.data);
-                    generateResponsiveAliExpressHtml(result.data);
+                    generateOptimizedMobileHtml(result.data);
                     
                     // 🎨 성공 로그 (AliExpress 좌우분할 스타일)
                     console.log('✅ AliExpress 좌우분할 스타일 분석 성공:');
@@ -1896,7 +1921,7 @@ if (isset($_GET['error'])) {
                             'url': url,
                             'platform': 'aliexpress',
                             'timestamp': new Date().toISOString(),
-                            'responsive_style_applied': true
+                            'mobile_optimized': true
                         }
                     );
                     
@@ -1999,11 +2024,11 @@ if (isset($_GET['error'])) {
             resultEl.classList.add('show');
         }
         
-        // 📱 반응형 AliExpress HTML 소스 생성 함수 (모바일 최적화)
-        function generateResponsiveAliExpressHtml(data) {
+        // 📱 모바일 최적화 AliExpress HTML 소스 생성 함수 (개선된 버전)
+        function generateOptimizedMobileHtml(data) {
             if (!data) return;
             
-            console.log('📱 반응형 AliExpress HTML 소스 생성 시작');
+            console.log('📱 모바일 최적화 AliExpress HTML 소스 생성 시작');
             
             // 평점 처리 (고객만족도 형태) - 중복 괄호 제거
             const ratingDisplay = data.rating_display ? data.rating_display.replace(/⭐/g, '').replace(/[()]/g, '').trim() : '정보 없음';
@@ -2011,13 +2036,13 @@ if (isset($_GET['error'])) {
             // 🔧 가격 공백 추가 처리
             const formattedPrice = formatPrice(data.price);
             
-            // 📱 완전 반응형 AliExpress HTML 코드 생성 (모바일 좌측정렬)
+            // 📱 모바일 최적화 AliExpress HTML 코드 생성 (이미지 확대 + 간격 최적화)
             const htmlCode = `<div style="display: flex; justify-content: center; margin: 25px 0;">
     <div style="border: 2px solid #eee; padding: 30px; border-radius: 15px; background: #f9f9f9; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 1000px; width: 100%;">
         
         <!-- 📱 반응형 좌우 분할 레이아웃 -->
         <div style="display: grid; grid-template-columns: 400px 1fr; gap: 30px; align-items: start; margin-bottom: 25px;">
-            <!-- 왼쪽: 이미지 (PC: 400px, 모바일: 300px) -->
+            <!-- 왼쪽: 이미지 (PC: 400px, 모바일: 화면 꽉참) -->
             <div style="text-align: center;">
                 <img src="${data.image_url}" alt="${data.title}" style="width: 100%; max-width: 400px; border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,0.15);">
             </div>
@@ -2037,8 +2062,8 @@ if (isset($_GET['error'])) {
                     <strong>${formattedPrice}</strong>
                 </div>
                 
-                <!-- 평점 (고객만족도 형태) -->
-                <div style="color: #1c1c1c; font-size: 20px; display: flex; align-items: center; gap: 10px; margin-bottom: 15px; justify-content: center;">
+                <!-- 평점 (고객만족도 형태) - 모바일에서 한 줄 표시 -->
+                <div style="color: #1c1c1c; font-size: 20px; display: flex; align-items: center; gap: 10px; margin-bottom: 15px; justify-content: center; flex-wrap: nowrap;">
                     <span style="color: #ff9900;">⭐⭐⭐⭐⭐</span>
                     <span>(고객만족도: ${ratingDisplay})</span>
                 </div>
@@ -2063,60 +2088,76 @@ if (isset($_GET['error'])) {
 </div>
 
 <style>
-/* 📱 모바일 반응형 CSS */
+/* 📱 모바일 반응형 CSS - 이미지 확대 및 간격 최적화 */
 @media (max-width: 768px) {
     /* 좌우 분할을 세로 배치로 변경 */
     div[style*="grid-template-columns: 400px 1fr"] {
         display: block !important;
         grid-template-columns: none !important;
+        gap: 15px !important; /* 간격 축소 */
     }
     
-    /* 모바일 이미지 크기 최적화 */
+    /* 🎯 모바일 이미지 화면 꽉차게 확대 */
     img[style*="max-width: 400px"] {
-        max-width: 300px !important;
+        width: 95% !important;
+        max-width: none !important;
+        margin-bottom: 30px !important; /* 이미지와 로고 사이 공백 */
     }
     
-    /* 모바일 로고 좌측정렬 */
+    /* 🎯 정보 영역 간격 절반으로 축소 */
+    div[style*="gap: 20px"] {
+        gap: 10px !important;
+    }
+    
+    /* 🎯 모바일 로고 좌측정렬 */
     div[style*="text-align: center"] img[alt="AliExpress"] {
         display: block;
         margin: 0 !important;
     }
     div[style*="text-align: center"]:has(img[alt="AliExpress"]) {
         text-align: left !important;
+        margin-bottom: 10px !important;
     }
     
-    /* 모바일 상품명 좌측정렬 */
+    /* 🎯 모바일 상품명 좌측정렬 */
     h3[style*="text-align: center"] {
         text-align: left !important;
         font-size: 18px !important;
+        margin-bottom: 10px !important;
     }
     
-    /* 모바일 가격 크기 조정 */
+    /* 🎯 모바일 가격 크기 조정 */
     div[style*="font-size: 40px"] {
         font-size: 28px !important;
         padding: 12px 20px !important;
+        margin-bottom: 10px !important;
     }
     
-    /* 모바일 평점 세로 배치 */
-    div[style*="justify-content: center"] {
-        flex-direction: column !important;
-        align-items: flex-start !important;
-        gap: 5px !important;
+    /* 🎯 모바일 평점 한 줄 표시 */
+    div[style*="justify-content: center"][style*="flex-wrap: nowrap"] {
         justify-content: flex-start !important;
         font-size: 16px !important;
+        margin-bottom: 10px !important;
+        gap: 8px !important;
     }
     
-    /* 모바일 판매량 좌측정렬 */
+    /* 🎯 모바일 판매량 좌측정렬 */
     p[style*="text-align: center"] {
         text-align: left !important;
         font-size: 16px !important;
+        margin-bottom: 10px !important;
+    }
+    
+    /* 구매 버튼 간격 조정 */
+    div[style*="margin-top: 30px"] {
+        margin-top: 15px !important;
     }
 }
 
 @media (max-width: 480px) {
     /* 더 작은 화면 최적화 */
-    img[style*="max-width: 300px"] {
-        max-width: 280px !important;
+    img[style*="width: 95%"] {
+        width: 100% !important;
     }
     
     h3[style*="font-size: 18px"] {
@@ -2129,7 +2170,7 @@ if (isset($_GET['error'])) {
 }
 </style>`;
             
-            // 📱 반응형 HTML 미리보기 생성 (CSS 효과 적용됨)
+            // 📱 모바일 최적화 HTML 미리보기 생성 (CSS 효과 적용됨)
             const previewHtml = `
                 <div class="preview-product-card">
                     <div class="preview-card-content">
@@ -2187,7 +2228,7 @@ if (isset($_GET['error'])) {
             document.getElementById('htmlCode').textContent = htmlCode;
             document.getElementById('htmlSourceSection').style.display = 'block';
             
-            console.log('✅ 📱 반응형 AliExpress HTML 소스 생성 완료 (모바일 좌측정렬)');
+            console.log('✅ 📱 모바일 최적화 AliExpress HTML 소스 생성 완료 (이미지 확대 + 간격 최적화)');
         }
         
         // 클립보드 복사 함수
@@ -2209,7 +2250,7 @@ if (isset($_GET['error'])) {
                     copyBtn.classList.remove('copied');
                 }, 2000);
                 
-                console.log('📋 📱 반응형 AliExpress HTML 소스 클립보드 복사 완료');
+                console.log('📋 📱 모바일 최적화 AliExpress HTML 소스 클립보드 복사 완료');
                 
             } catch (error) {
                 console.error('❌ 클립보드 복사 실패:', error);
