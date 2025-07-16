@@ -475,10 +475,10 @@ if (isset($_GET['error'])) {
             object-fit: contain;
         }
         
-        /* 📝 상품명 (오른쪽) - 24px → 23px로 수정 */
+        /* 📝 상품명 (오른쪽) - 23px → 21px로 수정 */
         .product-title-right {
             color: #1c1c1c;
-            font-size: 23px;
+            font-size: 21px;
             font-weight: 600;
             line-height: 1.4;
             margin: 0 0 20px 0;
@@ -682,11 +682,11 @@ if (isset($_GET['error'])) {
             object-fit: contain;
         }
         
-        /* 미리보기 상품명 - 24px → 23px로 수정 */
+        /* 미리보기 상품명 - 23px → 21px로 수정 */
         .preview-card-title {
             color: #1c1c1c;
             margin: 0 0 20px 0;
-            font-size: 23px;
+            font-size: 21px;
             font-weight: 600;
             line-height: 1.4;
             word-break: keep-all;
@@ -1257,6 +1257,13 @@ if (isset($_GET['error'])) {
             updateUI();
         });
         
+        // 🔧 가격 공백 추가 함수
+        function formatPrice(price) {
+            if (!price) return price;
+            // ₩와 숫자 사이에 공백 추가 (₩3,440 → ₩ 3,440)
+            return price.replace(/₩(\d)/, '₩ $1');
+        }
+        
         // 🔧 개선된 오류 처리 함수들 (복사 가능한 큰 팝업)
         function showDetailedError(title, message, debugData = null) {
             // 기존 오류 모달이 있으면 제거
@@ -1710,7 +1717,10 @@ if (isset($_GET['error'])) {
             // 평점 처리 (고객만족도 형태) - 중복 괄호 제거
             const ratingDisplay = data.rating_display ? data.rating_display.replace(/⭐/g, '').replace(/[()]/g, '').trim() : '정보 없음';
             
-            // AliExpress 좌우분할 스타일 카드 디자인 - 세로 패딩 14px로 조정
+            // 🔧 가격 공백 추가 처리
+            const formattedPrice = formatPrice(data.price);
+            
+            // AliExpress 좌우분할 스타일 카드 디자인 - 분석화면 블록
             cardEl.innerHTML = `
                 <!-- 좌우 분할 레이아웃 (큰 이미지 왼쪽, 모든 정보 오른쪽) -->
                 <div class="product-content-split">
@@ -1731,7 +1741,7 @@ if (isset($_GET['error'])) {
                         
                         <!-- 가격 (지정된 배경색) -->
                         <div class="product-price-right">
-                            ${data.price}
+                            ${formattedPrice}
                         </div>
                         
                         <!-- 평점 (고객만족도 형태) -->
@@ -1783,7 +1793,10 @@ if (isset($_GET['error'])) {
             // 평점 처리 (고객만족도 형태) - 중복 괄호 제거
             const ratingDisplay = data.rating_display ? data.rating_display.replace(/⭐/g, '').replace(/[()]/g, '').trim() : '정보 없음';
             
-            // 🎨 AliExpress 좌우분할 스타일 HTML 코드 생성 - 상품명 23px, 세로 패딩 14px로 조정
+            // 🔧 가격 공백 추가 처리
+            const formattedPrice = formatPrice(data.price);
+            
+            // 🎨 AliExpress 좌우분할 스타일 HTML 코드 생성 - 상품명 21px, 세로 패딩 14px로 조정
             const htmlCode = `<div style="display: flex; justify-content: center; margin: 25px 0;">
     <div style="border: 2px solid #eee; padding: 30px; border-radius: 15px; background: #f9f9f9; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 1000px; width: 100%;">
         
@@ -1801,12 +1814,12 @@ if (isset($_GET['error'])) {
                     <img src="https://novacents.com/tools/images/Ali_black_logo.webp" alt="AliExpress" style="width: 250px; height: 60px; object-fit: contain;" />
                 </div>
                 
-                <!-- 상품명 - 23px로 수정 -->
-                <h3 style="color: #1c1c1c; margin: 0 0 20px 0; font-size: 23px; font-weight: 600; line-height: 1.4; word-break: keep-all; overflow-wrap: break-word;">${data.title}</h3>
+                <!-- 상품명 - 21px로 수정 -->
+                <h3 style="color: #1c1c1c; margin: 0 0 20px 0; font-size: 21px; font-weight: 600; line-height: 1.4; word-break: keep-all; overflow-wrap: break-word;">${data.title}</h3>
                 
                 <!-- 가격 (지정된 배경색) - 40px로 증가, 세로 패딩 14px로 수정 -->
                 <div style="background: linear-gradient(135deg, #e62e04 0%, #ff9900 100%); color: white; padding: 14px 30px; border-radius: 10px; font-size: 40px; font-weight: 700; text-align: center; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(230, 46, 4, 0.3);">
-                    <strong>${data.price}</strong>
+                    <strong>${formattedPrice}</strong>
                 </div>
                 
                 <!-- 평점 (고객만족도 형태) -->
@@ -1834,45 +1847,49 @@ if (isset($_GET['error'])) {
     </div>
 </div>`;
             
-            // 🎨 AliExpress 좌우분할 스타일 HTML 미리보기 생성
+            // 🎨 AliExpress 좌우분할 스타일 HTML 미리보기 생성 - 분석화면과 동일한 구조 (상품 ID, 플랫폼 제외)
             const previewHtml = `
                 <div class="preview-product-card">
                     <div class="preview-card-content">
-                        <!-- 좌우 분할 레이아웃 -->
-                        <div class="preview-content-split">
+                        <!-- 좌우 분할 레이아웃 (분석화면과 동일) -->
+                        <div class="product-content-split">
                             <!-- 왼쪽: 큰 이미지 -->
-                            <div>
-                                <img src="${data.image_url}" alt="${data.title}" class="preview-image-large">
+                            <div class="product-image-large">
+                                <img src="${data.image_url}" alt="${data.title}" onerror="this.style.display='none'">
                             </div>
                             
                             <!-- 오른쪽: 모든 정보 -->
-                            <div class="preview-info-all">
+                            <div class="product-info-all">
                                 <!-- AliExpress 로고 -->
-                                <div class="preview-aliexpress-logo">
+                                <div class="aliexpress-logo-right">
                                     <img src="https://novacents.com/tools/images/Ali_black_logo.webp" alt="AliExpress" />
                                 </div>
                                 
                                 <!-- 상품명 -->
-                                <h3 class="preview-card-title">${data.title}</h3>
+                                <h3 class="product-title-right">${data.title}</h3>
                                 
                                 <!-- 가격 (지정된 배경색) -->
-                                <div class="preview-price-main">
-                                    <strong>${data.price}</strong>
+                                <div class="product-price-right">
+                                    ${formattedPrice}
                                 </div>
                                 
                                 <!-- 평점 (고객만족도 형태) -->
-                                <div class="preview-rating">
+                                <div class="product-rating-right">
                                     <span class="rating-stars">⭐⭐⭐⭐⭐</span>
                                     <span>(고객만족도: ${ratingDisplay})</span>
                                 </div>
                                 
                                 <!-- 판매량 -->
-                                <p class="preview-sales"><strong>📦 판매량:</strong> ${data.lastest_volume || '판매량 정보 없음'}</p>
+                                <div class="product-sales-right">
+                                    <strong>📦 판매량:</strong> ${data.lastest_volume || '판매량 정보 없음'}
+                                </div>
+                                
+                                <!-- 기타 정보 제외 (HTML 소스에서는 상품 ID, 플랫폼 정보 표시 안함) -->
                             </div>
                         </div>
                         
                         <!-- 구매 버튼 (하단 전체 폭) -->
-                        <div class="preview-button-container">
+                        <div class="purchase-button-full">
                             <a href="${data.affiliate_link}" target="_blank" rel="nofollow">
                                 <picture>
                                     <source media="(max-width: 768px)" srcset="https://novacents.com/tools/images/aliexpress-button-mobile.png">
