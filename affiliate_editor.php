@@ -486,13 +486,13 @@ if (isset($_GET['error'])) {
             overflow-wrap: break-word;
         }
         
-        /* 💰 가격 (오른쪽, 지정된 배경색) */
+        /* 💰 가격 (오른쪽, 지정된 배경색) - 38px로 증가 */
         .product-price-right {
             background: linear-gradient(135deg, #e62e04 0%, #ff9900 100%);
             color: white;
             padding: 20px 30px;
             border-radius: 10px;
-            font-size: 36px;
+            font-size: 38px;
             font-weight: 700;
             text-align: center;
             margin-bottom: 20px;
@@ -692,12 +692,13 @@ if (isset($_GET['error'])) {
             overflow-wrap: break-word;
         }
         
+        /* 💰 미리보기 가격 - 38px로 증가 */
         .preview-price-main {
             background: linear-gradient(135deg, #e62e04 0%, #ff9900 100%);
             color: white;
             padding: 20px 30px;
             border-radius: 10px;
-            font-size: 36px;
+            font-size: 38px;
             font-weight: 700;
             text-align: center;
             margin: 0 0 20px 0;
@@ -1705,6 +1706,9 @@ if (isset($_GET['error'])) {
             const resultEl = document.getElementById('analysisResult');
             const cardEl = document.getElementById('productCard');
             
+            // 평점 처리 (고객만족도 형태) - 중복 괄호 제거
+            const ratingDisplay = data.rating_display ? data.rating_display.replace(/⭐/g, '').replace(/[()]/g, '').trim() : '정보 없음';
+            
             // AliExpress 좌우분할 스타일 카드 디자인
             cardEl.innerHTML = `
                 <!-- 좌우 분할 레이아웃 (큰 이미지 왼쪽, 모든 정보 오른쪽) -->
@@ -1732,7 +1736,7 @@ if (isset($_GET['error'])) {
                         <!-- 평점 (고객만족도 형태) -->
                         <div class="product-rating-right">
                             <span class="rating-stars">⭐⭐⭐⭐⭐</span>
-                            <span>(고객만족도: ${data.rating_display ? data.rating_display.replace(/⭐/g, '').trim() : '정보 없음'})</span>
+                            <span>(고객만족도: ${ratingDisplay})</span>
                         </div>
                         
                         <!-- 판매량 -->
@@ -1775,8 +1779,8 @@ if (isset($_GET['error'])) {
             
             console.log('🎨 AliExpress 좌우분할 스타일 HTML 소스 생성 시작');
             
-            // 평점 처리 (고객만족도 형태)
-            const ratingDisplay = data.rating_display ? data.rating_display.replace(/⭐/g, '').trim() : '정보 없음';
+            // 평점 처리 (고객만족도 형태) - 중복 괄호 제거
+            const ratingDisplay = data.rating_display ? data.rating_display.replace(/⭐/g, '').replace(/[()]/g, '').trim() : '정보 없음';
             
             // 🎨 AliExpress 좌우분할 스타일 HTML 코드 생성
             const htmlCode = `<div style="display: flex; justify-content: center; margin: 25px 0;">
@@ -1799,8 +1803,8 @@ if (isset($_GET['error'])) {
                 <!-- 상품명 -->
                 <h3 style="color: #1c1c1c; margin: 0 0 20px 0; font-size: 24px; font-weight: 600; line-height: 1.4; word-break: keep-all; overflow-wrap: break-word;">${data.title}</h3>
                 
-                <!-- 가격 (지정된 배경색) -->
-                <div style="background: linear-gradient(135deg, #e62e04 0%, #ff9900 100%); color: white; padding: 20px 30px; border-radius: 10px; font-size: 36px; font-weight: 700; text-align: center; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(230, 46, 4, 0.3);">
+                <!-- 가격 (지정된 배경색) - 38px로 증가 -->
+                <div style="background: linear-gradient(135deg, #e62e04 0%, #ff9900 100%); color: white; padding: 20px 30px; border-radius: 10px; font-size: 38px; font-weight: 700; text-align: center; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(230, 46, 4, 0.3);">
                     <strong>${data.price}</strong>
                 </div>
                 
