@@ -1,10 +1,11 @@
 <?php
 /**
- * 어필리에이트 상품 키워드 데이터 처리기 (완전히 새롭게 재설계된 독립 버전 + 사용자 상세 정보 지원)
+ * 어필리에이트 상품 키워드 데이터 처리기 (4가지 프롬프트 템플릿 시스템 지원)
  * affiliate_editor.php에서 POST로 전송된 데이터를 처리하고 큐 파일에 저장합니다.
  * 워드프레스 환경에 전혀 종속되지 않으며, 순수 PHP로만 작동합니다.
  *
  * 파일 위치: /var/www/novacents/tools/keyword_processor.php
+ * 버전: v3.0 (4가지 프롬프트 템플릿 시스템 지원)
  */
 
 // 1. 초기 에러 리포팅 설정 (스크립트 시작 시점부터 에러를 잡기 위함)
@@ -28,7 +29,7 @@ function debug_log($message) {
 }
 
 // 스크립트 시작 시 즉시 디버그 로그 기록
-debug_log("=== keyword_processor.php 시작 (사용자 상세 정보 지원 버전) ===");
+debug_log("=== keyword_processor.php 시작 (4가지 프롬프트 템플릿 시스템 지원 버전) ===");
 debug_log("PHP Version: " . phpversion());
 debug_log("Request Method: " . ($_SERVER['REQUEST_METHOD'] ?? 'N/A'));
 debug_log("POST Data Empty: " . (empty($_POST) ? 'YES' : 'NO'));
@@ -154,7 +155,7 @@ function send_telegram_notification($message, $urgent = false) {
         
         // Check HTTP response header from stream context
         if (isset($http_response_header)) { // This variable is automatically set by file_get_contents
-            preg_match('{HTTP\/\S+\s(\d{3})}', $http_response_header[0], $match);
+            preg_match('{HTTP/\S+\s(\d{3})}', $http_response_header[0], $match);
             $http_code = (int)$match[1];
         }
 
@@ -286,7 +287,23 @@ function get_category_name($category_id) {
     return $categories[$category_id] ?? '알 수 없는 카테고리';
 }
 
-// 🚀 11. 새로 추가된 사용자 상세 정보 처리 함수들
+// 🚀 11. 프롬프트 타입 관련 함수들 (새로 추가)
+function get_prompt_type_name($prompt_type) {
+    $prompt_types = [
+        'essential_items' => '필수템형 🎯',
+        'friend_review' => '친구 추천형 👫',
+        'professional_analysis' => '전문 분석형 📊',
+        'amazing_discovery' => '놀라움 발견형 ✨'
+    ];
+    return $prompt_types[$prompt_type] ?? '기본형';
+}
+
+function validate_prompt_type($prompt_type) {
+    $valid_prompt_types = ['essential_items', 'friend_review', 'professional_analysis', 'amazing_discovery'];
+    return in_array($prompt_type, $valid_prompt_types);
+}
+
+// 12. 사용자 상세 정보 처리 함수들
 function parse_user_details($user_details_json) {
     debug_log("parse_user_details: Parsing user details JSON.");
     
@@ -368,9 +385,9 @@ function format_user_details_summary($user_details) {
 }
 
 
-// 12. 입력 데이터 검증 및 정리 함수 (사용자 상세 정보 지원 추가)
+// 13. 입력 데이터 검증 및 정리 함수 (프롬프트 타입 지원 추가)
 function validate_input_data($data) {
-    debug_log("validate_input_data: Starting validation with user details support.");
+    debug_log("validate_input_data: Starting validation with prompt type and user details support.");
     $errors = [];
 
     if (empty($data['title']) || strlen(trim($data['title'])) < 5) {
@@ -380,6 +397,11 @@ function validate_input_data($data) {
     $valid_categories = ['354', '355', '356', '12'];
     if (empty($data['category']) || !in_array((int)$data['category'], $valid_categories)) {
         $errors[] = '유효하지 않은 카테고리입니다.';
+    }
+
+    // 🚀 프롬프트 타입 검증 추가
+    if (empty($data['prompt_type']) || !validate_prompt_type($data['prompt_type'])) {
+        $errors[] = '유효하지 않은 프롬프트 타입입니다.';
     }
 
     if (empty($data['keywords']) || !is_array($data['keywords'])) {
@@ -418,7 +440,7 @@ function validate_input_data($data) {
         }
     }
     
-    // 🚀 사용자 상세 정보 검증 (선택사항이므로 오류는 아님)
+    // 사용자 상세 정보 검증 (선택사항이므로 오류는 아님)
     if (!empty($data['user_details'])) {
         $user_details = parse_user_details($data['user_details']);
         if ($user_details !== null && !validate_user_details($user_details)) {
@@ -473,31 +495,32 @@ function clean_affiliate_links($keywords_raw) {
 }
 
 
-// 13. 메인 처리 로직 (사용자 상세 정보 지원 추가)
+// 14. 메인 처리 로직 (4가지 프롬프트 템플릿 시스템 지원)
 function main_process() {
-    debug_log("main_process: Main processing started with user details support.");
+    debug_log("main_process: Main processing started with 4-prompt template system support.");
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         debug_log("main_process: Invalid request method. Not a POST request.");
         redirect_to_editor(false, ['error' => '잘못된 요청 방식입니다. POST 메서드만 허용됩니다.']);
     }
 
-    // Input data collection (사용자 상세 정보 포함)
+    // Input data collection (프롬프트 타입 + 사용자 상세 정보 포함)
     $input_data = [
         'title' => clean_input($_POST['title'] ?? ''),
         'category' => clean_input($_POST['category'] ?? ''),
+        'prompt_type' => clean_input($_POST['prompt_type'] ?? 'essential_items'), // 🚀 새로 추가된 프롬프트 타입
         'keywords' => $_POST['keywords'] ?? [],
-        'user_details' => $_POST['user_details'] ?? null // 🚀 새로 추가된 사용자 상세 정보
+        'user_details' => $_POST['user_details'] ?? null
     ];
     
     debug_log("main_process: Input data collected: " . json_encode($input_data, JSON_UNESCAPED_UNICODE));
-    main_log("Input data received: Title='" . $input_data['title'] . "', Category=" . $input_data['category'] . ", Keywords=" . count($input_data['keywords']) . ", User Details=" . (empty($input_data['user_details']) ? 'No' : 'Yes') . ".");
+    main_log("Input data received: Title='" . $input_data['title'] . "', Category=" . $input_data['category'] . ", Prompt Type=" . $input_data['prompt_type'] . ", Keywords=" . count($input_data['keywords']) . ", User Details=" . (empty($input_data['user_details']) ? 'No' : 'Yes') . ".");
 
     // Data validation
     $validation_errors = validate_input_data($input_data);
     if (!empty($validation_errors)) {
         debug_log("main_process: Validation failed. Errors: " . implode(' | ', $validation_errors));
-        $telegram_msg = "❌ 데이터 검증 실패:\n\n" . implode("\n• ", $validation_errors) . "\n\n입력된 데이터:\n제목: " . $input_data['title'] . "\n카테고리: " . get_category_name($input_data['category']) . "\n키워드 수: " . count($input_data['keywords']) . "개";
+        $telegram_msg = "❌ 데이터 검증 실패:\n\n" . implode("\n• ", $validation_errors) . "\n\n입력된 데이터:\n제목: " . $input_data['title'] . "\n카테고리: " . get_category_name($input_data['category']) . "\n프롬프트: " . get_prompt_type_name($input_data['prompt_type']) . "\n키워드 수: " . count($input_data['keywords']) . "개";
         send_telegram_notification($telegram_msg, true);
         main_log("Data validation failed: " . implode(', ', $validation_errors));
         redirect_to_editor(false, ['error' => '데이터 검증 오류: ' . implode(' | ', $validation_errors)]);
@@ -515,7 +538,7 @@ function main_process() {
     }
     debug_log("main_process: Product links cleaned. " . count($cleaned_keywords) . " keywords remain.");
 
-    // 🚀 사용자 상세 정보 처리
+    // 사용자 상세 정보 처리
     $user_details_data = null;
     if (!empty($input_data['user_details'])) {
         $user_details_data = parse_user_details($input_data['user_details']);
@@ -529,15 +552,17 @@ function main_process() {
         debug_log("main_process: No user details provided.");
     }
 
-    // Create queue data structure (사용자 상세 정보 포함)
+    // Create queue data structure (프롬프트 타입 + 사용자 상세 정보 포함)
     $queue_data = [
         'queue_id' => date('YmdHis') . '_' . random_int(10000, 99999), // Unique ID
         'title' => $input_data['title'],
         'category_id' => (int)$input_data['category'],
         'category_name' => get_category_name((int)$input_data['category']),
+        'prompt_type' => $input_data['prompt_type'], // 🚀 새로 추가된 프롬프트 타입
+        'prompt_type_name' => get_prompt_type_name($input_data['prompt_type']), // 🚀 프롬프트 타입명
         'keywords' => $cleaned_keywords,
-        'user_details' => $user_details_data, // 🚀 새로 추가된 사용자 상세 정보
-        'processing_mode' => 'link_based_with_details', // 새로운 처리 모드
+        'user_details' => $user_details_data,
+        'processing_mode' => 'link_based_with_details_and_prompt_template', // 새로운 처리 모드
         'link_conversion_required' => true, // 링크 변환 필요 여부
         'conversion_status' => [
             'coupang_converted' => 0,
@@ -564,6 +589,7 @@ function main_process() {
     $queue_data['conversion_status']['aliexpress_total'] = $aliexpress_total;
     
     debug_log("main_process: Queue data structure created. ID: " . $queue_data['queue_id']);
+    debug_log("main_process: Prompt type: " . $input_data['prompt_type'] . " (" . get_prompt_type_name($input_data['prompt_type']) . ")");
     debug_log("main_process: Link counts - Coupang: {$coupang_total}, AliExpress: {$aliexpress_total}");
     debug_log("main_process: User details included: " . ($queue_data['has_user_details'] ? 'Yes' : 'No'));
 
@@ -585,12 +611,13 @@ function main_process() {
     $telegram_success_msg .= "📋 <b>작업 정보</b>\n";
     $telegram_success_msg .= "• 제목: " . $input_data['title'] . "\n";
     $telegram_success_msg .= "• 카테고리: " . $queue_data['category_name'] . "\n";
+    $telegram_success_msg .= "• 프롬프트 타입: " . $queue_data['prompt_type_name'] . "\n"; // 🚀 프롬프트 타입 정보 추가
     $telegram_success_msg .= "• 키워드 수: " . count($cleaned_keywords) . "개\n";
-    $telegram_success_msg .= "• 처리 모드: 링크 기반 + 사용자 상세 정보\n";
+    $telegram_success_msg .= "• 처리 모드: 4가지 프롬프트 템플릿 시스템\n";
     $telegram_success_msg .= "• 쿠팡 링크: " . $coupang_total . "개\n";
     $telegram_success_msg .= "• 알리익스프레스 링크: " . $aliexpress_total . "개\n";
     
-    // 🚀 사용자 상세 정보 알림 추가
+    // 사용자 상세 정보 알림 추가
     if ($user_details_data !== null) {
         $telegram_success_msg .= "• 사용자 상세 정보: " . format_user_details_summary($user_details_data) . "\n";
     } else {
@@ -606,9 +633,9 @@ function main_process() {
     if ($stats['failed'] > 0) {
         $telegram_success_msg .= "• 실패: " . $stats['failed'] . "개\n";
     }
-    $telegram_success_msg .= "\n🚀 자동화 스크립트가 순차적으로 처리할 예정입니다.";
+    $telegram_success_msg .= "\n🚀 4가지 프롬프트 템플릿 자동화 시스템이 순차적으로 처리할 예정입니다.";
     send_telegram_notification($telegram_success_msg);
-    main_log("Item successfully added to queue with user details. Queue stats: " . json_encode($stats));
+    main_log("Item successfully added to queue with prompt type '{$input_data['prompt_type']}' and user details. Queue stats: " . json_encode($stats));
 
     // Redirect to editor with success message
     redirect_to_editor(true, ['success' => '1']);
