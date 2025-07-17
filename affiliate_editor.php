@@ -1,7 +1,7 @@
 <?php
 /**
  * 어필리에이트 상품 등록 자동화 입력 페이지 (AliExpress 공식 스타일 - 좌우 분할 + 📱 반응형)
- * 노바센트(novacents.com) 전용 - 압축 최적화 버전 + 사용자 상세 정보 수집 기능
+ * 노바센트(novacents.com) 전용 - 압축 최적화 버전 + 사용자 상세 정보 수집 기능 + 프롬프트 선택 기능
  */
 require_once($_SERVER['DOCUMENT_ROOT'] . '/wp-config.php');
 if (!current_user_can('manage_options')) { wp_die('접근 권한이 없습니다.'); }
@@ -57,13 +57,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .header-section{padding:30px;border-bottom:1px solid #e0e0e0;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white}
 .header-section h1{margin:0 0 10px 0;font-size:28px}
 .header-section .subtitle{margin:0 0 20px 0;opacity:0.9}
-.header-form{display:grid;grid-template-columns:1fr 300px;gap:20px;margin-top:20px}
+.header-form{display:grid;grid-template-columns:1fr 250px 250px;gap:15px;margin-top:20px}
 .title-section{position:relative}
 .title-input-row{display:flex;gap:10px;align-items:flex-end}
 .title-input-row input{flex:1;padding:12px;border:1px solid rgba(255,255,255,0.3);border-radius:6px;background:rgba(255,255,255,0.1);color:white;font-size:16px}
 .title-input-row input::placeholder{color:rgba(255,255,255,0.7)}
-.category-section select{width:100%;padding:12px;border:1px solid rgba(255,255,255,0.3);border-radius:6px;background:rgba(255,255,255,0.1);color:white;font-size:16px}
-.category-section select option{background:#333;color:white}
+.category-section select,.prompt-section select{width:100%;padding:12px;border:1px solid rgba(255,255,255,0.3);border-radius:6px;background:rgba(255,255,255,0.1);color:white;font-size:16px}
+.category-section select option,.prompt-section select option{background:#333;color:white}
 .main-content{display:flex;min-height:600px}
 .products-sidebar{width:600px;border-right:1px solid #e0e0e0;background:#fafafa;display:flex;flex-direction:column}
 .sidebar-header{padding:20px;border-bottom:1px solid #e0e0e0;background:white}
@@ -177,61 +177,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .alert-error{background-color:#f8d7da;color:#721c24;border:1px solid #f5c6cb}
 .empty-state{text-align:center;padding:40px 20px;color:#666}
 .empty-state h3{margin:0 0 10px 0;color:#999}
-@media (max-width: 1920px){.main-container{width:95%;min-width:1400px}}
-@media (max-width: 1600px){
-.main-container{transform:scale(0.9);transform-origin:top center;margin-top:-50px}
-body{min-width:unset;padding:10px}
-.main-container{width:100%;transform:none;margin-top:0}
-.header-section{padding:20px}
-.header-section h1{font-size:24px}
-.header-form{grid-template-columns:1fr;gap:15px}
-.main-content{flex-direction:column}
-.products-sidebar{width:100%;border-right:none;border-bottom:1px solid #e0e0e0}
-.detail-panel{width:100%;padding:20px}
-.product-content-split{display:block !important;grid-template-columns:none !important;gap:15px}
-.product-image-large{text-align:center;margin-bottom:30px}
-.product-image-large img{width:95% !important;max-width:none !important}
-.product-info-all{gap:10px !important}
-.aliexpress-logo-right{text-align:left !important;margin-bottom:10px !important}
-.aliexpress-logo-right img{width:200px;height:48px}
-.product-title-right{text-align:left !important;font-size:18px !important;line-height:1.3;margin-bottom:10px !important}
-.product-price-right{font-size:28px !important;padding:12px 20px !important;margin-bottom:10px !important}
-.product-rating-right{font-size:16px !important;display:flex !important;flex-direction:row !important;align-items:center !important;gap:8px !important;margin-bottom:10px !important;flex-wrap:nowrap !important}
-.product-sales-right{font-size:16px !important;margin-bottom:10px !important}
-.product-extra-info-right{display:none}
-.purchase-button-full{margin-top:15px}
-.preview-content-split{display:block !important;grid-template-columns:none !important;gap:15px}
-.preview-image-large{width:95% !important;max-width:none !important;margin:0 auto 30px auto;display:block}
-.preview-info-all{gap:10px !important}
-.preview-aliexpress-logo{text-align:left !important;margin-bottom:10px !important}
-.preview-aliexpress-logo img{width:200px;height:48px}
-.preview-card-title{text-align:left !important;font-size:18px !important;line-height:1.3;margin-bottom:10px !important}
-.preview-price-main{font-size:28px !important;padding:12px 20px !important;margin-bottom:10px !important}
-.preview-rating{font-size:16px !important;display:flex !important;flex-direction:row !important;align-items:center !important;gap:8px !important;margin-bottom:10px !important;flex-wrap:nowrap !important}
-.preview-sales{font-size:16px !important;margin-bottom:10px !important}
-.preview-button-container{margin-top:15px}
-.url-input-group{flex-direction:column;gap:10px}
-.form-row.two-col,.form-row.three-col{grid-template-columns:1fr}
-.html-source-header{flex-direction:column;gap:10px;align-items:stretch}
-.html-code{font-size:11px;max-height:200px}
-}
-@media (max-width: 480px){
-.header-section{padding:15px}
-.header-section h1{font-size:20px}
-.detail-panel{padding:15px}
-.product-image-large img{width:100% !important}
-.aliexpress-logo-right img{width:180px;height:43px}
-.product-title-right{font-size:16px !important}
-.product-price-right{font-size:24px !important;padding:10px 15px !important}
-.preview-image-large{width:100% !important}
-}
 </style>
 </head>
 <body>
 <div class="main-container">
 <div class="header-section">
 <h1>🛍️ 어필리에이트 상품 등록</h1>
-<p class="subtitle">알리익스프레스 전용 상품 글 생성기 + 사용자 상세 정보 활용</p>
+<p class="subtitle">알리익스프레스 전용 상품 글 생성기 + 사용자 상세 정보 활용 + 프롬프트 선택</p>
 <?php if (!empty($success_message)): ?>
 <div class="alert alert-success"><?php echo esc_html($success_message); ?></div>
 <?php endif; ?>
@@ -269,6 +221,15 @@ body{min-width:unset;padding:10px}
 <option value="355">기발한 잡화점</option>
 <option value="354">Today's Pick</option>
 <option value="12">우리잇템</option>
+</select>
+</div>
+<div class="prompt-section">
+<label for="prompt_type" style="color: rgba(255,255,255,0.9); margin-bottom: 8px; display: block;">프롬프트 스타일</label>
+<select id="prompt_type" name="prompt_type" required>
+<option value="essential_guide" selected>🎯 주제별 필수템형</option>
+<option value="friend_recommendation">👫 친구 추천형</option>
+<option value="expert_analysis">📊 전문 분석형</option>
+<option value="amazing_discovery">✨ 놀라움 발견형</option>
 </select>
 </div>
 </div>
@@ -762,6 +723,7 @@ function validateAndSubmitData(formData) {
     const hiddenInputs = [
         { name: 'title', value: formData.title },
         { name: 'category', value: formData.category },
+        { name: 'prompt_type', value: formData.prompt_type },
         { name: 'keywords', value: JSON.stringify(formData.keywords) },
         { name: 'user_details', value: JSON.stringify(formData.user_details) }
     ];
@@ -791,10 +753,11 @@ function saveAll() {
     
     console.log('수집된 사용자 상세 정보:', userDetails);
     
-    // 3. 기본 정보 수집
+    // 3. 기본 정보 수집 (프롬프트 타입 추가)
     const formData = {
         title: document.getElementById('title').value.trim(),
         category: document.getElementById('category').value,
+        prompt_type: document.getElementById('prompt_type').value,
         keywords: keywordsData,
         user_details: userDetails // 새로 추가되는 사용자 상세 정보
     };
