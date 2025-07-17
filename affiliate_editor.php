@@ -41,6 +41,55 @@ if (isset($_POST['action']) && $_POST['action'] === 'generate_titles') {
     if ($result === null) { echo json_encode(['success' => false, 'message' => 'Python 스크립트 응답 파싱 실패.', 'raw_output' => $output]); exit; }
     echo json_encode($result); exit;
 }
+
+// 즉시 발행 처리
+if (isset($_POST['action']) && $_POST['action'] === 'publish_now') {
+    header('Content-Type: application/json');
+    
+    // 데이터 검증
+    $required_fields = ['title', 'category', 'prompt_type', 'keywords', 'user_details'];
+    foreach ($required_fields as $field) {
+        if (!isset($_POST[$field])) {
+            echo json_encode(['success' => false, 'message' => "필수 필드가 누락되었습니다: $field"]);
+            exit;
+        }
+    }
+    
+    try {
+        // keyword_processor.php에 즉시 발행 모드로 데이터 전송
+        $post_data = [
+            'title' => $_POST['title'],
+            'category' => $_POST['category'],
+            'prompt_type' => $_POST['prompt_type'],
+            'keywords' => $_POST['keywords'],
+            'user_details' => $_POST['user_details'],
+            'publish_mode' => 'immediate' // 즉시 발행 모드
+        ];
+        
+        // keyword_processor.php 호출
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, 'keyword_processor.php');
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_data));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 300); // 5분 타임아웃
+        
+        $response = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        
+        if ($http_code === 200) {
+            echo json_encode(['success' => true, 'message' => '글이 성공적으로 발행되었습니다!']);
+        } else {
+            echo json_encode(['success' => false, 'message' => '발행 중 오류가 발생했습니다.']);
+        }
+        
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'message' => '발행 처리 중 오류: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
 $success_message = ''; $error_message = '';
 if (isset($_GET['success']) && $_GET['success'] == '1') { $success_message = '글이 성공적으로 발행 대기열에 추가되었습니다!'; }
 if (isset($_GET['error'])) { $error_message = '오류: ' . urldecode($_GET['error']); }
@@ -91,7 +140,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .keyword-input-row-inline input{flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:4px;font-size:14px}
 .keyword-input-row-inline button{padding:8px 16px;border:none;border-radius:4px;cursor:pointer;font-size:14px;font-weight:600}
 .detail-panel{flex:1;width:1100px;padding:30px;overflow-y:auto}
-.detail-header{margin-bottom:30px;padding-bottom:20px;border-bottom:2px solid #f0f0f0}
+.detail-header{margin-bottom:20px;padding-bottom:20px;border-bottom:2px solid #f0f0f0}
+
+/* 🚀 상단 네비게이션 버튼 스타일 */
+.top-navigation{margin-bottom:30px;padding:20px;background:#f8f9fa;border-radius:8px;border:1px solid #e9ecef}
+.nav-buttons{display:flex;align-items:center;gap:10px}
+.nav-buttons-left{display:flex;gap:10px}
+.nav-divider{width:2px;height:40px;background:#ddd;margin:0 20px}
+.nav-buttons-right{display:flex;gap:15px}
+.btn-orange{background:#ff9900;color:white;border:none;padding:12px 20px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;transition:all 0.3s;text-decoration:none;display:inline-block}
+.btn-orange:hover{background:#e68a00;transform:translateY(-1px)}
+.btn-orange:disabled{background:#ccc;cursor:not-allowed;transform:none}
+
+/* 로딩 오버레이 */
+.loading-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10000;display:none;align-items:center;justify-content:center}
+.loading-content{background:white;border-radius:10px;padding:40px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.3)}
+.loading-spinner{display:inline-block;width:40px;height:40px;border:4px solid #f3f3f3;border-top:4px solid #ff9900;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:20px}
+.loading-text{font-size:18px;color:#333;font-weight:600}
+
 .product-url-section{margin-bottom:30px;padding:20px;background:#f8f9fa;border-radius:8px;border:1px solid #e9ecef}
 .url-input-group{display:flex;gap:10px;margin-bottom:15px}
 .url-input-group input{flex:1;padding:12px;border:1px solid #ddd;border-radius:6px;font-size:16px}
@@ -151,7 +217,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .advantages-list{list-style:none;padding:0;margin:0}
 .advantages-list li{margin-bottom:10px}
 .advantages-list input{width:100%;padding:8px;border:1px solid #ddd;border-radius:4px}
-.navigation-section{margin-top:40px;padding-top:20px;border-top:2px solid #f0f0f0;text-align:center}
 .btn{padding:12px 20px;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;transition:all 0.3s;text-decoration:none;display:inline-block;margin:0 5px}
 .btn-primary{background-color:#007bff;color:white}
 .btn-primary:hover{background-color:#0056b3}
@@ -180,6 +245,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 </style>
 </head>
 <body>
+<!-- 로딩 오버레이 -->
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">글을 발행하고 있습니다...</div>
+        <div style="margin-top: 10px; color: #666; font-size: 14px;">잠시만 기다려주세요.</div>
+    </div>
+</div>
+
 <div class="main-container">
 <div class="header-section">
 <h1>🛍️ 어필리에이트 상품 등록</h1>
@@ -255,7 +329,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <button type="button" class="btn-secondary" onclick="cancelKeywordInput()">취소</button>
 </div>
 </div>
-<button type="button" class="btn btn-success" onclick="saveAll()" style="width: 100%;">💾 전체 저장 (상세 정보 포함)</button>
 </div>
 <div class="products-list" id="productsList">
 <div class="empty-state">
@@ -269,6 +342,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <h2 id="currentProductTitle">상품을 선택해주세요</h2>
 <p id="currentProductSubtitle">왼쪽 목록에서 상품을 클릭하여 편집을 시작하세요.</p>
 </div>
+
+<!-- 🚀 상단 네비게이션 버튼 영역 -->
+<div class="top-navigation" id="topNavigation" style="display: none;">
+<div class="nav-buttons">
+<div class="nav-buttons-left">
+<button type="button" class="btn btn-secondary" onclick="previousProduct()">⬅️ 이전</button>
+<button type="button" class="btn btn-success" onclick="saveCurrentProduct()">💾 저장</button>
+<button type="button" class="btn btn-secondary" onclick="nextProduct()">다음 ➡️</button>
+<button type="button" class="btn btn-primary" onclick="completeProduct()">✅ 완료</button>
+</div>
+<div class="nav-divider"></div>
+<div class="nav-buttons-right">
+<button type="button" class="btn-orange" onclick="publishNow()" id="publishNowBtn">🚀 즉시 발행</button>
+</div>
+</div>
+</div>
+
 <div id="productDetailContent" style="display: none;">
 <div class="product-url-section">
 <h3>🌏 알리익스프레스 상품 URL</h3>
@@ -389,20 +479,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 </div>
 </div>
 </div>
-<div class="navigation-section">
-<button type="button" class="btn btn-secondary" onclick="previousProduct()">⬅️ 이전</button>
-<button type="button" class="btn btn-success" onclick="saveCurrentProduct()">💾 저장</button>
-<button type="button" class="btn btn-secondary" onclick="nextProduct()">다음 ➡️</button>
-<button type="button" class="btn btn-primary btn-large" onclick="completeProduct()">✅ 완료</button>
 </div>
 </div>
 </div>
 </div>
-</div>
+
 <script>
 let keywords = []; let currentKeywordIndex = -1; let currentProductIndex = -1; let currentProductData = null;
 document.addEventListener('DOMContentLoaded', function() { updateUI(); });
+
 function formatPrice(price) { if (!price) return price; return price.replace(/₩(\d)/, '₩ $1'); }
+
 function showDetailedError(title, message, debugData = null) {
     const existingModal = document.getElementById('errorModal');
     if (existingModal) { existingModal.remove(); }
@@ -414,14 +501,18 @@ function showDetailedError(title, message, debugData = null) {
     document.body.appendChild(modal);
     modal.addEventListener('click', function(e) { if (e.target === modal) { closeErrorModal(); } });
 }
+
 function copyErrorToClipboard() {
     const errorContent = document.getElementById('errorContent'); errorContent.select(); document.execCommand('copy');
     const copyBtn = event.target; const originalText = copyBtn.textContent; copyBtn.textContent = '✅ 복사됨!'; copyBtn.style.background = '#28a745';
     setTimeout(() => { copyBtn.textContent = originalText; copyBtn.style.background = '#007bff'; }, 2000);
 }
+
 function closeErrorModal() { const modal = document.getElementById('errorModal'); if (modal) { modal.remove(); } }
 document.addEventListener('keydown', function(e) { if (e.key === 'Escape') { closeErrorModal(); } });
+
 function toggleTitleGenerator() { const generator = document.getElementById('titleGenerator'); generator.style.display = generator.style.display === 'none' ? 'block' : 'none'; }
+
 async function generateTitles() {
     const keywordsInput = document.getElementById('titleKeyword').value.trim();
     if (!keywordsInput) { showDetailedError('입력 오류', '키워드를 입력해주세요.'); return; }
@@ -434,39 +525,54 @@ async function generateTitles() {
     } catch (error) { showDetailedError('제목 생성 오류', '제목 생성 중 오류가 발생했습니다.', { 'error': error.message, 'keywords': keywordsInput }); }
     finally { loading.style.display = 'none'; }
 }
+
 function displayTitles(titles) {
     const optionsDiv = document.getElementById('titleOptions'); const titlesDiv = document.getElementById('generatedTitles');
     optionsDiv.innerHTML = ''; titles.forEach((title) => { const button = document.createElement('button'); button.type = 'button'; button.className = 'title-option'; button.textContent = title; button.onclick = () => selectTitle(title); optionsDiv.appendChild(button); });
     titlesDiv.style.display = 'block';
 }
+
 function selectTitle(title) { document.getElementById('title').value = title; document.getElementById('titleGenerator').style.display = 'none'; }
+
 function toggleKeywordInput() {
     const inputSection = document.getElementById('keywordInputSection'); const isVisible = inputSection.classList.contains('show');
     if (isVisible) { inputSection.classList.remove('show'); } else { inputSection.classList.add('show'); document.getElementById('newKeywordInput').focus(); }
 }
+
 function addKeywordFromInput() {
     const input = document.getElementById('newKeywordInput'); const name = input.value.trim();
     if (name) { const keyword = { name: name, products: [] }; keywords.push(keyword); updateUI(); input.value = ''; document.getElementById('keywordInputSection').classList.remove('show'); addProduct(keywords.length - 1); } else { showDetailedError('입력 오류', '키워드를 입력해주세요.'); }
 }
+
 function cancelKeywordInput() { const input = document.getElementById('newKeywordInput'); input.value = ''; document.getElementById('keywordInputSection').classList.remove('show'); }
+
 document.addEventListener('DOMContentLoaded', function() { document.getElementById('newKeywordInput').addEventListener('keypress', function(e) { if (e.key === 'Enter') { e.preventDefault(); addKeywordFromInput(); } }); });
+
 function addKeyword() { toggleKeywordInput(); }
+
 function addProduct(keywordIndex) {
     const product = { id: Date.now() + Math.random(), url: '', name: `상품 ${keywords[keywordIndex].products.length + 1}`, status: 'empty', analysisData: null, userData: {} };
     keywords[keywordIndex].products.push(product); updateUI(); selectProduct(keywordIndex, keywords[keywordIndex].products.length - 1);
 }
+
 function selectProduct(keywordIndex, productIndex) {
     currentKeywordIndex = keywordIndex; currentProductIndex = productIndex; const product = keywords[keywordIndex].products[productIndex];
     document.querySelectorAll('.product-item').forEach(item => { item.classList.remove('active'); });
     const selectedItem = document.querySelector(`[data-keyword="${keywordIndex}"][data-product="${productIndex}"]`);
-    if (selectedItem) { selectedItem.classList.add('active'); } updateDetailPanel(product);
+    if (selectedItem) { selectedItem.classList.add('active'); } 
+    updateDetailPanel(product);
+    
+    // 🚀 상품 선택 시 상단 네비게이션 표시
+    document.getElementById('topNavigation').style.display = 'block';
 }
+
 function updateDetailPanel(product) {
     const titleEl = document.getElementById('currentProductTitle'); const subtitleEl = document.getElementById('currentProductSubtitle');
     const contentEl = document.getElementById('productDetailContent'); const urlInput = document.getElementById('productUrl');
     titleEl.textContent = product.name; subtitleEl.textContent = `키워드: ${keywords[currentKeywordIndex].name}`; urlInput.value = product.url || '';
     if (product.analysisData) { showAnalysisResult(product.analysisData); } else { hideAnalysisResult(); } contentEl.style.display = 'block';
 }
+
 async function analyzeProduct() {
     const url = document.getElementById('productUrl').value.trim();
     if (!url) { showDetailedError('입력 오류', '상품 URL을 입력해주세요.'); return; }
@@ -482,6 +588,7 @@ async function analyzeProduct() {
     } catch (error) { product.status = 'error'; showDetailedError('네트워크 오류', '상품 분석 중 네트워크 오류가 발생했습니다.', { 'error': error.message, 'stack': error.stack, 'url': url, 'timestamp': new Date().toISOString() }); }
     updateUI();
 }
+
 function showAnalysisResult(data) {
     const resultEl = document.getElementById('analysisResult'); const cardEl = document.getElementById('productCard');
     const ratingDisplay = data.rating_display ? data.rating_display.replace(/⭐/g, '').replace(/[()]/g, '').trim() : '정보 없음';
@@ -489,6 +596,7 @@ function showAnalysisResult(data) {
     cardEl.innerHTML = `<div class="product-content-split"><div class="product-image-large"><img src="${data.image_url}" alt="${data.title}" onerror="this.style.display='none'"></div><div class="product-info-all"><div class="aliexpress-logo-right"><img src="https://novacents.com/tools/images/Ali_black_logo.webp" alt="AliExpress" /></div><h3 class="product-title-right">${data.title}</h3><div class="product-price-right">${formattedPrice}</div><div class="product-rating-right"><span class="rating-stars">⭐⭐⭐⭐⭐</span><span>(고객만족도: ${ratingDisplay})</span></div><div class="product-sales-right"><strong>📦 판매량:</strong> ${data.lastest_volume || '판매량 정보 없음'}</div><div class="product-extra-info-right"><div class="info-row"><span class="info-label">상품 ID</span><span class="info-value">${data.product_id}</span></div><div class="info-row"><span class="info-label">플랫폼</span><span class="info-value">${data.platform}</span></div></div></div></div><div class="purchase-button-full"><a href="${data.affiliate_link}" target="_blank" rel="nofollow"><picture><source media="(max-width: 1600px)" srcset="https://novacents.com/tools/images/aliexpress-button-mobile.png"><img src="https://novacents.com/tools/images/aliexpress-button-pc.png" alt="알리익스프레스에서 구매하기"></picture></a></div>`;
     resultEl.classList.add('show');
 }
+
 function generateOptimizedMobileHtml(data) {
     if (!data) return;
     const ratingDisplay = data.rating_display ? data.rating_display.replace(/⭐/g, '').replace(/[()]/g, '').trim() : '정보 없음';
@@ -608,18 +716,24 @@ function generateOptimizedMobileHtml(data) {
     const previewHtml = `<div class="preview-product-card"><div class="preview-card-content"><div class="product-content-split"><div class="product-image-large"><img src="${data.image_url}" alt="${data.title}" onerror="this.style.display='none'"></div><div class="product-info-all"><div class="aliexpress-logo-right"><img src="https://novacents.com/tools/images/Ali_black_logo.webp" alt="AliExpress" /></div><h3 class="product-title-right">${data.title}</h3><div class="product-price-right">${formattedPrice}</div><div class="product-rating-right"><span class="rating-stars">⭐⭐⭐⭐⭐</span><span>(고객만족도: ${ratingDisplay})</span></div><div class="product-sales-right"><strong>📦 판매량:</strong> ${data.lastest_volume || '판매량 정보 없음'}</div></div></div><div class="purchase-button-full"><a href="${data.affiliate_link}" target="_blank" rel="nofollow"><picture><source media="(max-width: 1600px)" srcset="https://novacents.com/tools/images/aliexpress-button-mobile.png"><img src="https://novacents.com/tools/images/aliexpress-button-pc.png" alt="알리익스프레스에서 구매하기"></picture></a></div></div></div>`;
     document.getElementById('htmlPreview').innerHTML = previewHtml; document.getElementById('htmlCode').textContent = htmlCode; document.getElementById('htmlSourceSection').style.display = 'block';
 }
+
 async function copyHtmlSource() {
     const htmlCode = document.getElementById('htmlCode').textContent; const copyBtn = document.querySelector('.copy-btn');
     try { await navigator.clipboard.writeText(htmlCode); const originalText = copyBtn.textContent; copyBtn.textContent = '✅ 복사됨!'; copyBtn.classList.add('copied'); setTimeout(() => { copyBtn.textContent = originalText; copyBtn.classList.remove('copied'); }, 2000); } catch (error) { const codeEl = document.getElementById('htmlCode'); const range = document.createRange(); range.selectNodeContents(codeEl); const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range); showDetailedError('복사 알림', 'HTML 소스가 선택되었습니다. Ctrl+C로 복사하세요.'); }
 }
+
 function hideAnalysisResult() { const resultEl = document.getElementById('analysisResult'); resultEl.classList.remove('show'); document.getElementById('htmlSourceSection').style.display = 'none'; }
+
 function updateUI() { updateProductsList(); updateProgress(); }
+
 function updateProductsList() {
     const listEl = document.getElementById('productsList');
     if (keywords.length === 0) { listEl.innerHTML = `<div class="empty-state"><h3>📦 상품이 없습니다</h3><p>위의 "키워드 추가" 버튼을 클릭하여<br>첫 번째 키워드를 추가해보세요!</p></div>`; return; }
     let html = ''; keywords.forEach((keyword, keywordIndex) => { html += `<div class="keyword-group"><div class="keyword-header"><div class="keyword-info"><span class="keyword-name">📁 ${keyword.name}</span><span class="product-count">${keyword.products.length}개</span></div><div class="keyword-actions"><button type="button" class="btn btn-success btn-small" onclick="addProduct(${keywordIndex})">+상품</button></div></div>`; keyword.products.forEach((product, productIndex) => { const statusIcon = getStatusIcon(product.status); html += `<div class="product-item" data-keyword="${keywordIndex}" data-product="${productIndex}" onclick="selectProduct(${keywordIndex}, ${productIndex})"><span class="product-status">${statusIcon}</span><span class="product-name">${product.name}</span></div>`; }); html += '</div>'; }); listEl.innerHTML = html;
 }
+
 function getStatusIcon(status) { switch (status) { case 'completed': return '✅'; case 'analyzing': return '🔄'; case 'error': return '⚠️'; default: return '❌'; } }
+
 function updateProgress() {
     const totalProducts = keywords.reduce((sum, keyword) => sum + keyword.products.length, 0);
     const completedProducts = keywords.reduce((sum, keyword) => sum + keyword.products.filter(p => p.status === 'completed').length, 0);
@@ -700,7 +814,7 @@ function collectKeywordsData() {
     return keywordsData;
 }
 
-function validateAndSubmitData(formData) {
+function validateAndSubmitData(formData, isPublishNow = false) {
     // 기본 검증
     if (!formData.title || formData.title.length < 5) {
         showDetailedError('입력 오류', '제목은 5자 이상이어야 합니다.');
@@ -712,38 +826,140 @@ function validateAndSubmitData(formData) {
         return false;
     }
     
-    // 폼 데이터를 hidden input으로 설정하여 전송
-    const form = document.getElementById('affiliateForm');
-    
-    // 기존 hidden input 제거
-    const existingInputs = form.querySelectorAll('input[type="hidden"]');
-    existingInputs.forEach(input => input.remove());
-    
-    // 새로운 hidden input들 추가
-    const hiddenInputs = [
-        { name: 'title', value: formData.title },
-        { name: 'category', value: formData.category },
-        { name: 'prompt_type', value: formData.prompt_type },
-        { name: 'keywords', value: JSON.stringify(formData.keywords) },
-        { name: 'user_details', value: JSON.stringify(formData.user_details) }
-    ];
-    
-    hiddenInputs.forEach(({ name, value }) => {
-        const input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = name;
-        input.value = value;
-        form.appendChild(input);
-    });
-    
-    // 폼 전송
-    form.submit();
-    return true;
+    if (isPublishNow) {
+        // 즉시 발행용 AJAX 전송
+        return true;
+    } else {
+        // 폼 데이터를 hidden input으로 설정하여 전송
+        const form = document.getElementById('affiliateForm');
+        
+        // 기존 hidden input 제거
+        const existingInputs = form.querySelectorAll('input[type="hidden"]');
+        existingInputs.forEach(input => input.remove());
+        
+        // 새로운 hidden input들 추가
+        const hiddenInputs = [
+            { name: 'title', value: formData.title },
+            { name: 'category', value: formData.category },
+            { name: 'prompt_type', value: formData.prompt_type },
+            { name: 'keywords', value: JSON.stringify(formData.keywords) },
+            { name: 'user_details', value: JSON.stringify(formData.user_details) }
+        ];
+        
+        hiddenInputs.forEach(({ name, value }) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = value;
+            form.appendChild(input);
+        });
+        
+        // 폼 전송
+        form.submit();
+        return true;
+    }
 }
 
-// 🔧 기존 함수들 수정
-function saveAll() {
-    console.log('🚀 사용자 상세 정보 수집을 시작합니다...');
+// 🔧 수정된 버튼 기능들
+
+// 🚀 새로운 즉시 발행 기능
+async function publishNow() {
+    console.log('🚀 즉시 발행을 시작합니다...');
+    
+    // 1. 기존 키워드 데이터 수집
+    const keywordsData = collectKeywordsData();
+    
+    // 2. 사용자 입력 상세 정보 수집 (빈 값 제외)
+    const userDetails = collectUserInputDetails();
+    
+    // 3. 기본 정보 수집 (프롬프트 타입 추가)
+    const formData = {
+        title: document.getElementById('title').value.trim(),
+        category: document.getElementById('category').value,
+        prompt_type: document.getElementById('prompt_type').value,
+        keywords: keywordsData,
+        user_details: userDetails
+    };
+    
+    console.log('즉시 발행용 데이터:', formData);
+    
+    // 4. 검증
+    if (!validateAndSubmitData(formData, true)) {
+        return;
+    }
+    
+    // 5. 로딩 표시
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const publishBtn = document.getElementById('publishNowBtn');
+    
+    loadingOverlay.style.display = 'flex';
+    publishBtn.disabled = true;
+    publishBtn.textContent = '발행 중...';
+    
+    try {
+        // 6. 즉시 발행 요청
+        const response = await fetch('', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: new URLSearchParams({
+                action: 'publish_now',
+                title: formData.title,
+                category: formData.category,
+                prompt_type: formData.prompt_type,
+                keywords: JSON.stringify(formData.keywords),
+                user_details: JSON.stringify(formData.user_details)
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('✅ 글 발행이 완료되었습니다!');
+        } else {
+            showDetailedError('발행 실패', result.message);
+        }
+        
+    } catch (error) {
+        showDetailedError('발행 오류', '즉시 발행 중 오류가 발생했습니다.', {
+            'error': error.message,
+            'timestamp': new Date().toISOString()
+        });
+    } finally {
+        // 7. 로딩 해제
+        loadingOverlay.style.display = 'none';
+        publishBtn.disabled = false;
+        publishBtn.textContent = '🚀 즉시 발행';
+    }
+}
+
+// 🔧 수정된 저장 기능 (현재 상품만 저장)
+function saveCurrentProduct() {
+    if (currentKeywordIndex === -1 || currentProductIndex === -1) {
+        showDetailedError('선택 오류', '저장할 상품을 먼저 선택해주세요.');
+        return;
+    }
+    
+    const product = keywords[currentKeywordIndex].products[currentProductIndex];
+    
+    // 현재 상품의 URL 업데이트
+    const url = document.getElementById('productUrl').value.trim();
+    if (url) {
+        product.url = url;
+    }
+    
+    // 사용자 입력 상세 정보 수집하여 개별 상품에 저장
+    const userDetails = collectUserInputDetails();
+    product.userData = userDetails;
+    
+    alert('💾 현재 상품 정보가 저장되었습니다!');
+    console.log('저장된 상품 정보:', product);
+}
+
+// 🔧 수정된 완료 기능 (전체 데이터를 대기열에 저장)
+function completeProduct() {
+    console.log('✅ 전체 데이터를 대기열에 저장합니다...');
     
     // 1. 기존 키워드 데이터 수집
     const keywordsData = collectKeywordsData();
@@ -766,16 +982,34 @@ function saveAll() {
     
     // 4. 검증 및 전송
     if (validateAndSubmitData(formData)) {
-        alert('모든 정보가 발행 대기열에 추가되었습니다!');
+        // validateAndSubmitData 내부에서 폼 전송이 이루어짐
+        console.log('대기열 저장 요청이 전송되었습니다.');
     }
 }
 
-function previousProduct() { }
-function nextProduct() { }
-function saveCurrentProduct() { alert('상품이 저장되었습니다!'); }
-function completeProduct() {
-    if (currentKeywordIndex !== -1 && currentProductIndex !== -1) { const product = keywords[currentKeywordIndex].products[currentProductIndex]; product.status = 'completed'; updateUI(); alert('상품이 완료되었습니다!'); }
+function previousProduct() {
+    if (currentKeywordIndex === -1 || currentProductIndex === -1) return;
+    
+    const currentKeyword = keywords[currentKeywordIndex];
+    if (currentProductIndex > 0) {
+        selectProduct(currentKeywordIndex, currentProductIndex - 1);
+    } else if (currentKeywordIndex > 0) {
+        const prevKeyword = keywords[currentKeywordIndex - 1];
+        selectProduct(currentKeywordIndex - 1, prevKeyword.products.length - 1);
+    }
 }
+
+function nextProduct() {
+    if (currentKeywordIndex === -1 || currentProductIndex === -1) return;
+    
+    const currentKeyword = keywords[currentKeywordIndex];
+    if (currentProductIndex < currentKeyword.products.length - 1) {
+        selectProduct(currentKeywordIndex, currentProductIndex + 1);
+    } else if (currentKeywordIndex < keywords.length - 1) {
+        selectProduct(currentKeywordIndex + 1, 0);
+    }
+}
+
 document.getElementById('titleKeyword').addEventListener('keypress', function(e) { if (e.key === 'Enter') { e.preventDefault(); generateTitles(); } });
 </script>
 </body>
