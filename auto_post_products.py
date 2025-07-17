@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 
 """
-알리익스프레스 전용 어필리에이트 상품 자동 등록 시스템 (사용자 상세 정보 활용 버전)
+알리익스프레스 전용 어필리에이트 상품 자동 등록 시스템 (4가지 프롬프트 템플릿 시스템)
 키워드 입력 → 알리익스프레스 API → AI 콘텐츠 생성 → 워드프레스 자동 발행
 
 작성자: Claude AI
 날짜: 2025-07-17
-버전: v2.1 (사용자 상세 정보 활용 + E-E-A-T 최적화)
+버전: v3.0 (4가지 프롬프트 템플릿 시스템 적용)
 """
 
 import os
@@ -19,6 +19,7 @@ import traceback
 import google.generativeai as genai
 from datetime import datetime
 from dotenv import load_dotenv
+from prompt_templates import PromptTemplates
 
 # 알리익스프레스 SDK 경로 추가
 sys.path.append('/home/novacents/aliexpress-sdk')
@@ -359,189 +360,70 @@ class AliExpressPostingSystem:
         print(f"[✅] 알리익스프레스 상품 처리 완료: {len(processed_products)}개")
         return processed_products
     
-    def format_user_details_for_prompt(self, user_details):
-        """사용자 상세 정보를 Gemini 프롬프트용으로 포맷팅"""
-        if not user_details:
-            return "사용자 상세 정보: 제공되지 않음"
-        
-        formatted_sections = []
-        
-        # 기능 및 스펙
-        if 'specs' in user_details and user_details['specs']:
-            specs_text = "**기능 및 스펙:**\n"
-            for key, value in user_details['specs'].items():
-                if key == 'main_function':
-                    specs_text += f"- 주요 기능: {value}\n"
-                elif key == 'size_capacity':
-                    specs_text += f"- 크기/용량: {value}\n"
-                elif key == 'color':
-                    specs_text += f"- 색상: {value}\n"
-                elif key == 'material':
-                    specs_text += f"- 재질/소재: {value}\n"
-                elif key == 'power_battery':
-                    specs_text += f"- 전원/배터리: {value}\n"
-            formatted_sections.append(specs_text)
-        
-        # 효율성 분석
-        if 'efficiency' in user_details and user_details['efficiency']:
-            efficiency_text = "**효율성 분석:**\n"
-            for key, value in user_details['efficiency'].items():
-                if key == 'problem_solving':
-                    efficiency_text += f"- 해결하는 문제: {value}\n"
-                elif key == 'time_saving':
-                    efficiency_text += f"- 시간 절약 효과: {value}\n"
-                elif key == 'space_efficiency':
-                    efficiency_text += f"- 공간 활용: {value}\n"
-                elif key == 'cost_saving':
-                    efficiency_text += f"- 비용 절감: {value}\n"
-            formatted_sections.append(efficiency_text)
-        
-        # 사용 시나리오
-        if 'usage' in user_details and user_details['usage']:
-            usage_text = "**사용 시나리오:**\n"
-            for key, value in user_details['usage'].items():
-                if key == 'usage_location':
-                    usage_text += f"- 주요 사용 장소: {value}\n"
-                elif key == 'usage_frequency':
-                    usage_text += f"- 사용 빈도: {value}\n"
-                elif key == 'target_users':
-                    usage_text += f"- 적합한 사용자: {value}\n"
-                elif key == 'usage_method':
-                    usage_text += f"- 사용법 요약: {value}\n"
-            formatted_sections.append(usage_text)
-        
-        # 장점 및 주의사항
-        if 'benefits' in user_details and user_details['benefits']:
-            benefits_text = "**장점 및 주의사항:**\n"
-            if 'advantages' in user_details['benefits'] and user_details['benefits']['advantages']:
-                benefits_text += "- 핵심 장점:\n"
-                for i, advantage in enumerate(user_details['benefits']['advantages'], 1):
-                    benefits_text += f"  {i}. {advantage}\n"
-            if 'precautions' in user_details['benefits']:
-                benefits_text += f"- 주의사항: {user_details['benefits']['precautions']}\n"
-            formatted_sections.append(benefits_text)
-        
-        return "\n".join(formatted_sections) if formatted_sections else "사용자 상세 정보: 제공되지 않음"
-    
     def generate_content_with_gemini(self, job_data, products):
-        """🚀 Gemini API로 블로그 콘텐츠 생성 (사용자 상세 정보 활용 + E-E-A-T 최적화)"""
+        """🚀 Gemini API로 4가지 프롬프트 템플릿 기반 블로그 콘텐츠 생성"""
         try:
-            print(f"[🤖] Gemini AI로 '{job_data['title']}' 콘텐츠를 생성합니다...")
+            # 프롬프트 타입 추출 (기본값: essential_items)
+            prompt_type = job_data.get('prompt_type', 'essential_items')
+            title = job_data.get('title', '')
             
             # 키워드 정보 정리
-            keywords = [kw["name"] for kw in job_data["keywords"]]
+            keywords = [kw["name"] for kw in job_data.get("keywords", [])]
             
-            # 상품 정보 정리
+            # 사용자 상세 정보 추출
+            user_details = job_data.get('user_details', {})
+            has_user_details = job_data.get('has_user_details', False)
+            
+            print(f"[🤖] Gemini AI로 '{title}' 콘텐츠를 생성합니다...")
+            print(f"[🎯] 프롬프트 타입: {prompt_type}")
+            print(f"[📝] 사용자 상세 정보: {'포함' if has_user_details else '없음'}")
+            
+            # 상품 정보 추가 (프롬프트에 포함할 상품 요약)
             product_summaries = []
             for product in products:
                 summary = f"- {product['title']} (가격: {product['price']}, 평점: {product['rating_display']}, 판매량: {product['lastest_volume']})"
                 product_summaries.append(summary)
             
-            # 🚀 사용자 상세 정보 포맷팅
-            user_details_formatted = ""
-            has_user_details = job_data.get('has_user_details', False)
-            if has_user_details and job_data.get('user_details'):
-                user_details_formatted = self.format_user_details_for_prompt(job_data['user_details'])
-                print(f"[✅] 사용자 상세 정보를 Gemini 프롬프트에 포함합니다.")
-            else:
-                user_details_formatted = "사용자 상세 정보: 제공되지 않음 (일반적인 상품 분석 기반으로 작성)"
-                print(f"[ℹ️] 사용자 상세 정보가 없어 일반적인 분석으로 진행합니다.")
+            # 상품 정보를 포함한 상세 정보 구성
+            enhanced_user_details = user_details.copy() if user_details else {}
+            enhanced_user_details['product_summaries'] = product_summaries
             
-            # 🚀 E-E-A-T 최적화 + 사용자 정보 활용 프롬프트 생성
-            prompt = f"""당신은 대한민국 최고의 온라인 쇼핑 전문가이자 알리익스프레스 전문 상품 리뷰어입니다. 
-15년 이상의 전자상거래 경험과 3,000건 이상의 상품 리뷰 경험을 보유하고 있으며, 특히 알리익스프레스 상품에 대한 전문 지식이 뛰어납니다.
+            # 🚀 4가지 프롬프트 템플릿 시스템 활용
+            prompt = PromptTemplates.get_prompt_by_type(
+                prompt_type=prompt_type,
+                title=title,
+                keywords=keywords,
+                user_details=enhanced_user_details
+            )
+            
+            # 상품 정보를 프롬프트에 추가
+            if product_summaries:
+                prompt += f"\n\n**알리익스프레스 상품 정보:**\n{chr(10).join(product_summaries)}\n\n"
+            
+            # 프롬프트 마지막에 공통 요구사항 추가
+            prompt += """
+### ⚠️ 중요한 공통 요구사항 ###
 
-아래 제공되는 정보를 바탕으로, 한국 소비자들을 위한 매우 실용적이고 신뢰할 수 있는 상품 추천 블로그 글을 작성해주세요.
+**HTML 포맷팅 필수:**
+- 마크다운 문법(## ###) 사용 절대 금지
+- 반드시 HTML 태그 사용: <h2>, <h3>, <p>
+- 글 길이: 2500-3000자 (충분한 정보 제공)
+- 이모지 적절 활용으로 가독성 향상
 
-### 📋 제공된 정보 ###
-**글 제목:** {job_data['title']}
-**핵심 키워드:** {', '.join(keywords)}
+**SEO 최적화 필수:**
+- 키워드 자연스럽게 3-5회 배치
+- 키워드 밀도 2-3% 유지
+- 제목 태그와 소제목 활용
+- 구조화된 정보 제공
 
-**알리익스프레스 상품 정보:**
-{chr(10).join(product_summaries)}
+**절대 금지사항:**
+- 상품 링크나 버튼 HTML 코드 포함 금지 (별도 삽입)
+- 허위 정보나 과장된 표현 금지
+- 다른 쇼핑몰 언급 금지 (알리익스프레스 전용)
 
-**사용자 상세 정보 (중요!):**
-{user_details_formatted}
-
-### ✅ E-E-A-T 최적화 작성 요구사항 ###
-
-1. **Experience (경험) 강조**:
-   - 실제 사용 경험 기반의 구체적인 설명
-   - 사용자 제공 정보를 바탕으로 한 현실적인 사용 시나리오 제시
-   - "실제로 사용해본 결과", "3개월 사용 후기" 등의 경험 기반 표현 사용
-
-2. **Expertise (전문성) 보여주기**:
-   - 상품의 기술적 특징과 스펙에 대한 전문적 분석
-   - 사용자 제공 스펙 정보를 바탕으로 한 심층 해석
-   - 알리익스프레스 구매 노하우와 전문 팁 제공
-
-3. **Authoritativeness (권위성) 구축**:
-   - 구체적인 수치와 데이터 활용 (가격, 평점, 판매량)
-   - 사용자 제공 효율성 데이터를 근거로 한 객관적 분석
-   - 비교 분석과 검증된 정보 제공
-
-4. **Trustworthiness (신뢰성) 확보**:
-   - 장점과 단점을 균형있게 제시
-   - 사용자 제공 주의사항을 포함한 솔직한 리뷰
-   - 투명한 어필리에이트 관계 언급
-
-### 📝 글 구조 (총 3000-4000자) ###
-
-1. **🎯 도입부 (300-400자)**:
-   - 2025년 트렌드와 함께 {keywords[0]} 키워드 강조
-   - 왜 이 상품들이 필요한지에 대한 명확한 문제 제기
-   - 사용자 제공 '해결하는 문제' 정보 적극 활용
-
-2. **⭐ 각 키워드별 상품 전문 분석 (키워드당 600-800자)**:
-   - 사용자 제공 기능/스펙 정보를 바탕으로 한 상세 분석
-   - 효율성 분석 정보 활용한 구체적 효과 설명
-   - 실제 사용 시나리오와 적합한 사용자 정보 반영
-   - 장단점 균형있는 제시 (사용자 제공 장점과 주의사항 포함)
-
-3. **🌏 알리익스프레스 스마트 쇼핑 가이드 (500-600자)**:
-   - 배송, 관세, 환율 변동 대응법
-   - 셀러 평가와 리뷰 확인 방법
-   - 분쟁 해결과 환불 프로세스
-   - 할인 쿠폰과 세일 시기 활용법
-
-4. **💡 2025년 구매 전략 (400-500자)**:
-   - 가격 비교와 최적 구매 시기
-   - 사용자 상황별 맞춤 추천 (제공된 타겟 사용자 정보 활용)
-   - 예산별 선택 가이드
-   - 장기 사용 가치 분석
-
-5. **✅ 결론 및 최종 추천 (300-400자)**:
-   - 가장 추천하는 상품과 명확한 이유
-   - 2025년 전망과 구매 결정 도움
-   - 독자 행동 유도 (비교 검토 후 현명한 선택 강조)
-
-### ⚠️ 중요 작성 원칙 ###
-
-**콘텐츠 품질**:
-- 각 키워드를 3-5회 자연스럽게 언급
-- 사용자 제공 정보를 최대한 활용하여 개인화된 콘텐츠 생성
-- 구체적인 수치와 실제 경험 기반 설명
-- 알리익스프레스 특화 정보 (배송 기간, 관세, 환율 등) 강조
-
-**HTML 포맷팅**:
-- H2 태그로 주요 섹션 구분
-- H3 태그로 각 키워드별 소제목
-- 문단은 p 태그 사용
-- 이모지 적절히 활용하여 가독성 향상
-
-**구매 전환 최적화**:
-- 구매 결정을 돕는 구체적 근거 제시
-- 긴급성과 희소성 적절히 활용
-- 신뢰감을 주는 전문적 톤앤매너 유지
-
-### ⚠️ 절대 금지사항 ###
-- 마크다운 문법(## ###) 사용 금지, 반드시 HTML 태그 사용
-- 상품 링크나 버튼 관련 내용 포함하지 마세요 (별도로 삽입됩니다)
-- 과장된 표현이나 허위 정보 금지
-- 사용자 제공 정보와 모순되는 내용 작성 금지
-
-**핵심 키워드 '{keywords[0]}'를 가장 중요하게 다루고, 사용자가 제공한 상세 정보를 최대한 활용하여 개인화되고 전문적인 고품질 글을 작성해주세요.**"""
-
+위 조건을 모두 준수하여 높은 품질의 블로그 글을 작성해주세요.
+"""
+            
             # Gemini API 호출
             response = self.gemini_model.generate_content(prompt)
             base_content = response.text
@@ -559,7 +441,7 @@ class AliExpressPostingSystem:
             # 상품 카드 삽입
             final_content = self.insert_product_cards(base_content, products)
             
-            print(f"[✅] Gemini AI가 {len(base_content)}자의 사용자 맞춤형 콘텐츠를 생성했습니다.")
+            print(f"[✅] Gemini AI가 {len(base_content)}자의 {prompt_type} 스타일 콘텐츠를 생성했습니다.")
             return final_content
             
         except Exception as e:
@@ -660,11 +542,18 @@ class AliExpressPostingSystem:
                 "Content-Type": "application/json"
             }
             
-            # 🚀 SEO 메타 설명 개선 (사용자 정보 반영)
-            meta_description = f"{job_data['title']} - 2025년 알리익스프레스 최신 상품 추천 및 전문가 구매 가이드"
-            if job_data.get('has_user_details') and job_data.get('user_details'):
-                if 'efficiency' in job_data['user_details']:
-                    meta_description += ". 실제 사용 경험 기반 상세 리뷰"
+            # 🚀 SEO 메타 설명 개선 (프롬프트 타입 반영)
+            prompt_type = job_data.get('prompt_type', 'essential_items')
+            prompt_type_names = {
+                'essential_items': '필수 아이템',
+                'friend_review': '실제 후기',
+                'professional_analysis': '전문 분석',
+                'amazing_discovery': '혁신 제품'
+            }
+            
+            meta_description = f"{job_data['title']} - {prompt_type_names.get(prompt_type, '상품')} 추천 및 2025년 알리익스프레스 구매 가이드"
+            if job_data.get('has_user_details'):
+                meta_description += ". 사용자 맞춤 정보 기반 상세 리뷰"
             
             # 게시물 데이터
             post_data = {
@@ -674,7 +563,7 @@ class AliExpressPostingSystem:
                 "categories": [job_data["category_id"]],
                 "meta": {
                     "yoast_wpseo_metadesc": meta_description,
-                    "yoast_wpseo_focuskw": job_data["keywords"][0]["name"] if job_data["keywords"] else ""
+                    "yoast_wpseo_focuskw": job_data["keywords"][0]["name"] if job_data.get("keywords") else ""
                 }
             }
             
@@ -703,7 +592,8 @@ class AliExpressPostingSystem:
         """발행 로그 저장"""
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            log_entry = f"[{timestamp}] {job_data['title']} - {post_url}\n"
+            prompt_type = job_data.get('prompt_type', 'essential_items')
+            log_entry = f"[{timestamp}] {job_data['title']} ({prompt_type}) - {post_url}\n"
             
             with open(PUBLISHED_LOG_FILE, "a", encoding="utf-8") as f:
                 f.write(log_entry)
@@ -712,15 +602,28 @@ class AliExpressPostingSystem:
             print(f"[❌] 발행 로그 저장 중 오류: {e}")
             
     def process_job(self, job_data):
-        """단일 작업 처리 (사용자 상세 정보 활용)"""
+        """단일 작업 처리 (4가지 프롬프트 템플릿 시스템)"""
         job_id = job_data["queue_id"]
         title = job_data["title"]
+        prompt_type = job_data.get('prompt_type', 'essential_items')
         has_user_details = job_data.get('has_user_details', False)
         
-        self.log_message(f"[🚀] 작업 시작: {title} (ID: {job_id}) - 사용자 상세 정보: {'포함' if has_user_details else '없음'}")
+        # 프롬프트 타입명 매핑
+        prompt_type_names = {
+            'essential_items': '필수템형 🎯',
+            'friend_review': '친구 추천형 👫',
+            'professional_analysis': '전문 분석형 📊',
+            'amazing_discovery': '놀라움 발견형 ✨'
+        }
         
-        # 텔레그램 알림에 사용자 정보 포함 여부 표시
-        telegram_start_msg = f"🚀 알리익스프레스 자동화 시작\n제목: {title}"
+        prompt_name = prompt_type_names.get(prompt_type, '기본형')
+        
+        self.log_message(f"[🚀] 작업 시작: {title} (ID: {job_id})")
+        self.log_message(f"[🎯] 프롬프트: {prompt_name}")
+        self.log_message(f"[📝] 사용자 정보: {'포함' if has_user_details else '없음'}")
+        
+        # 텔레그램 알림
+        telegram_start_msg = f"🚀 알리익스프레스 자동화 시작\n제목: {title}\n프롬프트: {prompt_name}"
         if has_user_details:
             telegram_start_msg += "\n🎯 사용자 맞춤 정보 활용"
         
@@ -736,7 +639,7 @@ class AliExpressPostingSystem:
             if not products:
                 raise Exception("알리익스프레스 상품 처리 실패")
                 
-            # 2. Gemini로 콘텐츠 생성 (사용자 상세 정보 활용)
+            # 2. Gemini로 콘텐츠 생성 (4가지 프롬프트 템플릿 시스템)
             content = self.generate_content_with_gemini(job_data, products)
             
             if not content:
@@ -750,8 +653,8 @@ class AliExpressPostingSystem:
                 self.update_job_status(job_id, "completed")
                 self.log_message(f"[✅] 작업 완료: {title} -> {post_url}")
                 
-                # 성공 알림에 사용자 정보 활용 여부 표시
-                success_msg = f"✅ 알리익스프레스 자동화 완료\n제목: {title}\nURL: {post_url}\n상품 수: {len(products)}개"
+                # 성공 알림
+                success_msg = f"✅ 알리익스프레스 자동화 완료\n제목: {title}\n프롬프트: {prompt_name}\nURL: {post_url}\n상품 수: {len(products)}개"
                 if has_user_details:
                     success_msg += "\n🎯 사용자 맞춤 정보 반영"
                 
@@ -768,6 +671,7 @@ class AliExpressPostingSystem:
             self.send_telegram_notification(
                 f"❌ 알리익스프레스 자동화 실패\n"
                 f"제목: {title}\n"
+                f"프롬프트: {prompt_name}\n"
                 f"오류: {error_msg}"
             )
             return False
@@ -775,7 +679,7 @@ class AliExpressPostingSystem:
     def run(self):
         """메인 실행 함수"""
         print("=" * 60)
-        print("🌏 알리익스프레스 전용 어필리에이트 자동화 시스템 시작 (사용자 상세 정보 지원)")
+        print("🌏 알리익스프레스 전용 어필리에이트 자동화 시스템 시작 (4가지 프롬프트 템플릿)")
         print("=" * 60)
         
         # 1. 설정 로드
@@ -807,7 +711,7 @@ class AliExpressPostingSystem:
                 
         # 4. 완료 메시지
         remaining_jobs = len(pending_jobs) - processed_count
-        completion_message = f"[🎉] 자동화 완료! 처리: {processed_count}개, 남은 작업: {remaining_jobs}개"
+        completion_message = f"[🎉] 4가지 프롬프트 템플릿 자동화 완료! 처리: {processed_count}개, 남은 작업: {remaining_jobs}개"
         
         self.log_message(completion_message)
         self.send_telegram_notification(completion_message)
