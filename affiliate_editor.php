@@ -226,10 +226,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <div class="prompt-section">
 <label for="prompt_type" style="color: rgba(255,255,255,0.9); margin-bottom: 8px; display: block;">프롬프트 스타일</label>
 <select id="prompt_type" name="prompt_type" required>
-<option value="essential_guide" selected>🎯 주제별 필수템형</option>
-<option value="friend_recommendation">👫 친구 추천형</option>
-<option value="expert_analysis">📊 전문 분석형</option>
-<option value="amazing_discovery">✨ 놀라움 발견형</option>
+<option value="essential_guide" selected>주제별 필수템형</option>
+<option value="friend_recommendation">친구 추천형</option>
+<option value="expert_analysis">전문 분석형</option>
+<option value="amazing_discovery">놀라움 발견형</option>
 </select>
 </div>
 </div>
