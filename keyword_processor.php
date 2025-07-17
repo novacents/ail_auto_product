@@ -1,6 +1,6 @@
 <?php
 /**
- * 어필리에이트 상품 키워드 데이터 처리기 (완전히 새롭게 재설계된 독립 버전)
+ * 어필리에이트 상품 키워드 데이터 처리기 (완전히 새롭게 재설계된 독립 버전 + 사용자 상세 정보 지원)
  * affiliate_editor.php에서 POST로 전송된 데이터를 처리하고 큐 파일에 저장합니다.
  * 워드프레스 환경에 전혀 종속되지 않으며, 순수 PHP로만 작동합니다.
  *
@@ -28,7 +28,7 @@ function debug_log($message) {
 }
 
 // 스크립트 시작 시 즉시 디버그 로그 기록
-debug_log("=== keyword_processor.php 시작 (새 버전) ===");
+debug_log("=== keyword_processor.php 시작 (사용자 상세 정보 지원 버전) ===");
 debug_log("PHP Version: " . phpversion());
 debug_log("Request Method: " . ($_SERVER['REQUEST_METHOD'] ?? 'N/A'));
 debug_log("POST Data Empty: " . (empty($_POST) ? 'YES' : 'NO'));
@@ -286,10 +286,91 @@ function get_category_name($category_id) {
     return $categories[$category_id] ?? '알 수 없는 카테고리';
 }
 
+// 🚀 11. 새로 추가된 사용자 상세 정보 처리 함수들
+function parse_user_details($user_details_json) {
+    debug_log("parse_user_details: Parsing user details JSON.");
+    
+    if (empty($user_details_json)) {
+        debug_log("parse_user_details: Empty user details JSON provided.");
+        return null;
+    }
+    
+    try {
+        $user_details = json_decode($user_details_json, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            debug_log("parse_user_details: JSON parsing error: " . json_last_error_msg());
+            return null;
+        }
+        
+        debug_log("parse_user_details: Successfully parsed user details with " . count($user_details) . " sections.");
+        return $user_details;
+        
+    } catch (Exception $e) {
+        debug_log("parse_user_details: Exception while parsing user details: " . $e->getMessage());
+        return null;
+    }
+}
 
-// 11. 입력 데이터 검증 및 정리 함수
+function validate_user_details($user_details) {
+    debug_log("validate_user_details: Validating user details structure.");
+    
+    if (!is_array($user_details)) {
+        debug_log("validate_user_details: User details is not an array.");
+        return false;
+    }
+    
+    $allowed_sections = ['specs', 'efficiency', 'usage', 'benefits'];
+    $valid_sections = 0;
+    
+    foreach ($user_details as $section_name => $section_data) {
+        if (in_array($section_name, $allowed_sections) && is_array($section_data)) {
+            $valid_sections++;
+            debug_log("validate_user_details: Valid section found: {$section_name} with " . count($section_data) . " fields.");
+        } else {
+            debug_log("validate_user_details: Invalid or unknown section: {$section_name}");
+        }
+    }
+    
+    debug_log("validate_user_details: Found {$valid_sections} valid sections out of " . count($user_details) . " total sections.");
+    return $valid_sections > 0; // 최소 하나의 유효한 섹션이 있으면 통과
+}
+
+function format_user_details_summary($user_details) {
+    $summary = [];
+    
+    if (isset($user_details['specs']) && is_array($user_details['specs'])) {
+        $specs_count = count($user_details['specs']);
+        $summary[] = "기능/스펙: {$specs_count}개 항목";
+    }
+    
+    if (isset($user_details['efficiency']) && is_array($user_details['efficiency'])) {
+        $efficiency_count = count($user_details['efficiency']);
+        $summary[] = "효율성 분석: {$efficiency_count}개 항목";
+    }
+    
+    if (isset($user_details['usage']) && is_array($user_details['usage'])) {
+        $usage_count = count($user_details['usage']);
+        $summary[] = "사용 시나리오: {$usage_count}개 항목";
+    }
+    
+    if (isset($user_details['benefits']) && is_array($user_details['benefits'])) {
+        $benefits_count = 0;
+        if (isset($user_details['benefits']['advantages']) && is_array($user_details['benefits']['advantages'])) {
+            $benefits_count += count($user_details['benefits']['advantages']);
+        }
+        if (isset($user_details['benefits']['precautions'])) {
+            $benefits_count += 1;
+        }
+        $summary[] = "장점/주의사항: {$benefits_count}개 항목";
+    }
+    
+    return implode(', ', $summary);
+}
+
+
+// 12. 입력 데이터 검증 및 정리 함수 (사용자 상세 정보 지원 추가)
 function validate_input_data($data) {
-    debug_log("validate_input_data: Starting validation.");
+    debug_log("validate_input_data: Starting validation with user details support.");
     $errors = [];
 
     if (empty($data['title']) || strlen(trim($data['title'])) < 5) {
@@ -336,6 +417,16 @@ function validate_input_data($data) {
             }
         }
     }
+    
+    // 🚀 사용자 상세 정보 검증 (선택사항이므로 오류는 아님)
+    if (!empty($data['user_details'])) {
+        $user_details = parse_user_details($data['user_details']);
+        if ($user_details !== null && !validate_user_details($user_details)) {
+            debug_log("validate_input_data: User details validation failed, but continuing as it's optional.");
+            // 오류로 처리하지 않음 - 선택사항이므로
+        }
+    }
+    
     debug_log("validate_input_data: Validation finished with " . count($errors) . " errors.");
     return $errors;
 }
@@ -382,23 +473,25 @@ function clean_affiliate_links($keywords_raw) {
 }
 
 
-// 12. 메인 처리 로직
+// 13. 메인 처리 로직 (사용자 상세 정보 지원 추가)
 function main_process() {
-    debug_log("main_process: Main processing started.");
+    debug_log("main_process: Main processing started with user details support.");
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         debug_log("main_process: Invalid request method. Not a POST request.");
         redirect_to_editor(false, ['error' => '잘못된 요청 방식입니다. POST 메서드만 허용됩니다.']);
     }
 
-    // Input data collection
+    // Input data collection (사용자 상세 정보 포함)
     $input_data = [
         'title' => clean_input($_POST['title'] ?? ''),
         'category' => clean_input($_POST['category'] ?? ''),
-        'keywords' => $_POST['keywords'] ?? []
+        'keywords' => $_POST['keywords'] ?? [],
+        'user_details' => $_POST['user_details'] ?? null // 🚀 새로 추가된 사용자 상세 정보
     ];
+    
     debug_log("main_process: Input data collected: " . json_encode($input_data, JSON_UNESCAPED_UNICODE));
-    main_log("Input data received: Title='" . $input_data['title'] . "', Category=" . $input_data['category'] . ", Keywords=" . count($input_data['keywords']) . ".");
+    main_log("Input data received: Title='" . $input_data['title'] . "', Category=" . $input_data['category'] . ", Keywords=" . count($input_data['keywords']) . ", User Details=" . (empty($input_data['user_details']) ? 'No' : 'Yes') . ".");
 
     // Data validation
     $validation_errors = validate_input_data($input_data);
@@ -422,14 +515,29 @@ function main_process() {
     }
     debug_log("main_process: Product links cleaned. " . count($cleaned_keywords) . " keywords remain.");
 
-    // Create queue data structure
+    // 🚀 사용자 상세 정보 처리
+    $user_details_data = null;
+    if (!empty($input_data['user_details'])) {
+        $user_details_data = parse_user_details($input_data['user_details']);
+        if ($user_details_data !== null && validate_user_details($user_details_data)) {
+            debug_log("main_process: User details successfully processed: " . format_user_details_summary($user_details_data));
+        } else {
+            debug_log("main_process: User details provided but failed validation. Continuing without user details.");
+            $user_details_data = null;
+        }
+    } else {
+        debug_log("main_process: No user details provided.");
+    }
+
+    // Create queue data structure (사용자 상세 정보 포함)
     $queue_data = [
         'queue_id' => date('YmdHis') . '_' . random_int(10000, 99999), // Unique ID
         'title' => $input_data['title'],
         'category_id' => (int)$input_data['category'],
         'category_name' => get_category_name((int)$input_data['category']),
         'keywords' => $cleaned_keywords,
-        'processing_mode' => 'link_based', // 새로운 링크 기반 모드 식별자
+        'user_details' => $user_details_data, // 🚀 새로 추가된 사용자 상세 정보
+        'processing_mode' => 'link_based_with_details', // 새로운 처리 모드
         'link_conversion_required' => true, // 링크 변환 필요 여부
         'conversion_status' => [
             'coupang_converted' => 0,
@@ -441,8 +549,10 @@ function main_process() {
         'status' => 'pending', // Initial status
         'priority' => 1, // Default priority
         'attempts' => 0,
-        'last_error' => null
+        'last_error' => null,
+        'has_user_details' => ($user_details_data !== null) // 사용자 상세 정보 존재 여부
     ];
+    
     // 링크 카운트 계산
     $coupang_total = 0;
     $aliexpress_total = 0;
@@ -455,6 +565,7 @@ function main_process() {
     
     debug_log("main_process: Queue data structure created. ID: " . $queue_data['queue_id']);
     debug_log("main_process: Link counts - Coupang: {$coupang_total}, AliExpress: {$aliexpress_total}");
+    debug_log("main_process: User details included: " . ($queue_data['has_user_details'] ? 'Yes' : 'No'));
 
     // Add to queue file
     if (!add_to_queue($queue_data)) {
@@ -475,9 +586,17 @@ function main_process() {
     $telegram_success_msg .= "• 제목: " . $input_data['title'] . "\n";
     $telegram_success_msg .= "• 카테고리: " . $queue_data['category_name'] . "\n";
     $telegram_success_msg .= "• 키워드 수: " . count($cleaned_keywords) . "개\n";
-    $telegram_success_msg .= "• 처리 모드: 링크 기반 자동 변환\n";
+    $telegram_success_msg .= "• 처리 모드: 링크 기반 + 사용자 상세 정보\n";
     $telegram_success_msg .= "• 쿠팡 링크: " . $coupang_total . "개\n";
     $telegram_success_msg .= "• 알리익스프레스 링크: " . $aliexpress_total . "개\n";
+    
+    // 🚀 사용자 상세 정보 알림 추가
+    if ($user_details_data !== null) {
+        $telegram_success_msg .= "• 사용자 상세 정보: " . format_user_details_summary($user_details_data) . "\n";
+    } else {
+        $telegram_success_msg .= "• 사용자 상세 정보: 제공되지 않음\n";
+    }
+    
     $telegram_success_msg .= "• 큐 ID: " . $queue_data['queue_id'] . "\n";
     $telegram_success_msg .= "• 등록 시간: " . $queue_data['created_at'] . "\n\n";
     $telegram_success_msg .= "📊 <b>현재 큐 상태</b>\n";
@@ -489,7 +608,7 @@ function main_process() {
     }
     $telegram_success_msg .= "\n🚀 자동화 스크립트가 순차적으로 처리할 예정입니다.";
     send_telegram_notification($telegram_success_msg);
-    main_log("Item successfully added to queue. Queue stats: " . json_encode($stats));
+    main_log("Item successfully added to queue with user details. Queue stats: " . json_encode($stats));
 
     // Redirect to editor with success message
     redirect_to_editor(true, ['success' => '1']);
