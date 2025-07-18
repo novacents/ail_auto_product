@@ -943,7 +943,7 @@ function addIfNotEmpty(obj, key, elementId) {
     if (value) obj[key] = value;
 }
 
-// 🔧 수정된 키워드 데이터 수집 함수 - keyword_processor.php가 기대하는 형식으로 변경
+// 🔧 강화된 키워드 데이터 수집 함수 - 빈 URL 필터링 개선
 function collectKeywordsData() {
     console.log('collectKeywordsData: Starting keyword data collection...');
     const keywordsData = [];
@@ -958,17 +958,29 @@ function collectKeywordsData() {
             aliexpress: [] // 알리익스프레스 링크 배열
         };
         
-        // 각 키워드의 상품 URL들 수집
+        // 각 키워드의 상품 URL들 수집 - 더 엄격한 유효성 검사
         keyword.products.forEach((product, productIndex) => {
-            if (product.url && product.url.trim()) {
-                console.log(`  Adding product ${productIndex}: ${product.url}`);
-                keywordData.aliexpress.push(product.url.trim());
+            console.log(`  Checking product ${productIndex}: "${product.url}"`);
+            
+            // 🔧 더 엄격한 URL 유효성 검사
+            if (product.url && 
+                typeof product.url === 'string' && 
+                product.url.trim() !== '' && 
+                product.url.trim() !== 'undefined' && 
+                product.url.trim() !== 'null' &&
+                product.url.includes('aliexpress.com')) {
+                
+                const trimmedUrl = product.url.trim();
+                console.log(`    Valid URL found: ${trimmedUrl}`);
+                keywordData.aliexpress.push(trimmedUrl);
+            } else {
+                console.log(`    Invalid or empty URL skipped: "${product.url}"`);
             }
         });
         
         // 유효한 링크가 있는 키워드만 추가
         if (keywordData.aliexpress.length > 0) {
-            console.log(`  Keyword "${keyword.name}" added with ${keywordData.aliexpress.length} links`);
+            console.log(`  Keyword "${keyword.name}" added with ${keywordData.aliexpress.length} valid links`);
             keywordsData.push(keywordData);
         } else {
             console.log(`  Keyword "${keyword.name}" skipped - no valid links`);
@@ -976,6 +988,8 @@ function collectKeywordsData() {
     });
     
     console.log('Final keywords data:', keywordsData);
+    console.log('Total keywords with valid data:', keywordsData.length);
+    
     return keywordsData;
 }
 
@@ -996,18 +1010,32 @@ function validateAndSubmitData(formData, isPublishNow = false) {
     
     // 각 키워드에 유효한 링크가 있는지 확인
     let hasValidLinks = false;
+    let totalValidLinks = 0;
+    
     formData.keywords.forEach(keyword => {
         if (keyword.aliexpress && keyword.aliexpress.length > 0) {
-            hasValidLinks = true;
+            // 빈 문자열이 아닌 실제 URL만 카운트
+            const validUrls = keyword.aliexpress.filter(url => 
+                url && 
+                typeof url === 'string' && 
+                url.trim() !== '' && 
+                url.includes('aliexpress.com')
+            );
+            
+            if (validUrls.length > 0) {
+                hasValidLinks = true;
+                totalValidLinks += validUrls.length;
+                console.log(`Keyword "${keyword.name}" has ${validUrls.length} valid URLs`);
+            }
         }
     });
     
-    if (!hasValidLinks) {
-        showDetailedError('입력 오류', '각 키워드에 최소 하나의 유효한 상품 링크가 있어야 합니다.');
+    if (!hasValidLinks || totalValidLinks === 0) {
+        showDetailedError('입력 오류', '각 키워드에 최소 하나의 유효한 알리익스프레스 상품 링크가 있어야 합니다.\n\n현재 상태:\n- URL을 입력했는지 확인하세요\n- 분석 버튼을 클릭했는지 확인하세요\n- 알리익스프레스 URL인지 확인하세요');
         return false;
     }
     
-    console.log('Validation passed!');
+    console.log(`Validation passed! Total valid links: ${totalValidLinks}`);
     
     if (isPublishNow) {
         // 즉시 발행용 AJAX 전송
