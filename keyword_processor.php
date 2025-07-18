@@ -1,11 +1,11 @@
 <?php
 /**
- * 어필리에이트 상품 키워드 데이터 처리기 (4가지 프롬프트 템플릿 시스템 + 즉시 발행 지원)
+ * 어필리에이트 상품 키워드 데이터 처리기 (4가지 프롬프트 템플릿 시스템 + 즉시 발행 지원 + 상품 분석 데이터 저장)
  * affiliate_editor.php에서 POST로 전송된 데이터를 처리하고 큐 파일에 저장하거나 즉시 발행합니다.
  * 워드프레스 환경에 전혀 종속되지 않으며, 순수 PHP로만 작동합니다.
  *
  * 파일 위치: /var/www/novacents/tools/keyword_processor.php
- * 버전: v4.3 (디버깅 강화)
+ * 버전: v4.4 (상품 분석 데이터 저장 기능 추가)
  */
 
 // 1. 초기 에러 리포팅 설정 (스크립트 시작 시점부터 에러를 잡기 위함)
@@ -38,7 +38,7 @@ function debug_log($message) {
 }
 
 // 스크립트 시작 시 즉시 디버그 로그 기록
-debug_log("=== keyword_processor.php 시작 (4가지 프롬프트 템플릿 + 즉시 발행 지원 버전) ===");
+debug_log("=== keyword_processor.php 시작 (상품 분석 데이터 저장 지원 버전) ===");
 debug_log("PHP Version: " . phpversion());
 debug_log("Request Method: " . ($_SERVER['REQUEST_METHOD'] ?? 'N/A'));
 debug_log("POST Data Empty: " . (empty($_POST) ? 'YES' : 'NO'));
@@ -59,6 +59,17 @@ if (!empty($_POST)) {
                 debug_log("POST[{$key}] (decoded count): " . safe_count($decoded));
                 if (is_array($decoded) && !empty($decoded)) {
                     debug_log("POST[{$key}] (first item): " . json_encode($decoded[0], JSON_UNESCAPED_UNICODE));
+                    
+                    // 🔧 products_data 확인
+                    if (isset($decoded[0]['products_data'])) {
+                        debug_log("POST[{$key}] (first item has products_data): " . safe_count($decoded[0]['products_data']) . " items");
+                        if (!empty($decoded[0]['products_data'])) {
+                            $first_product = $decoded[0]['products_data'][0];
+                            debug_log("POST[{$key}] (first product data keys): " . implode(', ', array_keys($first_product)));
+                            debug_log("POST[{$key}] (first product has analysis_data): " . (isset($first_product['analysis_data']) ? 'YES' : 'NO'));
+                            debug_log("POST[{$key}] (first product has generated_html): " . (isset($first_product['generated_html']) ? 'YES' : 'NO'));
+                        }
+                    }
                 }
             } else {
                 debug_log("POST[{$key}] JSON decode error: " . json_last_error_msg());
@@ -608,8 +619,9 @@ function validate_input_data($data) {
     return $errors;
 }
 
+// 🔧 강화된 어필리에이트 링크 정리 함수 - 상품 분석 데이터 포함
 function clean_affiliate_links($keywords_raw) {
-    debug_log("clean_affiliate_links: Starting link cleaning.");
+    debug_log("clean_affiliate_links: Starting enhanced link cleaning with product data.");
     debug_log("clean_affiliate_links: Input type: " . gettype($keywords_raw) . ", Count: " . safe_count($keywords_raw));
     
     $cleaned_keywords = [];
@@ -619,7 +631,8 @@ function clean_affiliate_links($keywords_raw) {
         $cleaned_item = [
             'name' => clean_input($keyword_item['name'] ?? ''),
             'coupang' => [],
-            'aliexpress' => []
+            'aliexpress' => [],
+            'products_data' => [] // 🔧 새로 추가: 상품 분석 데이터
         ];
 
         // Clean Coupang links
@@ -644,15 +657,36 @@ function clean_affiliate_links($keywords_raw) {
             debug_log("clean_affiliate_links: Keyword {$index} cleaned AliExpress links: " . safe_count($cleaned_item['aliexpress']));
         }
 
+        // 🔧 상품 분석 데이터 처리
+        if (!empty($keyword_item['products_data']) && is_array($keyword_item['products_data'])) {
+            debug_log("clean_affiliate_links: Keyword {$index} has " . safe_count($keyword_item['products_data']) . " product data entries");
+            
+            foreach ($keyword_item['products_data'] as $product_data) {
+                if (is_array($product_data) && !empty($product_data['url'])) {
+                    $cleaned_product_data = [
+                        'url' => clean_input($product_data['url']),
+                        'analysis_data' => $product_data['analysis_data'] ?? null,
+                        'generated_html' => $product_data['generated_html'] ?? null,
+                        'user_data' => $product_data['user_data'] ?? []
+                    ];
+                    
+                    $cleaned_item['products_data'][] = $cleaned_product_data;
+                    debug_log("clean_affiliate_links: Added product data for URL: " . substr($cleaned_product_data['url'], 0, 50));
+                }
+            }
+            
+            debug_log("clean_affiliate_links: Keyword {$index} cleaned product data: " . safe_count($cleaned_item['products_data']) . " entries");
+        }
+
         // Only add if keyword name is not empty and has at least one valid link
         if (!empty($cleaned_item['name']) && (!empty($cleaned_item['coupang']) || !empty($cleaned_item['aliexpress']))) {
             $cleaned_keywords[] = $cleaned_item;
-            debug_log("clean_affiliate_links: Keyword '" . $cleaned_item['name'] . "' added to cleaned list.");
+            debug_log("clean_affiliate_links: Keyword '" . $cleaned_item['name'] . "' added to cleaned list with " . safe_count($cleaned_item['products_data']) . " product data entries.");
         } else {
             debug_log("clean_affiliate_links: Keyword '" . ($keyword_item['name'] ?? 'N/A') . "' (index {$index}) removed due to empty name or no valid links.");
         }
     }
-    debug_log("clean_affiliate_links: Finished cleaning. " . safe_count($cleaned_keywords) . " keywords remain.");
+    debug_log("clean_affiliate_links: Finished enhanced cleaning. " . safe_count($cleaned_keywords) . " keywords remain.");
     return $cleaned_keywords;
 }
 
@@ -842,10 +876,41 @@ function parse_python_output($output) {
     ];
 }
 
+// 🔧 17. 상품 분석 데이터 요약 함수 (새로 추가)
+function format_products_data_summary($keywords) {
+    $total_products = 0;
+    $products_with_analysis = 0;
+    $products_with_html = 0;
+    
+    foreach ($keywords as $keyword) {
+        if (isset($keyword['products_data']) && is_array($keyword['products_data'])) {
+            $total_products += safe_count($keyword['products_data']);
+            
+            foreach ($keyword['products_data'] as $product_data) {
+                if (!empty($product_data['analysis_data'])) {
+                    $products_with_analysis++;
+                }
+                if (!empty($product_data['generated_html'])) {
+                    $products_with_html++;
+                }
+            }
+        }
+    }
+    
+    $summary = [];
+    if ($total_products > 0) {
+        $summary[] = "상품 데이터: {$total_products}개";
+        $summary[] = "분석 완료: {$products_with_analysis}개";
+        $summary[] = "HTML 생성: {$products_with_html}개";
+    }
+    
+    return implode(', ', $summary);
+}
 
-// 17. 메인 처리 로직 (4가지 프롬프트 템플릿 시스템 + 즉시 발행 지원 + count() 오류 수정 + 강화된 디버깅)
+
+// 18. 메인 처리 로직 (4가지 프롬프트 템플릿 시스템 + 즉시 발행 지원 + count() 오류 수정 + 강화된 디버깅 + 상품 분석 데이터 저장)
 function main_process() {
-    debug_log("main_process: Main processing started with 4-prompt template system + immediate publish support.");
+    debug_log("main_process: Main processing started with product analysis data support.");
 
     try {
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -907,7 +972,7 @@ function main_process() {
         }
         debug_log("main_process: Data validation passed.");
 
-        // Clean product links (일반 상품 링크)
+        // 🔧 강화된 상품 링크 정리 (상품 분석 데이터 포함)
         $cleaned_keywords = clean_affiliate_links($input_data['keywords']);
         if (empty($cleaned_keywords)) {
             debug_log("main_process: No valid keywords with links after cleaning.");
@@ -946,7 +1011,7 @@ function main_process() {
             $user_details_data = null;
         }
 
-        // Create queue data structure (프롬프트 타입 + 사용자 상세 정보 포함)
+        // Create queue data structure (프롬프트 타입 + 사용자 상세 정보 + 상품 분석 데이터 포함)
         $queue_data = [
             'queue_id' => date('YmdHis') . '_' . random_int(10000, 99999), // Unique ID
             'title' => $input_data['title'],
@@ -954,9 +1019,9 @@ function main_process() {
             'category_name' => get_category_name((int)$input_data['category']),
             'prompt_type' => $input_data['prompt_type'],
             'prompt_type_name' => get_prompt_type_name($input_data['prompt_type']),
-            'keywords' => $cleaned_keywords,
+            'keywords' => $cleaned_keywords, // 🔧 이제 products_data 포함
             'user_details' => $user_details_data,
-            'processing_mode' => ($input_data['publish_mode'] === 'immediate') ? 'immediate_publish' : 'link_based_with_details_and_prompt_template',
+            'processing_mode' => ($input_data['publish_mode'] === 'immediate') ? 'immediate_publish' : 'link_based_with_details_and_prompt_template_and_product_data',
             'link_conversion_required' => true, // 링크 변환 필요 여부
             'conversion_status' => [
                 'coupang_converted' => 0,
@@ -969,23 +1034,31 @@ function main_process() {
             'priority' => ($input_data['publish_mode'] === 'immediate') ? 0 : 1, // 즉시 발행은 최고 우선순위
             'attempts' => 0,
             'last_error' => null,
-            'has_user_details' => ($user_details_data !== null) // 사용자 상세 정보 존재 여부
+            'has_user_details' => ($user_details_data !== null), // 사용자 상세 정보 존재 여부
+            'has_product_data' => false // 🔧 상품 분석 데이터 존재 여부
         ];
         
-        // 링크 카운트 계산 (안전한 count 사용)
+        // 링크 카운트 및 상품 데이터 통계 계산 (안전한 count 사용)
         $coupang_total = 0;
         $aliexpress_total = 0;
+        $total_product_data = 0;
+        
         foreach ($cleaned_keywords as $keyword_item) {
             $coupang_total += safe_count($keyword_item['coupang'] ?? []);
             $aliexpress_total += safe_count($keyword_item['aliexpress'] ?? []);
+            $total_product_data += safe_count($keyword_item['products_data'] ?? []);
         }
+        
         $queue_data['conversion_status']['coupang_total'] = $coupang_total;
         $queue_data['conversion_status']['aliexpress_total'] = $aliexpress_total;
+        $queue_data['has_product_data'] = ($total_product_data > 0);
         
         debug_log("main_process: Queue data structure created. ID: " . $queue_data['queue_id']);
         debug_log("main_process: Prompt type: " . $input_data['prompt_type'] . " (" . get_prompt_type_name($input_data['prompt_type']) . ")");
         debug_log("main_process: Link counts - Coupang: {$coupang_total}, AliExpress: {$aliexpress_total}");
+        debug_log("main_process: Product data entries: {$total_product_data}");
         debug_log("main_process: User details included: " . ($queue_data['has_user_details'] ? 'Yes' : 'No'));
+        debug_log("main_process: Product data included: " . ($queue_data['has_product_data'] ? 'Yes' : 'No'));
         debug_log("main_process: Publish mode: " . $input_data['publish_mode']);
 
         // 🚀 즉시 발행 vs 큐 저장 분기 처리
@@ -1016,9 +1089,17 @@ function main_process() {
             $telegram_success_msg .= "• 카테고리: " . $queue_data['category_name'] . "\n";
             $telegram_success_msg .= "• 프롬프트 타입: " . $queue_data['prompt_type_name'] . "\n";
             $telegram_success_msg .= "• 키워드 수: " . safe_count($cleaned_keywords) . "개\n";
-            $telegram_success_msg .= "• 처리 모드: 4가지 프롬프트 템플릿 시스템\n";
+            $telegram_success_msg .= "• 처리 모드: 4가지 프롬프트 템플릿 + 상품 분석 데이터\n";
             $telegram_success_msg .= "• 쿠팡 링크: " . $coupang_total . "개\n";
             $telegram_success_msg .= "• 알리익스프레스 링크: " . $aliexpress_total . "개\n";
+            
+            // 🔧 상품 분석 데이터 정보 추가
+            if ($queue_data['has_product_data']) {
+                $products_summary = format_products_data_summary($cleaned_keywords);
+                $telegram_success_msg .= "• " . $products_summary . "\n";
+            } else {
+                $telegram_success_msg .= "• 상품 분석 데이터: 없음\n";
+            }
             
             // 사용자 상세 정보 알림 추가
             if ($user_details_data !== null) {
@@ -1036,9 +1117,9 @@ function main_process() {
             if ($stats['failed'] > 0) {
                 $telegram_success_msg .= "• 실패: " . $stats['failed'] . "개\n";
             }
-            $telegram_success_msg .= "\n🚀 4가지 프롬프트 템플릿 자동화 시스템이 순차적으로 처리할 예정입니다.";
+            $telegram_success_msg .= "\n🚀 4가지 프롬프트 템플릿 + 상품 분석 데이터 자동화 시스템이 순차적으로 처리할 예정입니다.";
             send_telegram_notification($telegram_success_msg);
-            main_log("Item successfully added to queue with prompt type '{$input_data['prompt_type']}' and user details. Queue stats: " . json_encode($stats));
+            main_log("Item successfully added to queue with prompt type '{$input_data['prompt_type']}', user details, and product data. Queue stats: " . json_encode($stats));
 
             // Redirect to editor with success message
             redirect_to_editor(true, ['success' => '1']);
