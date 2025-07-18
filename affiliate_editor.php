@@ -66,6 +66,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .title-input-row input::placeholder{color:rgba(255,255,255,0.7)}
 .category-section select,.prompt-section select{width:100%;padding:12px;border:1px solid rgba(255,255,255,0.3);border-radius:6px;background:rgba(255,255,255,0.1);color:white;font-size:16px}
 .category-section select option,.prompt-section select option{background:#333;color:white}
+
+/* 상단 네비게이션 추가 */
+.nav-links{display:flex;gap:10px;margin-top:15px}
+.nav-link{background:rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:4px;text-decoration:none;font-size:14px;transition:all 0.3s}
+.nav-link:hover{background:rgba(255,255,255,0.3);color:white}
+
 .main-content{display:flex;min-height:600px}
 .products-sidebar{width:600px;border-right:1px solid #e0e0e0;background:#fafafa;display:flex;flex-direction:column}
 .sidebar-header{padding:20px;border-bottom:1px solid #e0e0e0;background:white}
@@ -219,6 +225,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <div class="header-section">
 <h1>🛍️ 어필리에이트 상품 등록</h1>
 <p class="subtitle">알리익스프레스 전용 상품 글 생성기 + 사용자 상세 정보 활용 + 프롬프트 선택</p>
+
+<!-- 상단 네비게이션 링크 추가 -->
+<div class="nav-links">
+    <a href="queue_manager.php" class="nav-link">📋 저장된 정보 관리</a>
+</div>
+
 <?php if (!empty($success_message)): ?>
 <div class="alert alert-success"><?php echo esc_html($success_message); ?></div>
 <?php endif; ?>
