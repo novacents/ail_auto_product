@@ -546,7 +546,7 @@ document.addEventListener('DOMContentLoaded', function() { document.getElementBy
 function addKeyword() { toggleKeywordInput(); }
 
 function addProduct(keywordIndex) {
-    const product = { id: Date.now() + Math.random(), url: '', name: `상품 ${keywords[keywordIndex].products.length + 1}`, status: 'empty', analysisData: null, userData: {}, isSaved: false }; // 🔧 isSaved 속성 추가
+    const product = { id: Date.now() + Math.random(), url: '', name: `상품 ${keywords[keywordIndex].products.length + 1}`, status: 'empty', analysisData: null, userData: {}, isSaved: false, generatedHtml: null }; // 🔧 generatedHtml 속성 추가
     keywords[keywordIndex].products.push(product); updateUI(); selectProduct(keywordIndex, keywords[keywordIndex].products.length - 1);
 }
 
@@ -700,7 +700,21 @@ async function analyzeProduct() {
         if (!response.ok) { throw new Error(`HTTP 오류: ${response.status} ${response.statusText}`); }
         const responseText = await response.text(); let result;
         try { result = JSON.parse(responseText); } catch (parseError) { showDetailedError('JSON 파싱 오류', '서버 응답을 파싱할 수 없습니다.', { 'parseError': parseError.message, 'responseText': responseText, 'responseLength': responseText.length, 'url': url, 'timestamp': new Date().toISOString() }); product.status = 'error'; updateUI(); return; }
-        if (result.success) { product.analysisData = result.data; product.status = 'completed'; product.name = result.data.title || `상품 ${currentProductIndex + 1}`; currentProductData = result.data; showAnalysisResult(result.data); generateOptimizedMobileHtml(result.data); } else { product.status = 'error'; showDetailedError('상품 분석 실패', result.message || '알 수 없는 오류가 발생했습니다.', { 'success': result.success, 'message': result.message, 'debug_info': result.debug_info || null, 'raw_output': result.raw_output || null, 'url': url, 'platform': 'aliexpress', 'timestamp': new Date().toISOString(), 'mobile_optimized': true }); }
+        if (result.success) { 
+            product.analysisData = result.data; 
+            product.status = 'completed'; 
+            product.name = result.data.title || `상품 ${currentProductIndex + 1}`; 
+            currentProductData = result.data; 
+            showAnalysisResult(result.data); 
+            
+            // 🔧 HTML 생성 및 저장
+            const generatedHtml = generateOptimizedMobileHtml(result.data);
+            product.generatedHtml = generatedHtml;
+            console.log('Generated HTML saved to product:', generatedHtml);
+        } else { 
+            product.status = 'error'; 
+            showDetailedError('상품 분석 실패', result.message || '알 수 없는 오류가 발생했습니다.', { 'success': result.success, 'message': result.message, 'debug_info': result.debug_info || null, 'raw_output': result.raw_output || null, 'url': url, 'platform': 'aliexpress', 'timestamp': new Date().toISOString(), 'mobile_optimized': true }); 
+        }
     } catch (error) { product.status = 'error'; showDetailedError('네트워크 오류', '상품 분석 중 네트워크 오류가 발생했습니다.', { 'error': error.message, 'stack': error.stack, 'url': url, 'timestamp': new Date().toISOString() }); }
     updateUI();
 }
@@ -713,8 +727,9 @@ function showAnalysisResult(data) {
     resultEl.classList.add('show');
 }
 
+// 🔧 수정된 HTML 생성 함수 - HTML 반환하도록 변경
 function generateOptimizedMobileHtml(data) {
-    if (!data) return;
+    if (!data) return null;
     const ratingDisplay = data.rating_display ? data.rating_display.replace(/⭐/g, '').replace(/[()]/g, '').trim() : '정보 없음';
     const formattedPrice = formatPrice(data.price);
     const htmlCode = `<div style="display: flex; justify-content: center; margin: 25px 0;">
@@ -829,8 +844,14 @@ function generateOptimizedMobileHtml(data) {
     }
 }
 </style>`;
+    
     const previewHtml = `<div class="preview-product-card"><div class="preview-card-content"><div class="product-content-split"><div class="product-image-large"><img src="${data.image_url}" alt="${data.title}" onerror="this.style.display='none'"></div><div class="product-info-all"><div class="aliexpress-logo-right"><img src="https://novacents.com/tools/images/Ali_black_logo.webp" alt="AliExpress" /></div><h3 class="product-title-right">${data.title}</h3><div class="product-price-right">${formattedPrice}</div><div class="product-rating-right"><span class="rating-stars">⭐⭐⭐⭐⭐</span><span>(고객만족도: ${ratingDisplay})</span></div><div class="product-sales-right"><strong>📦 판매량:</strong> ${data.lastest_volume || '판매량 정보 없음'}</div></div></div><div class="purchase-button-full"><a href="${data.affiliate_link}" target="_blank" rel="nofollow"><picture><source media="(max-width: 1600px)" srcset="https://novacents.com/tools/images/aliexpress-button-mobile.png"><img src="https://novacents.com/tools/images/aliexpress-button-pc.png" alt="알리익스프레스에서 구매하기"></picture></a></div></div></div>`;
-    document.getElementById('htmlPreview').innerHTML = previewHtml; document.getElementById('htmlCode').textContent = htmlCode; document.getElementById('htmlSourceSection').style.display = 'block';
+    document.getElementById('htmlPreview').innerHTML = previewHtml; 
+    document.getElementById('htmlCode').textContent = htmlCode; 
+    document.getElementById('htmlSourceSection').style.display = 'block';
+    
+    // 🔧 생성된 HTML 반환
+    return htmlCode;
 }
 
 async function copyHtmlSource() {
@@ -943,9 +964,9 @@ function addIfNotEmpty(obj, key, elementId) {
     if (value) obj[key] = value;
 }
 
-// 🔧 강화된 키워드 데이터 수집 함수 - 빈 URL 필터링 개선
+// 🔧 강화된 키워드 데이터 수집 함수 - 분석 데이터와 HTML도 포함
 function collectKeywordsData() {
-    console.log('collectKeywordsData: Starting keyword data collection...');
+    console.log('collectKeywordsData: Starting comprehensive keyword data collection...');
     const keywordsData = [];
     
     keywords.forEach((keyword, keywordIndex) => {
@@ -955,10 +976,11 @@ function collectKeywordsData() {
         const keywordData = {
             name: keyword.name,
             coupang: [], // 쿠팡 링크 배열 (현재는 사용하지 않음)
-            aliexpress: [] // 알리익스프레스 링크 배열
+            aliexpress: [], // 알리익스프레스 링크 배열
+            products_data: [] // 🔧 새로 추가: 상품 분석 데이터와 HTML 정보
         };
         
-        // 각 키워드의 상품 URL들 수집 - 더 엄격한 유효성 검사
+        // 각 키워드의 상품 URL들과 분석 데이터 수집
         keyword.products.forEach((product, productIndex) => {
             console.log(`  Checking product ${productIndex}: "${product.url}"`);
             
@@ -973,6 +995,21 @@ function collectKeywordsData() {
                 const trimmedUrl = product.url.trim();
                 console.log(`    Valid URL found: ${trimmedUrl}`);
                 keywordData.aliexpress.push(trimmedUrl);
+                
+                // 🔧 상품 분석 데이터와 HTML 소스도 함께 수집
+                const productData = {
+                    url: trimmedUrl,
+                    analysis_data: product.analysisData || null,
+                    generated_html: product.generatedHtml || null,
+                    user_data: product.userData || {}
+                };
+                
+                keywordData.products_data.push(productData);
+                console.log(`    Product data collected:`, {
+                    hasAnalysisData: !!product.analysisData,
+                    hasGeneratedHtml: !!product.generatedHtml,
+                    hasUserData: !!(product.userData && Object.keys(product.userData).length > 0)
+                });
             } else {
                 console.log(`    Invalid or empty URL skipped: "${product.url}"`);
             }
@@ -980,14 +1017,14 @@ function collectKeywordsData() {
         
         // 유효한 링크가 있는 키워드만 추가
         if (keywordData.aliexpress.length > 0) {
-            console.log(`  Keyword "${keyword.name}" added with ${keywordData.aliexpress.length} valid links`);
+            console.log(`  Keyword "${keyword.name}" added with ${keywordData.aliexpress.length} valid links and ${keywordData.products_data.length} product data entries`);
             keywordsData.push(keywordData);
         } else {
             console.log(`  Keyword "${keyword.name}" skipped - no valid links`);
         }
     });
     
-    console.log('Final keywords data:', keywordsData);
+    console.log('Final comprehensive keywords data:', keywordsData);
     console.log('Total keywords with valid data:', keywordsData.length);
     
     return keywordsData;
@@ -1011,6 +1048,7 @@ function validateAndSubmitData(formData, isPublishNow = false) {
     // 각 키워드에 유효한 링크가 있는지 확인
     let hasValidLinks = false;
     let totalValidLinks = 0;
+    let totalProductsWithData = 0;
     
     formData.keywords.forEach(keyword => {
         if (keyword.aliexpress && keyword.aliexpress.length > 0) {
@@ -1025,7 +1063,8 @@ function validateAndSubmitData(formData, isPublishNow = false) {
             if (validUrls.length > 0) {
                 hasValidLinks = true;
                 totalValidLinks += validUrls.length;
-                console.log(`Keyword "${keyword.name}" has ${validUrls.length} valid URLs`);
+                totalProductsWithData += keyword.products_data ? keyword.products_data.length : 0;
+                console.log(`Keyword "${keyword.name}" has ${validUrls.length} valid URLs and ${keyword.products_data ? keyword.products_data.length : 0} product data entries`);
             }
         }
     });
@@ -1035,7 +1074,7 @@ function validateAndSubmitData(formData, isPublishNow = false) {
         return false;
     }
     
-    console.log(`Validation passed! Total valid links: ${totalValidLinks}`);
+    console.log(`Validation passed! Total valid links: ${totalValidLinks}, Products with data: ${totalProductsWithData}`);
     
     if (isPublishNow) {
         // 즉시 발행용 AJAX 전송
@@ -1079,7 +1118,7 @@ function validateAndSubmitData(formData, isPublishNow = false) {
 async function publishNow() {
     console.log('🚀 즉시 발행을 시작합니다...');
     
-    // 1. 기존 키워드 데이터 수집
+    // 1. 기존 키워드 데이터 수집 (분석 데이터와 HTML 포함)
     const keywordsData = collectKeywordsData();
     
     // 2. 사용자 입력 상세 정보 수집 (빈 값 제외)
@@ -1094,7 +1133,7 @@ async function publishNow() {
         user_details: userDetails
     };
     
-    console.log('즉시 발행용 데이터:', formData);
+    console.log('즉시 발행용 종합 데이터:', formData);
     
     // 4. 검증
     if (!validateAndSubmitData(formData, true)) {
@@ -1179,11 +1218,11 @@ function saveCurrentProduct() {
     console.log('저장된 상품 정보:', product);
 }
 
-// 🔧 수정된 완료 기능 (전체 데이터를 대기열에 저장)
+// 🔧 수정된 완료 기능 (전체 데이터를 대기열에 저장) - 분석 데이터와 HTML 포함
 function completeProduct() {
     console.log('✅ 전체 데이터를 대기열에 저장합니다...');
     
-    // 1. 기존 키워드 데이터 수집
+    // 1. 기존 키워드 데이터 수집 (분석 데이터와 HTML 포함)
     const keywordsData = collectKeywordsData();
     
     // 2. 사용자 입력 상세 정보 수집 (빈 값 제외)
@@ -1200,7 +1239,7 @@ function completeProduct() {
         user_details: userDetails // 새로 추가되는 사용자 상세 정보
     };
     
-    console.log('전체 수집된 데이터:', formData);
+    console.log('전체 수집된 종합 데이터:', formData);
     
     // 4. 검증 및 전송
     if (validateAndSubmitData(formData)) {
