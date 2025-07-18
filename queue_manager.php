@@ -1,7 +1,8 @@
 <?php
 /**
- * 저장된 정보 관리 페이지 - 완전한 편집 기능이 포함된 큐 관리 시스템
+ * 저장된 정보 관리 페이지 - 완전한 편집 기능이 포함된 큐 관리 시스템 + 상품 분석 데이터 표시
  * 저장된 큐 항목들을 확인하고 수정/삭제/즉시발행할 수 있는 관리 페이지
+ * 버전: v2.0 (상품 분석 데이터 표시 기능 추가)
  */
 require_once($_SERVER['DOCUMENT_ROOT'] . '/wp-config.php');
 if (!current_user_can('manage_options')) { wp_die('접근 권한이 없습니다.'); }
@@ -256,6 +257,63 @@ function get_prompt_type_name($prompt_type) {
     return $prompt_types[$prompt_type] ?? '기본형';
 }
 
+// 🔧 새로 추가: 상품 분석 데이터 관련 유틸리티 함수들
+function get_products_summary($keywords) {
+    $total_products = 0;
+    $products_with_data = 0;
+    $product_samples = [];
+    
+    if (!is_array($keywords)) {
+        return [
+            'total_products' => 0,
+            'products_with_data' => 0,
+            'product_samples' => []
+        ];
+    }
+    
+    foreach ($keywords as $keyword) {
+        if (isset($keyword['products_data']) && is_array($keyword['products_data'])) {
+            foreach ($keyword['products_data'] as $product_data) {
+                $total_products++;
+                
+                if (!empty($product_data['analysis_data'])) {
+                    $products_with_data++;
+                    
+                    // 샘플 데이터 수집 (최대 3개)
+                    if (count($product_samples) < 3) {
+                        $analysis = $product_data['analysis_data'];
+                        $product_samples[] = [
+                            'title' => $analysis['title'] ?? '상품명 없음',
+                            'image_url' => $analysis['image_url'] ?? '',
+                            'price' => $analysis['price'] ?? '가격 정보 없음',
+                            'url' => $product_data['url'] ?? ''
+                        ];
+                    }
+                }
+            }
+        }
+        
+        // 기존 URL 기반 데이터도 체크 (하위 호환성)
+        if (isset($keyword['aliexpress']) && is_array($keyword['aliexpress'])) {
+            $total_products += count($keyword['aliexpress']);
+        }
+        if (isset($keyword['coupang']) && is_array($keyword['coupang'])) {
+            $total_products += count($keyword['coupang']);
+        }
+    }
+    
+    return [
+        'total_products' => $total_products,
+        'products_with_data' => $products_with_data,
+        'product_samples' => $product_samples
+    ];
+}
+
+function format_price($price) {
+    if (empty($price)) return '가격 정보 없음';
+    return preg_replace('/₩(\d)/', '₩ $1', $price);
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="ko">
@@ -325,6 +383,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .queue-item.dragging{opacity:0.5}
 .queue-item.drag-over{border-color:#007bff;box-shadow:0 0 10px rgba(0,123,255,0.3)}
 
+/* 🔧 새로 추가: 상품 분석 데이터 표시 스타일 */
+.products-preview{margin-top:20px;padding:15px;background:#f8fffe;border-radius:8px;border:1px solid #d4edda}
+.products-preview h4{margin:0 0 15px 0;font-size:14px;color:#155724;font-weight:600}
+.products-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:15px}
+.product-card{background:white;border:1px solid #e0e0e0;border-radius:8px;padding:15px;display:flex;gap:12px;align-items:start;box-shadow:0 2px 4px rgba(0,0,0,0.05)}
+.product-image{width:60px;height:60px;border-radius:6px;object-fit:cover;border:1px solid #e0e0e0}
+.product-info{flex:1;min-width:0}
+.product-title{font-size:13px;font-weight:600;color:#1c1c1c;margin:0 0 5px 0;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.product-price{font-size:14px;font-weight:700;color:#e62e04;margin:0 0 3px 0}
+.product-url{font-size:11px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.no-products-data{color:#666;font-style:italic;text-align:center;padding:20px}
+
 /* 편집 모달 스타일 */
 .modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10001;display:none;align-items:center;justify-content:center}
 .modal-content{background:white;border-radius:12px;max-width:1200px;width:90%;max-height:90vh;overflow-y:auto;box-shadow:0 10px 30px rgba(0,0,0,0.3)}
@@ -367,9 +437,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .analysis-result{margin-top:15px;padding:15px;background:#f1f8ff;border-radius:6px;border:1px solid #b3d9ff}
 .product-preview{display:grid;grid-template-columns:150px 1fr;gap:15px;align-items:start}
 .product-preview img{width:100%;border-radius:6px}
-.product-info{font-size:14px;color:#333}
-.product-info h4{margin:0 0 10px 0;font-size:16px;color:#1c1c1c}
-.product-info p{margin:5px 0}
+.product-info-detail{font-size:14px;color:#333}
+.product-info-detail h4{margin:0 0 10px 0;font-size:16px;color:#1c1c1c}
+.product-info-detail p{margin:5px 0}
 </style>
 </head>
 <body>
@@ -556,7 +626,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <div class="main-container">
     <div class="header-section">
         <h1>📋 저장된 정보 관리</h1>
-        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다</p>
+        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v2.0 - 상품 분석 데이터 표시)</p>
         <div class="header-actions">
             <a href="affiliate_editor.php" class="btn btn-primary">📝 새 글 작성</a>
             <button type="button" class="btn btn-secondary" onclick="refreshQueue()">🔄 새로고침</button>
@@ -668,7 +738,7 @@ function updateQueueStats() {
     document.getElementById('completedCount').textContent = stats.completed;
 }
 
-// 큐 목록 표시
+// 🔧 강화된 큐 목록 표시 - 상품 분석 데이터 포함
 function displayQueue() {
     const queueList = document.getElementById('queueList');
     
@@ -689,6 +759,9 @@ function displayQueue() {
         const totalLinks = item.keywords ? item.keywords.reduce((sum, k) => sum + (k.coupang?.length || 0) + (k.aliexpress?.length || 0), 0) : 0;
         const statusClass = `status-${item.status}`;
         const statusText = getStatusText(item.status);
+        
+        // 🔧 상품 분석 데이터 추출
+        const productsSummary = getProductsSummary(item.keywords);
         
         html += `
             <div class="queue-item" data-queue-id="${item.queue_id}" draggable="${dragEnabled}">
@@ -719,12 +792,20 @@ function displayQueue() {
                             <div class="info-label">총 링크</div>
                         </div>
                         <div class="info-item">
+                            <div class="info-value">${productsSummary.products_with_data}</div>
+                            <div class="info-label">분석완료</div>
+                        </div>
+                        <div class="info-item">
                             <div class="info-value">${item.priority || 1}</div>
                             <div class="info-label">우선순위</div>
                         </div>
                         <div class="info-item">
                             <div class="info-value">${item.has_user_details ? 'O' : 'X'}</div>
                             <div class="info-label">상세정보</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-value">${item.has_product_data ? 'O' : 'X'}</div>
+                            <div class="info-label">상품데이터</div>
                         </div>
                     </div>
                     
@@ -736,6 +817,8 @@ function displayQueue() {
                             </div>
                         </div>
                     ` : ''}
+                    
+                    ${generateProductsPreview(productsSummary)}
                 </div>
             </div>
         `;
@@ -747,6 +830,102 @@ function displayQueue() {
     if (dragEnabled) {
         addDragEvents();
     }
+}
+
+// 🔧 새로 추가: 상품 분석 데이터에서 정보 추출
+function getProductsSummary(keywords) {
+    let total_products = 0;
+    let products_with_data = 0;
+    let product_samples = [];
+    
+    if (!Array.isArray(keywords)) {
+        return {
+            total_products: 0,
+            products_with_data: 0,
+            product_samples: []
+        };
+    }
+    
+    keywords.forEach(keyword => {
+        if (keyword.products_data && Array.isArray(keyword.products_data)) {
+            keyword.products_data.forEach(product_data => {
+                total_products++;
+                
+                if (product_data.analysis_data) {
+                    products_with_data++;
+                    
+                    // 샘플 데이터 수집 (최대 3개)
+                    if (product_samples.length < 3) {
+                        const analysis = product_data.analysis_data;
+                        product_samples.push({
+                            title: analysis.title || '상품명 없음',
+                            image_url: analysis.image_url || '',
+                            price: analysis.price || '가격 정보 없음',
+                            url: product_data.url || ''
+                        });
+                    }
+                }
+            });
+        }
+        
+        // 기존 URL 기반 데이터도 체크 (하위 호환성)
+        if (keyword.aliexpress && Array.isArray(keyword.aliexpress)) {
+            total_products += keyword.aliexpress.length;
+        }
+        if (keyword.coupang && Array.isArray(keyword.coupang)) {
+            total_products += keyword.coupang.length;
+        }
+    });
+    
+    return {
+        total_products: total_products,
+        products_with_data: products_with_data,
+        product_samples: product_samples
+    };
+}
+
+// 🔧 새로 추가: 상품 미리보기 HTML 생성
+function generateProductsPreview(productsSummary) {
+    if (productsSummary.product_samples.length === 0) {
+        return `
+            <div class="products-preview">
+                <h4>🛍️ 상품 정보:</h4>
+                <div class="no-products-data">상품 분석 데이터가 없습니다.</div>
+            </div>
+        `;
+    }
+    
+    const productsHtml = productsSummary.product_samples.map(product => {
+        const imageHtml = product.image_url ? 
+            `<img src="${product.image_url}" alt="${product.title}" class="product-image" onerror="this.style.display='none'">` :
+            `<div class="product-image" style="background:#f0f0f0;display:flex;align-items:center;justify-content:center;color:#999;font-size:10px;">이미지<br>없음</div>`;
+        
+        return `
+            <div class="product-card">
+                ${imageHtml}
+                <div class="product-info">
+                    <div class="product-title">${product.title}</div>
+                    <div class="product-price">${formatPrice(product.price)}</div>
+                    <div class="product-url">${product.url.substring(0, 50)}...</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    return `
+        <div class="products-preview">
+            <h4>🛍️ 상품 정보 (${productsSummary.products_with_data}/${productsSummary.total_products}개 분석완료):</h4>
+            <div class="products-grid">
+                ${productsHtml}
+            </div>
+        </div>
+    `;
+}
+
+// 🔧 새로 추가: 가격 포맷 함수
+function formatPrice(price) {
+    if (!price || price === '가격 정보 없음') return '가격 정보 없음';
+    return price.replace(/₩(\d)/, '₩ $1');
 }
 
 // 상태 텍스트 변환
@@ -1047,16 +1226,38 @@ function displayKeywords(keywords) {
                 <div class="product-list">
                     <h5>알리익스프레스 상품 (${aliexpressLinks.length}개)</h5>
                     <div class="aliexpress-products">
-                        ${aliexpressLinks.map((url, urlIndex) => `
-                            <div class="product-item-edit">
-                                <div class="product-item-edit-header">
-                                    <input type="url" class="product-url-input" value="${url}" placeholder="상품 URL">
-                                    <button type="button" class="btn btn-secondary btn-small" onclick="analyzeProduct(${index}, 'aliexpress', ${urlIndex})">분석</button>
-                                    <button type="button" class="btn btn-danger btn-small" onclick="removeProduct(${index}, 'aliexpress', ${urlIndex})">삭제</button>
+                        ${aliexpressLinks.map((url, urlIndex) => {
+                            // 🔧 상품 분석 데이터가 있는지 확인
+                            let analysisHtml = '';
+                            if (keyword.products_data && keyword.products_data[urlIndex] && keyword.products_data[urlIndex].analysis_data) {
+                                const analysis = keyword.products_data[urlIndex].analysis_data;
+                                analysisHtml = `
+                                    <div class="analysis-result">
+                                        <div class="product-preview">
+                                            <img src="${analysis.image_url}" alt="${analysis.title}" onerror="this.style.display='none'">
+                                            <div class="product-info-detail">
+                                                <h4>${analysis.title}</h4>
+                                                <p><strong>가격:</strong> ${formatPrice(analysis.price)}</p>
+                                                <p><strong>평점:</strong> ${analysis.rating_display || '평점 정보 없음'}</p>
+                                                <p><strong>판매량:</strong> ${analysis.lastest_volume || '판매량 정보 없음'}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            }
+                            
+                            return `
+                                <div class="product-item-edit">
+                                    <div class="product-item-edit-header">
+                                        <input type="url" class="product-url-input" value="${url}" placeholder="상품 URL">
+                                        <button type="button" class="btn btn-secondary btn-small" onclick="analyzeProduct(${index}, 'aliexpress', ${urlIndex})">분석</button>
+                                        <button type="button" class="btn btn-danger btn-small" onclick="removeProduct(${index}, 'aliexpress', ${urlIndex})">삭제</button>
+                                    </div>
+                                    ${analysisHtml}
+                                    <div class="analysis-result" id="analysis-${index}-aliexpress-${urlIndex}" style="${analysisHtml ? 'display:none;' : ''}"></div>
                                 </div>
-                                <div class="analysis-result" id="analysis-${index}-aliexpress-${urlIndex}"></div>
-                            </div>
-                        `).join('')}
+                            `;
+                        }).join('')}
                     </div>
                     
                     <div class="add-product-section">
@@ -1169,13 +1370,13 @@ function displayAnalysisResult(keywordIndex, platform, urlIndex, data) {
     
     if (!resultDiv) return;
     
-    const formattedPrice = data.price || '가격 정보 없음';
+    const formattedPrice = formatPrice(data.price);
     const ratingDisplay = data.rating_display || '평점 정보 없음';
     
     resultDiv.innerHTML = `
         <div class="product-preview">
             <img src="${data.image_url}" alt="${data.title}" onerror="this.style.display='none'">
-            <div class="product-info">
+            <div class="product-info-detail">
                 <h4>${data.title}</h4>
                 <p><strong>가격:</strong> ${formattedPrice}</p>
                 <p><strong>평점:</strong> ${ratingDisplay}</p>
@@ -1183,6 +1384,8 @@ function displayAnalysisResult(keywordIndex, platform, urlIndex, data) {
             </div>
         </div>
     `;
+    
+    resultDiv.style.display = 'block';
 }
 
 // 편집된 큐 저장
