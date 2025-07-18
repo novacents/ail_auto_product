@@ -2,7 +2,7 @@
 /**
  * 어필리에이트 상품 등록 자동화 입력 페이지 (AliExpress 공식 스타일 - 좌우 분할 + 📱 반응형)
  * 노바센트(novacents.com) 전용 - 압축 최적화 버전 + 사용자 상세 정보 수집 기능 + 프롬프트 선택 기능
- * 수정: 새 상품 선택 시 사용자 입력 필드 초기화 기능 추가 + 진행률 계산 수정 (저장 버튼 클릭 시에만 완료)
+ * 수정: 새 상품 선택 시 사용자 입력 필드 초기화 기능 추가 + 진행률 계산 수정 (저장 버튼 클릭 시에만 완료) + 상단 이동 버튼 추가
  */
 require_once($_SERVER['DOCUMENT_ROOT'] . '/wp-config.php');
 if (!current_user_can('manage_options')) { wp_die('접근 권한이 없습니다.'); }
@@ -159,6 +159,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .loading-spinner{display:inline-block;width:40px;height:40px;border:4px solid #f3f3f3;border-top:4px solid #ff9900;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:20px}
 .loading-text{font-size:18px;color:#333;font-weight:600}
 
+/* 🔝 상단으로 이동 버튼 스타일 */
+.scroll-to-top{position:fixed;bottom:30px;right:30px;width:50px;height:50px;background:#667eea;color:white;border:none;border-radius:50%;cursor:pointer;font-size:20px;display:none;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,0.2);transition:all 0.3s;z-index:1000}
+.scroll-to-top:hover{background:#764ba2;transform:translateY(-3px);box-shadow:0 6px 20px rgba(0,0,0,0.3)}
+.scroll-to-top.show{display:flex}
+
 .product-url-section{margin-bottom:30px;padding:20px;background:#f8f9fa;border-radius:8px;border:1px solid #e9ecef}
 .url-input-group{display:flex;gap:10px;margin-bottom:15px}
 .url-input-group input{flex:1;padding:12px;border:1px solid #ddd;border-radius:6px;font-size:16px}
@@ -254,6 +259,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
         <div style="margin-top: 10px; color: #666; font-size: 14px;">잠시만 기다려주세요.</div>
     </div>
 </div>
+
+<!-- 🔝 상단으로 이동 버튼 -->
+<button class="scroll-to-top" id="scrollToTop" onclick="scrollToTop()">⬆️</button>
 
 <div class="main-container">
 <div class="header-section">
@@ -487,7 +495,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 
 <script>
 let keywords = []; let currentKeywordIndex = -1; let currentProductIndex = -1; let currentProductData = null;
-document.addEventListener('DOMContentLoaded', function() { updateUI(); });
+document.addEventListener('DOMContentLoaded', function() { updateUI(); handleScrollToTop(); });
+
+// 🔝 상단으로 이동 버튼 관련 함수
+function handleScrollToTop() {
+    const scrollBtn = document.getElementById('scrollToTop');
+    
+    window.addEventListener('scroll', function() {
+        if (window.pageYOffset > 300) {
+            scrollBtn.classList.add('show');
+        } else {
+            scrollBtn.classList.remove('show');
+        }
+    });
+}
+
+function scrollToTop() {
+    window.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+    });
+}
 
 function formatPrice(price) { if (!price) return price; return price.replace(/₩(\d)/, '₩ $1'); }
 
