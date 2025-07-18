@@ -943,32 +943,46 @@ function addIfNotEmpty(obj, key, elementId) {
     if (value) obj[key] = value;
 }
 
+// 🔧 수정된 키워드 데이터 수집 함수 - keyword_processor.php가 기대하는 형식으로 변경
 function collectKeywordsData() {
+    console.log('collectKeywordsData: Starting keyword data collection...');
     const keywordsData = [];
     
-    keywords.forEach((keyword) => {
+    keywords.forEach((keyword, keywordIndex) => {
+        console.log(`Processing keyword ${keywordIndex}: ${keyword.name}`);
+        
+        // keyword_processor.php가 기대하는 형식으로 변경
         const keywordData = {
             name: keyword.name,
-            aliexpress: []
+            coupang: [], // 쿠팡 링크 배열 (현재는 사용하지 않음)
+            aliexpress: [] // 알리익스프레스 링크 배열
         };
         
         // 각 키워드의 상품 URL들 수집
-        keyword.products.forEach((product) => {
+        keyword.products.forEach((product, productIndex) => {
             if (product.url && product.url.trim()) {
+                console.log(`  Adding product ${productIndex}: ${product.url}`);
                 keywordData.aliexpress.push(product.url.trim());
             }
         });
         
         // 유효한 링크가 있는 키워드만 추가
         if (keywordData.aliexpress.length > 0) {
+            console.log(`  Keyword "${keyword.name}" added with ${keywordData.aliexpress.length} links`);
             keywordsData.push(keywordData);
+        } else {
+            console.log(`  Keyword "${keyword.name}" skipped - no valid links`);
         }
     });
     
+    console.log('Final keywords data:', keywordsData);
     return keywordsData;
 }
 
 function validateAndSubmitData(formData, isPublishNow = false) {
+    console.log('validateAndSubmitData: Starting validation...');
+    console.log('Form data:', formData);
+    
     // 기본 검증
     if (!formData.title || formData.title.length < 5) {
         showDetailedError('입력 오류', '제목은 5자 이상이어야 합니다.');
@@ -979,6 +993,21 @@ function validateAndSubmitData(formData, isPublishNow = false) {
         showDetailedError('입력 오류', '최소 하나의 키워드와 상품 링크가 필요합니다.');
         return false;
     }
+    
+    // 각 키워드에 유효한 링크가 있는지 확인
+    let hasValidLinks = false;
+    formData.keywords.forEach(keyword => {
+        if (keyword.aliexpress && keyword.aliexpress.length > 0) {
+            hasValidLinks = true;
+        }
+    });
+    
+    if (!hasValidLinks) {
+        showDetailedError('입력 오류', '각 키워드에 최소 하나의 유효한 상품 링크가 있어야 합니다.');
+        return false;
+    }
+    
+    console.log('Validation passed!');
     
     if (isPublishNow) {
         // 즉시 발행용 AJAX 전송
@@ -1007,6 +1036,8 @@ function validateAndSubmitData(formData, isPublishNow = false) {
             input.value = value;
             form.appendChild(input);
         });
+        
+        console.log('Hidden inputs added, submitting form...');
         
         // 폼 전송
         form.submit();
