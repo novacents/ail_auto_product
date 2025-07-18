@@ -1,6 +1,6 @@
 <?php
 /**
- * 저장된 정보 관리 페이지 - 큐 관리 시스템
+ * 저장된 정보 관리 페이지 - 완전한 편집 기능이 포함된 큐 관리 시스템
  * 저장된 큐 항목들을 확인하고 수정/삭제/즉시발행할 수 있는 관리 페이지
  */
 require_once($_SERVER['DOCUMENT_ROOT'] . '/wp-config.php');
@@ -96,9 +96,12 @@ if (isset($_POST['action']) && $_POST['action'] === 'update_queue_item') {
             // 기존 항목 업데이트
             $queue[$index]['title'] = $updated_data['title'] ?? $item['title'];
             $queue[$index]['category_id'] = $updated_data['category_id'] ?? $item['category_id'];
+            $queue[$index]['category_name'] = get_category_name($updated_data['category_id'] ?? $item['category_id']);
             $queue[$index]['prompt_type'] = $updated_data['prompt_type'] ?? $item['prompt_type'];
+            $queue[$index]['prompt_type_name'] = get_prompt_type_name($updated_data['prompt_type'] ?? $item['prompt_type']);
             $queue[$index]['keywords'] = $updated_data['keywords'] ?? $item['keywords'];
             $queue[$index]['user_details'] = $updated_data['user_details'] ?? $item['user_details'];
+            $queue[$index]['has_user_details'] = !empty($updated_data['user_details']);
             $queue[$index]['updated_at'] = date('Y-m-d H:i:s');
             $found = true;
             break;
@@ -197,6 +200,62 @@ if (isset($_POST['action']) && $_POST['action'] === 'immediate_publish') {
     exit;
 }
 
+// 상품 분석 처리
+if (isset($_POST['action']) && $_POST['action'] === 'analyze_product') {
+    header('Content-Type: application/json');
+    $url = $_POST['url'] ?? '';
+    
+    if (empty($url)) {
+        echo json_encode(['success' => false, 'message' => '상품 URL을 입력해주세요.']);
+        exit;
+    }
+    
+    // product_analyzer_v2.php 호출
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, 'product_analyzer_v2.php');
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
+        'action' => 'analyze_product',
+        'url' => $url,
+        'platform' => 'aliexpress'
+    ]));
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+    
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    if ($http_code === 200 && $response) {
+        echo $response; // 그대로 전달
+    } else {
+        echo json_encode(['success' => false, 'message' => '상품 분석 요청에 실패했습니다.']);
+    }
+    exit;
+}
+
+// 유틸리티 함수들
+function get_category_name($category_id) {
+    $categories = [
+        '354' => 'Today\'s Pick',
+        '355' => '기발한 잡화점',
+        '356' => '스마트 리빙',
+        '12' => '우리잇템'
+    ];
+    return $categories[$category_id] ?? '알 수 없는 카테고리';
+}
+
+function get_prompt_type_name($prompt_type) {
+    $prompt_types = [
+        'essential_items' => '필수템형 🎯',
+        'friend_review' => '친구 추천형 👫',
+        'professional_analysis' => '전문 분석형 📊',
+        'amazing_discovery' => '놀라움 발견형 ✨'
+    ];
+    return $prompt_types[$prompt_type] ?? '기본형';
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="ko">
@@ -225,6 +284,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .btn-orange{background:#ff9900;color:white}
 .btn-orange:hover{background:#e68a00}
 .btn-small{padding:6px 12px;font-size:12px;margin:0 2px}
+.btn-large{padding:15px 30px;font-size:16px}
 .main-content{padding:30px}
 .queue-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;margin-bottom:30px}
 .stat-card{background:#f8f9fa;padding:20px;border-radius:8px;text-align:center;border:1px solid #e9ecef}
@@ -264,6 +324,52 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .sort-controls select{padding:8px;border:1px solid #ddd;border-radius:4px}
 .queue-item.dragging{opacity:0.5}
 .queue-item.drag-over{border-color:#007bff;box-shadow:0 0 10px rgba(0,123,255,0.3)}
+
+/* 편집 모달 스타일 */
+.modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10001;display:none;align-items:center;justify-content:center}
+.modal-content{background:white;border-radius:12px;max-width:1200px;width:90%;max-height:90vh;overflow-y:auto;box-shadow:0 10px 30px rgba(0,0,0,0.3)}
+.modal-header{padding:20px 30px;border-bottom:1px solid #e0e0e0;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border-radius:12px 12px 0 0}
+.modal-title{margin:0;font-size:24px}
+.modal-close{position:absolute;top:20px;right:30px;background:none;border:none;color:white;font-size:24px;cursor:pointer;padding:0;width:30px;height:30px;display:flex;align-items:center;justify-content:center}
+.modal-body{padding:30px}
+.form-section{margin-bottom:30px;padding:20px;background:#f8f9fa;border-radius:8px}
+.form-section h3{margin:0 0 20px 0;color:#333;font-size:18px;padding-bottom:10px;border-bottom:2px solid #e0e0e0}
+.form-row{display:grid;gap:15px;margin-bottom:15px}
+.form-row.two-col{grid-template-columns:1fr 1fr}
+.form-row.three-col{grid-template-columns:1fr 1fr 1fr}
+.form-field{margin-bottom:15px}
+.form-field label{display:block;margin-bottom:5px;font-weight:600;color:#333;font-size:14px}
+.form-field input,.form-field textarea,.form-field select{width:100%;padding:10px;border:1px solid #ddd;border-radius:4px;font-size:14px;box-sizing:border-box}
+.form-field textarea{min-height:60px;resize:vertical}
+.modal-footer{padding:20px 30px;border-top:1px solid #e0e0e0;display:flex;gap:10px;justify-content:flex-end}
+
+/* 키워드 관리 */
+.keyword-manager{margin-bottom:30px}
+.keyword-list{display:grid;gap:15px}
+.keyword-item{background:white;border:1px solid #e0e0e0;border-radius:8px;padding:15px}
+.keyword-item-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.keyword-item-title{font-weight:600;color:#333}
+.keyword-item-actions{display:flex;gap:5px}
+.product-list{margin-top:10px}
+.product-item-edit{background:#f8f9fa;padding:10px;border-radius:4px;margin-bottom:10px;border:1px solid #e0e0e0}
+.product-item-edit-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.product-url-input{flex:1;margin-right:10px}
+.add-product-section{margin-top:15px;padding:15px;background:#f0f8ff;border-radius:6px;border:1px solid #b3d9ff}
+.add-keyword-section{margin-top:20px;padding:15px;background:#f0f8ff;border-radius:6px;border:1px solid #b3d9ff}
+
+/* 사용자 상세 정보 */
+.user-details-section{margin-bottom:30px}
+.advantages-list{list-style:none;padding:0;margin:0}
+.advantages-list li{margin-bottom:10px}
+.advantages-list input{width:100%;padding:8px;border:1px solid #ddd;border-radius:4px}
+
+/* 상품 분석 결과 */
+.analysis-result{margin-top:15px;padding:15px;background:#f1f8ff;border-radius:6px;border:1px solid #b3d9ff}
+.product-preview{display:grid;grid-template-columns:150px 1fr;gap:15px;align-items:start}
+.product-preview img{width:100%;border-radius:6px}
+.product-info{font-size:14px;color:#333}
+.product-info h4{margin:0 0 10px 0;font-size:16px;color:#1c1c1c}
+.product-info p{margin:5px 0}
 </style>
 </head>
 <body>
@@ -273,6 +379,177 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
         <div class="loading-spinner"></div>
         <div class="loading-text">처리 중입니다...</div>
         <div style="margin-top: 10px; color: #666; font-size: 14px;">잠시만 기다려주세요.</div>
+    </div>
+</div>
+
+<!-- 편집 모달 -->
+<div class="modal" id="editModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 class="modal-title">큐 항목 편집</h2>
+            <button class="modal-close" onclick="closeEditModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <!-- 기본 정보 -->
+            <div class="form-section">
+                <h3>기본 정보</h3>
+                <div class="form-row three-col">
+                    <div class="form-field">
+                        <label for="editTitle">글 제목</label>
+                        <input type="text" id="editTitle" placeholder="글 제목을 입력하세요">
+                    </div>
+                    <div class="form-field">
+                        <label for="editCategory">카테고리</label>
+                        <select id="editCategory">
+                            <option value="356">스마트 리빙</option>
+                            <option value="355">기발한 잡화점</option>
+                            <option value="354">Today's Pick</option>
+                            <option value="12">우리잇템</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="editPromptType">프롬프트 스타일</label>
+                        <select id="editPromptType">
+                            <option value="essential_items">주제별 필수템형</option>
+                            <option value="friend_review">친구 추천형</option>
+                            <option value="professional_analysis">전문 분석형</option>
+                            <option value="amazing_discovery">놀라움 발견형</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 키워드 관리 -->
+            <div class="form-section">
+                <h3>키워드 관리</h3>
+                <div class="keyword-manager">
+                    <div class="keyword-list" id="keywordList">
+                        <!-- 키워드 항목들이 여기에 동적으로 추가됩니다 -->
+                    </div>
+                    <div class="add-keyword-section">
+                        <div class="form-row">
+                            <div class="form-field">
+                                <label>새 키워드 추가</label>
+                                <div style="display: flex; gap: 10px;">
+                                    <input type="text" id="newKeywordName" placeholder="키워드 이름을 입력하세요">
+                                    <button type="button" class="btn btn-success" onclick="addKeyword()">추가</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 사용자 상세 정보 -->
+            <div class="form-section">
+                <h3>사용자 상세 정보</h3>
+                <div class="user-details-section">
+                    <div class="form-section">
+                        <h4>기능 및 스펙</h4>
+                        <div class="form-row">
+                            <div class="form-field">
+                                <label>주요 기능</label>
+                                <input type="text" id="editMainFunction" placeholder="예: 자동 압축, 물 절약, 시간 단축 등">
+                            </div>
+                        </div>
+                        <div class="form-row two-col">
+                            <div class="form-field">
+                                <label>크기/용량</label>
+                                <input type="text" id="editSizeCapacity" placeholder="예: 30cm × 20cm, 500ml 등">
+                            </div>
+                            <div class="form-field">
+                                <label>색상</label>
+                                <input type="text" id="editColor" placeholder="예: 화이트, 블랙, 실버 등">
+                            </div>
+                        </div>
+                        <div class="form-row two-col">
+                            <div class="form-field">
+                                <label>재질/소재</label>
+                                <input type="text" id="editMaterial" placeholder="예: 스테인리스 스틸, 실리콘 등">
+                            </div>
+                            <div class="form-field">
+                                <label>전원/배터리</label>
+                                <input type="text" id="editPowerBattery" placeholder="예: USB 충전, 건전지 등">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h4>효율성 분석</h4>
+                        <div class="form-row">
+                            <div class="form-field">
+                                <label>해결하는 문제</label>
+                                <input type="text" id="editProblemSolving" placeholder="예: 설거지 시간 오래 걸림">
+                            </div>
+                        </div>
+                        <div class="form-row two-col">
+                            <div class="form-field">
+                                <label>시간 절약 효과</label>
+                                <input type="text" id="editTimeSaving" placeholder="예: 기존 10분 → 3분으로 단축">
+                            </div>
+                            <div class="form-field">
+                                <label>공간 활용</label>
+                                <input type="text" id="editSpaceEfficiency" placeholder="예: 50% 공간 절약">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-field">
+                                <label>비용 절감</label>
+                                <input type="text" id="editCostSaving" placeholder="예: 월 전기료 30% 절약">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h4>사용 시나리오</h4>
+                        <div class="form-row two-col">
+                            <div class="form-field">
+                                <label>주요 사용 장소</label>
+                                <input type="text" id="editUsageLocation" placeholder="예: 주방, 욕실, 거실 등">
+                            </div>
+                            <div class="form-field">
+                                <label>사용 빈도</label>
+                                <input type="text" id="editUsageFrequency" placeholder="예: 매일, 주 2-3회 등">
+                            </div>
+                        </div>
+                        <div class="form-row two-col">
+                            <div class="form-field">
+                                <label>적합한 사용자</label>
+                                <input type="text" id="editTargetUsers" placeholder="예: 1인 가구, 맞벌이 부부 등">
+                            </div>
+                            <div class="form-field">
+                                <label>사용법 요약</label>
+                                <input type="text" id="editUsageMethod" placeholder="간단한 사용 단계">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h4>장점 및 주의사항</h4>
+                        <div class="form-row">
+                            <div class="form-field">
+                                <label>핵심 장점 3가지</label>
+                                <ol class="advantages-list">
+                                    <li><input type="text" id="editAdvantage1" placeholder="예: 설치 간편함"></li>
+                                    <li><input type="text" id="editAdvantage2" placeholder="예: 유지비 저렴함"></li>
+                                    <li><input type="text" id="editAdvantage3" placeholder="예: 내구성 뛰어남"></li>
+                                </ol>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-field">
+                                <label>주의사항</label>
+                                <textarea id="editPrecautions" placeholder="예: 물기 주의, 정기 청소 필요 등"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeEditModal()">취소</button>
+            <button type="button" class="btn btn-primary" onclick="saveEditedQueue()">저장</button>
+        </div>
     </div>
 </div>
 
@@ -339,6 +616,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <script>
 let currentQueue = [];
 let dragEnabled = false;
+let currentEditingQueueId = null;
+let currentEditingData = null;
 
 // 페이지 로드 시 큐 데이터 로드
 document.addEventListener('DOMContentLoaded', function() {
@@ -673,9 +952,373 @@ async function immediatePublish(queueId) {
     }
 }
 
-// 큐 편집 (향후 구현 예정)
-function editQueue(queueId) {
-    alert('편집 기능은 향후 구현 예정입니다.\n현재는 affiliate_editor.php에서 새로 작성해주세요.');
+// 큐 편집 모달 열기
+async function editQueue(queueId) {
+    try {
+        showLoading();
+        const response = await fetch('', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: `action=get_queue_item&queue_id=${encodeURIComponent(queueId)}`
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentEditingQueueId = queueId;
+            currentEditingData = result.item;
+            populateEditModal(result.item);
+            document.getElementById('editModal').style.display = 'flex';
+        } else {
+            alert('항목을 불러오는데 실패했습니다: ' + result.message);
+        }
+    } catch (error) {
+        console.error('편집 데이터 로드 오류:', error);
+        alert('편집 데이터를 불러오는 중 오류가 발생했습니다.');
+    } finally {
+        hideLoading();
+    }
+}
+
+// 편집 모달에 데이터 채우기
+function populateEditModal(item) {
+    // 기본 정보
+    document.getElementById('editTitle').value = item.title || '';
+    document.getElementById('editCategory').value = item.category_id || '356';
+    document.getElementById('editPromptType').value = item.prompt_type || 'essential_items';
+    
+    // 키워드 목록 표시
+    displayKeywords(item.keywords || []);
+    
+    // 사용자 상세 정보
+    const userDetails = item.user_details || {};
+    
+    // 기능 및 스펙
+    const specs = userDetails.specs || {};
+    document.getElementById('editMainFunction').value = specs.main_function || '';
+    document.getElementById('editSizeCapacity').value = specs.size_capacity || '';
+    document.getElementById('editColor').value = specs.color || '';
+    document.getElementById('editMaterial').value = specs.material || '';
+    document.getElementById('editPowerBattery').value = specs.power_battery || '';
+    
+    // 효율성 분석
+    const efficiency = userDetails.efficiency || {};
+    document.getElementById('editProblemSolving').value = efficiency.problem_solving || '';
+    document.getElementById('editTimeSaving').value = efficiency.time_saving || '';
+    document.getElementById('editSpaceEfficiency').value = efficiency.space_efficiency || '';
+    document.getElementById('editCostSaving').value = efficiency.cost_saving || '';
+    
+    // 사용 시나리오
+    const usage = userDetails.usage || {};
+    document.getElementById('editUsageLocation').value = usage.usage_location || '';
+    document.getElementById('editUsageFrequency').value = usage.usage_frequency || '';
+    document.getElementById('editTargetUsers').value = usage.target_users || '';
+    document.getElementById('editUsageMethod').value = usage.usage_method || '';
+    
+    // 장점 및 주의사항
+    const benefits = userDetails.benefits || {};
+    const advantages = benefits.advantages || [];
+    document.getElementById('editAdvantage1').value = advantages[0] || '';
+    document.getElementById('editAdvantage2').value = advantages[1] || '';
+    document.getElementById('editAdvantage3').value = advantages[2] || '';
+    document.getElementById('editPrecautions').value = benefits.precautions || '';
+}
+
+// 키워드 목록 표시
+function displayKeywords(keywords) {
+    const keywordList = document.getElementById('keywordList');
+    let html = '';
+    
+    keywords.forEach((keyword, index) => {
+        const aliexpressLinks = keyword.aliexpress || [];
+        const coupangLinks = keyword.coupang || [];
+        
+        html += `
+            <div class="keyword-item" data-keyword-index="${index}">
+                <div class="keyword-item-header">
+                    <input type="text" class="keyword-item-title" value="${keyword.name}" placeholder="키워드 이름">
+                    <div class="keyword-item-actions">
+                        <button type="button" class="btn btn-danger btn-small" onclick="removeKeyword(${index})">삭제</button>
+                    </div>
+                </div>
+                
+                <div class="product-list">
+                    <h5>알리익스프레스 상품 (${aliexpressLinks.length}개)</h5>
+                    <div class="aliexpress-products">
+                        ${aliexpressLinks.map((url, urlIndex) => `
+                            <div class="product-item-edit">
+                                <div class="product-item-edit-header">
+                                    <input type="url" class="product-url-input" value="${url}" placeholder="상품 URL">
+                                    <button type="button" class="btn btn-secondary btn-small" onclick="analyzeProduct(${index}, 'aliexpress', ${urlIndex})">분석</button>
+                                    <button type="button" class="btn btn-danger btn-small" onclick="removeProduct(${index}, 'aliexpress', ${urlIndex})">삭제</button>
+                                </div>
+                                <div class="analysis-result" id="analysis-${index}-aliexpress-${urlIndex}"></div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    <div class="add-product-section">
+                        <div style="display: flex; gap: 10px;">
+                            <input type="url" class="new-product-url" placeholder="새 알리익스프레스 상품 URL">
+                            <button type="button" class="btn btn-success btn-small" onclick="addProduct(${index}, 'aliexpress')">추가</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    keywordList.innerHTML = html;
+}
+
+// 키워드 추가
+function addKeyword() {
+    const nameInput = document.getElementById('newKeywordName');
+    const name = nameInput.value.trim();
+    
+    if (!name) {
+        alert('키워드 이름을 입력해주세요.');
+        return;
+    }
+    
+    if (!currentEditingData.keywords) {
+        currentEditingData.keywords = [];
+    }
+    
+    currentEditingData.keywords.push({
+        name: name,
+        aliexpress: [],
+        coupang: []
+    });
+    
+    displayKeywords(currentEditingData.keywords);
+    nameInput.value = '';
+}
+
+// 키워드 제거
+function removeKeyword(index) {
+    if (confirm('이 키워드를 삭제하시겠습니까?')) {
+        currentEditingData.keywords.splice(index, 1);
+        displayKeywords(currentEditingData.keywords);
+    }
+}
+
+// 상품 추가
+function addProduct(keywordIndex, platform) {
+    const keywordItem = document.querySelector(`[data-keyword-index="${keywordIndex}"]`);
+    const urlInput = keywordItem.querySelector('.new-product-url');
+    const url = urlInput.value.trim();
+    
+    if (!url) {
+        alert('상품 URL을 입력해주세요.');
+        return;
+    }
+    
+    if (!currentEditingData.keywords[keywordIndex][platform]) {
+        currentEditingData.keywords[keywordIndex][platform] = [];
+    }
+    
+    currentEditingData.keywords[keywordIndex][platform].push(url);
+    displayKeywords(currentEditingData.keywords);
+}
+
+// 상품 제거
+function removeProduct(keywordIndex, platform, urlIndex) {
+    if (confirm('이 상품을 삭제하시겠습니까?')) {
+        currentEditingData.keywords[keywordIndex][platform].splice(urlIndex, 1);
+        displayKeywords(currentEditingData.keywords);
+    }
+}
+
+// 상품 분석
+async function analyzeProduct(keywordIndex, platform, urlIndex) {
+    const url = currentEditingData.keywords[keywordIndex][platform][urlIndex];
+    
+    if (!url) {
+        alert('분석할 상품 URL이 없습니다.');
+        return;
+    }
+    
+    try {
+        const response = await fetch('', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: `action=analyze_product&url=${encodeURIComponent(url)}`
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            displayAnalysisResult(keywordIndex, platform, urlIndex, result.data);
+        } else {
+            alert('상품 분석에 실패했습니다: ' + result.message);
+        }
+    } catch (error) {
+        console.error('상품 분석 오류:', error);
+        alert('상품 분석 중 오류가 발생했습니다.');
+    }
+}
+
+// 분석 결과 표시
+function displayAnalysisResult(keywordIndex, platform, urlIndex, data) {
+    const resultDiv = document.getElementById(`analysis-${keywordIndex}-${platform}-${urlIndex}`);
+    
+    if (!resultDiv) return;
+    
+    const formattedPrice = data.price || '가격 정보 없음';
+    const ratingDisplay = data.rating_display || '평점 정보 없음';
+    
+    resultDiv.innerHTML = `
+        <div class="product-preview">
+            <img src="${data.image_url}" alt="${data.title}" onerror="this.style.display='none'">
+            <div class="product-info">
+                <h4>${data.title}</h4>
+                <p><strong>가격:</strong> ${formattedPrice}</p>
+                <p><strong>평점:</strong> ${ratingDisplay}</p>
+                <p><strong>판매량:</strong> ${data.lastest_volume || '판매량 정보 없음'}</p>
+            </div>
+        </div>
+    `;
+}
+
+// 편집된 큐 저장
+async function saveEditedQueue() {
+    try {
+        // 폼 데이터 수집
+        const updatedData = {
+            title: document.getElementById('editTitle').value.trim(),
+            category_id: parseInt(document.getElementById('editCategory').value),
+            prompt_type: document.getElementById('editPromptType').value,
+            keywords: collectEditedKeywords(),
+            user_details: collectEditedUserDetails()
+        };
+        
+        // 유효성 검사
+        if (!updatedData.title || updatedData.title.length < 5) {
+            alert('제목은 5자 이상이어야 합니다.');
+            return;
+        }
+        
+        if (!updatedData.keywords || updatedData.keywords.length === 0) {
+            alert('최소 하나의 키워드가 필요합니다.');
+            return;
+        }
+        
+        showLoading();
+        const response = await fetch('', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: `action=update_queue_item&queue_id=${encodeURIComponent(currentEditingQueueId)}&data=${encodeURIComponent(JSON.stringify(updatedData))}`
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('항목이 성공적으로 업데이트되었습니다.');
+            closeEditModal();
+            loadQueue(); // 저장 후 다시 로드
+        } else {
+            alert('업데이트에 실패했습니다: ' + result.message);
+        }
+    } catch (error) {
+        console.error('저장 오류:', error);
+        alert('저장 중 오류가 발생했습니다.');
+    } finally {
+        hideLoading();
+    }
+}
+
+// 편집된 키워드 데이터 수집
+function collectEditedKeywords() {
+    const keywords = [];
+    const keywordItems = document.querySelectorAll('.keyword-item');
+    
+    keywordItems.forEach(item => {
+        const nameInput = item.querySelector('.keyword-item-title');
+        const name = nameInput.value.trim();
+        
+        if (name) {
+            const aliexpressUrls = [];
+            const coupangUrls = [];
+            
+            // 알리익스프레스 URL 수집
+            const aliexpressInputs = item.querySelectorAll('.aliexpress-products .product-url-input');
+            aliexpressInputs.forEach(input => {
+                const url = input.value.trim();
+                if (url) aliexpressUrls.push(url);
+            });
+            
+            keywords.push({
+                name: name,
+                aliexpress: aliexpressUrls,
+                coupang: coupangUrls
+            });
+        }
+    });
+    
+    return keywords;
+}
+
+// 편집된 사용자 상세 정보 수집
+function collectEditedUserDetails() {
+    const details = {};
+    
+    // 기능 및 스펙
+    const specs = {};
+    addIfNotEmpty(specs, 'main_function', 'editMainFunction');
+    addIfNotEmpty(specs, 'size_capacity', 'editSizeCapacity');
+    addIfNotEmpty(specs, 'color', 'editColor');
+    addIfNotEmpty(specs, 'material', 'editMaterial');
+    addIfNotEmpty(specs, 'power_battery', 'editPowerBattery');
+    if (Object.keys(specs).length > 0) details.specs = specs;
+    
+    // 효율성 분석
+    const efficiency = {};
+    addIfNotEmpty(efficiency, 'problem_solving', 'editProblemSolving');
+    addIfNotEmpty(efficiency, 'time_saving', 'editTimeSaving');
+    addIfNotEmpty(efficiency, 'space_efficiency', 'editSpaceEfficiency');
+    addIfNotEmpty(efficiency, 'cost_saving', 'editCostSaving');
+    if (Object.keys(efficiency).length > 0) details.efficiency = efficiency;
+    
+    // 사용 시나리오
+    const usage = {};
+    addIfNotEmpty(usage, 'usage_location', 'editUsageLocation');
+    addIfNotEmpty(usage, 'usage_frequency', 'editUsageFrequency');
+    addIfNotEmpty(usage, 'target_users', 'editTargetUsers');
+    addIfNotEmpty(usage, 'usage_method', 'editUsageMethod');
+    if (Object.keys(usage).length > 0) details.usage = usage;
+    
+    // 장점 및 주의사항
+    const benefits = {};
+    const advantages = [];
+    ['editAdvantage1', 'editAdvantage2', 'editAdvantage3'].forEach(id => {
+        const value = document.getElementById(id)?.value.trim();
+        if (value) advantages.push(value);
+    });
+    if (advantages.length > 0) benefits.advantages = advantages;
+    addIfNotEmpty(benefits, 'precautions', 'editPrecautions');
+    if (Object.keys(benefits).length > 0) details.benefits = benefits;
+    
+    return details;
+}
+
+// 값이 있으면 객체에 추가하는 유틸리티 함수
+function addIfNotEmpty(obj, key, elementId) {
+    const value = document.getElementById(elementId)?.value.trim();
+    if (value) obj[key] = value;
+}
+
+// 편집 모달 닫기
+function closeEditModal() {
+    document.getElementById('editModal').style.display = 'none';
+    currentEditingQueueId = null;
+    currentEditingData = null;
 }
 
 // 큐 새로고침
@@ -691,6 +1334,20 @@ function showLoading() {
 function hideLoading() {
     document.getElementById('loadingOverlay').style.display = 'none';
 }
+
+// 모달 외부 클릭 시 닫기
+document.getElementById('editModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeEditModal();
+    }
+});
+
+// ESC 키로 모달 닫기
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && document.getElementById('editModal').style.display === 'flex') {
+        closeEditModal();
+    }
+});
 </script>
 </body>
 </html>
