@@ -5,7 +5,7 @@
  * 워드프레스 환경에 전혀 종속되지 않으며, 순수 PHP로만 작동합니다.
  *
  * 파일 위치: /var/www/novacents/tools/keyword_processor.php
- * 버전: v4.1 (오류 처리 강화)
+ * 버전: v4.2 (count() 오류 수정)
  */
 
 // 1. 초기 에러 리포팅 설정 (스크립트 시작 시점부터 에러를 잡기 위함)
@@ -22,7 +22,15 @@ define('MAIN_LOG_FILE', BASE_PATH . '/processor_log.txt');
 define('QUEUE_FILE', BASE_PATH . '/product_queue.json');
 define('TEMP_DIR', BASE_PATH . '/temp'); // 즉시 발행용 임시 파일 디렉토리
 
-// 3. 디버깅 로그 함수 (스크립트 시작부터 끝까지 모든 흐름 기록)
+// 3. 안전한 count 함수
+function safe_count($value) {
+    if (is_array($value) || $value instanceof Countable) {
+        return count($value);
+    }
+    return 0;
+}
+
+// 4. 디버깅 로그 함수 (스크립트 시작부터 끝까지 모든 흐름 기록)
 function debug_log($message) {
     $timestamp = date('Y-m-d H:i:s');
     $log_entry = "[{$timestamp}] DEBUG: {$message}\n";
@@ -38,7 +46,7 @@ debug_log("Script Path: " . __FILE__);
 debug_log("Base Path: " . BASE_PATH);
 
 
-// 4. 환경 변수 로드 함수 (워드프레스 외부에서 .env 파일을 안전하게 로드)
+// 5. 환경 변수 로드 함수 (워드프레스 외부에서 .env 파일을 안전하게 로드)
 function load_env_variables() {
     debug_log("load_env_variables: Loading environment variables from " . ENV_FILE);
     $env_vars = [];
@@ -63,7 +71,7 @@ function load_env_variables() {
                 $env_vars[trim($key)] = trim($value);
             }
         }
-        debug_log("load_env_variables: Successfully loaded " . count($env_vars) . " variables.");
+        debug_log("load_env_variables: Successfully loaded " . safe_count($env_vars) . " variables.");
     } catch (Exception $e) {
         debug_log("load_env_variables: Exception while reading .env file: " . $e->getMessage());
     }
@@ -71,7 +79,7 @@ function load_env_variables() {
 }
 
 
-// 5. 일반 로그 함수 (주요 작업 흐름 기록)
+// 6. 일반 로그 함수 (주요 작업 흐름 기록)
 function main_log($message) {
     $timestamp = date('Y-m-d H:i:s');
     $log_entry = "[{$timestamp}] INFO: {$message}\n";
@@ -79,7 +87,7 @@ function main_log($message) {
 }
 
 
-// 6. 입력값 안전 처리 함수 (htmlspecialchars, strip_tags 등 사용)
+// 7. 입력값 안전 처리 함수 (htmlspecialchars, strip_tags 등 사용)
 function clean_input($data) {
     $data = trim($data);
     $data = stripslashes($data); // 매직 쿼트 제거 (PHP 설정에 따라 다름)
@@ -89,7 +97,7 @@ function clean_input($data) {
 }
 
 
-// 7. 텔레그램 알림 발송 함수 (cURL 우선, file_get_contents 백업)
+// 8. 텔레그램 알림 발송 함수 (cURL 우선, file_get_contents 백업)
 function send_telegram_notification($message, $urgent = false) {
     debug_log("send_telegram_notification: Attempting to send message.");
     $env_vars = load_env_variables();
@@ -179,7 +187,7 @@ function send_telegram_notification($message, $urgent = false) {
 }
 
 
-// 8. 큐 파일 로드/저장/관리 함수들
+// 9. 큐 파일 로드/저장/관리 함수들
 function get_queue_file_path() {
     return QUEUE_FILE;
 }
@@ -231,13 +239,13 @@ function load_queue() {
     }
     
     $result = is_array($queue) ? $queue : [];
-    debug_log("load_queue: Successfully loaded " . count($result) . " items from queue.");
+    debug_log("load_queue: Successfully loaded " . safe_count($result) . " items from queue.");
     return $result;
 }
 
 function save_queue($queue) {
     $queue_file = get_queue_file_path();
-    debug_log("save_queue: Attempting to save " . count($queue) . " items to " . $queue_file);
+    debug_log("save_queue: Attempting to save " . safe_count($queue) . " items to " . $queue_file);
 
     // 큐 디렉토리 확인 및 생성
     if (!ensure_queue_directory()) {
@@ -303,7 +311,7 @@ function get_queue_stats() {
     debug_log("get_queue_stats: Calculating queue statistics.");
     $queue = load_queue();
     $stats = [
-        'total' => count($queue),
+        'total' => safe_count($queue),
         'pending' => 0, 'processing' => 0,
         'completed' => 0, 'failed' => 0
     ];
@@ -318,7 +326,7 @@ function get_queue_stats() {
 }
 
 
-// 9. 리다이렉션 함수 (성공/실패 메시지 전달)
+// 10. 리다이렉션 함수 (성공/실패 메시지 전달)
 function redirect_to_editor($success, $message_params) {
     $base_url = 'affiliate_editor.php';
     $query_string = http_build_query($message_params);
@@ -328,7 +336,7 @@ function redirect_to_editor($success, $message_params) {
     exit;
 }
 
-// 🚀 10. JSON 응답 함수 (즉시 발행용)
+// 🚀 11. JSON 응답 함수 (즉시 발행용)
 function send_json_response($success, $data = []) {
     header('Content-Type: application/json');
     $response = [
@@ -343,7 +351,7 @@ function send_json_response($success, $data = []) {
 }
 
 
-// 11. 카테고리 매핑 함수
+// 12. 카테고리 매핑 함수
 function get_category_name($category_id) {
     $categories = [
         '354' => 'Today\'s Pick',
@@ -354,7 +362,7 @@ function get_category_name($category_id) {
     return $categories[$category_id] ?? '알 수 없는 카테고리';
 }
 
-// 🚀 12. 프롬프트 타입 관련 함수들 (새로 추가)
+// 🚀 13. 프롬프트 타입 관련 함수들 (새로 추가)
 function get_prompt_type_name($prompt_type) {
     $prompt_types = [
         'essential_items' => '필수템형 🎯',
@@ -370,7 +378,7 @@ function validate_prompt_type($prompt_type) {
     return in_array($prompt_type, $valid_prompt_types);
 }
 
-// 13. 사용자 상세 정보 처리 함수들 (오류 처리 강화)
+// 14. 사용자 상세 정보 처리 함수들 (오류 처리 강화)
 function parse_user_details($user_details_json) {
     debug_log("parse_user_details: Parsing user details JSON.");
     
@@ -399,7 +407,7 @@ function parse_user_details($user_details_json) {
             return null;
         }
         
-        debug_log("parse_user_details: Successfully parsed user details with " . count($user_details) . " sections.");
+        debug_log("parse_user_details: Successfully parsed user details with " . safe_count($user_details) . " sections.");
         return $user_details;
         
     } catch (Exception $e) {
@@ -430,13 +438,13 @@ function validate_user_details($user_details) {
     foreach ($user_details as $section_name => $section_data) {
         if (in_array($section_name, $allowed_sections) && is_array($section_data)) {
             $valid_sections++;
-            debug_log("validate_user_details: Valid section found: {$section_name} with " . count($section_data) . " fields.");
+            debug_log("validate_user_details: Valid section found: {$section_name} with " . safe_count($section_data) . " fields.");
         } else {
             debug_log("validate_user_details: Invalid or unknown section: {$section_name}");
         }
     }
     
-    debug_log("validate_user_details: Found {$valid_sections} valid sections out of " . count($user_details) . " total sections.");
+    debug_log("validate_user_details: Found {$valid_sections} valid sections out of " . safe_count($user_details) . " total sections.");
     return $valid_sections > 0; // 최소 하나의 유효한 섹션이 있으면 통과
 }
 
@@ -444,24 +452,24 @@ function format_user_details_summary($user_details) {
     $summary = [];
     
     if (isset($user_details['specs']) && is_array($user_details['specs'])) {
-        $specs_count = count($user_details['specs']);
+        $specs_count = safe_count($user_details['specs']);
         $summary[] = "기능/스펙: {$specs_count}개 항목";
     }
     
     if (isset($user_details['efficiency']) && is_array($user_details['efficiency'])) {
-        $efficiency_count = count($user_details['efficiency']);
+        $efficiency_count = safe_count($user_details['efficiency']);
         $summary[] = "효율성 분석: {$efficiency_count}개 항목";
     }
     
     if (isset($user_details['usage']) && is_array($user_details['usage'])) {
-        $usage_count = count($user_details['usage']);
+        $usage_count = safe_count($user_details['usage']);
         $summary[] = "사용 시나리오: {$usage_count}개 항목";
     }
     
     if (isset($user_details['benefits']) && is_array($user_details['benefits'])) {
         $benefits_count = 0;
         if (isset($user_details['benefits']['advantages']) && is_array($user_details['benefits']['advantages'])) {
-            $benefits_count += count($user_details['benefits']['advantages']);
+            $benefits_count += safe_count($user_details['benefits']['advantages']);
         }
         if (isset($user_details['benefits']['precautions'])) {
             $benefits_count += 1;
@@ -473,7 +481,7 @@ function format_user_details_summary($user_details) {
 }
 
 
-// 14. 입력 데이터 검증 및 정리 함수 (프롬프트 타입 지원 추가)
+// 15. 입력 데이터 검증 및 정리 함수 (프롬프트 타입 지원 추가)
 function validate_input_data($data) {
     debug_log("validate_input_data: Starting validation with prompt type and user details support.");
     $errors = [];
@@ -492,8 +500,10 @@ function validate_input_data($data) {
         $errors[] = '유효하지 않은 프롬프트 타입입니다.';
     }
 
+    // 키워드 데이터 안전성 검사 추가
     if (empty($data['keywords']) || !is_array($data['keywords'])) {
         $errors[] = '최소 하나의 키워드가 필요합니다.';
+        debug_log("validate_input_data: Keywords is not array or empty. Type: " . gettype($data['keywords']) . ", Value: " . substr(var_export($data['keywords'], true), 0, 100));
     } else {
         foreach ($data['keywords'] as $index => $keyword_item) {
             if (empty($keyword_item['name']) || strlen(trim($keyword_item['name'])) < 2) {
@@ -508,7 +518,7 @@ function validate_input_data($data) {
                         break;
                     }
                 }
-                if (count($keyword_item['coupang']) > 10) {
+                if (safe_count($keyword_item['coupang']) > 10) {
                     $errors[] = "키워드 '" . clean_input($keyword_item['name'] ?? '') . "'의 쿠팡 링크는 최대 10개까지 허용됩니다.";
                 }
             }
@@ -537,7 +547,7 @@ function validate_input_data($data) {
         }
     }
     
-    debug_log("validate_input_data: Validation finished with " . count($errors) . " errors.");
+    debug_log("validate_input_data: Validation finished with " . safe_count($errors) . " errors.");
     return $errors;
 }
 
@@ -578,11 +588,11 @@ function clean_affiliate_links($keywords_raw) {
             debug_log("clean_affiliate_links: Keyword '" . ($keyword_item['name'] ?? 'N/A') . "' (index {$index}) removed due to empty name or no valid links.");
         }
     }
-    debug_log("clean_affiliate_links: Finished cleaning. " . count($cleaned_keywords) . " keywords remain.");
+    debug_log("clean_affiliate_links: Finished cleaning. " . safe_count($cleaned_keywords) . " keywords remain.");
     return $cleaned_keywords;
 }
 
-// 🚀 15. 즉시 발행 전용 함수들
+// 🚀 16. 즉시 발행 전용 함수들
 function process_immediate_publish($queue_data) {
     debug_log("process_immediate_publish: Starting immediate publish process.");
     
@@ -769,7 +779,7 @@ function parse_python_output($output) {
 }
 
 
-// 16. 메인 처리 로직 (4가지 프롬프트 템플릿 시스템 + 즉시 발행 지원 + 오류 처리 강화)
+// 17. 메인 처리 로직 (4가지 프롬프트 템플릿 시스템 + 즉시 발행 지원 + count() 오류 수정)
 function main_process() {
     debug_log("main_process: Main processing started with 4-prompt template system + immediate publish support.");
 
@@ -793,17 +803,18 @@ function main_process() {
         debug_log("main_process: Title: " . $input_data['title']);
         debug_log("main_process: Category: " . $input_data['category']);
         debug_log("main_process: Prompt Type: " . $input_data['prompt_type']);
-        debug_log("main_process: Keywords count: " . count($input_data['keywords']));
+        debug_log("main_process: Keywords count: " . safe_count($input_data['keywords']));
+        debug_log("main_process: Keywords type: " . gettype($input_data['keywords']));
         debug_log("main_process: User details: " . (empty($input_data['user_details']) ? 'No' : 'Yes'));
         debug_log("main_process: Publish mode: " . $input_data['publish_mode']);
         
-        main_log("Input data received: Title='" . $input_data['title'] . "', Category=" . $input_data['category'] . ", Prompt Type=" . $input_data['prompt_type'] . ", Keywords=" . count($input_data['keywords']) . ", User Details=" . (empty($input_data['user_details']) ? 'No' : 'Yes') . ", Publish Mode=" . $input_data['publish_mode'] . ".");
+        main_log("Input data received: Title='" . $input_data['title'] . "', Category=" . $input_data['category'] . ", Prompt Type=" . $input_data['prompt_type'] . ", Keywords=" . safe_count($input_data['keywords']) . ", User Details=" . (empty($input_data['user_details']) ? 'No' : 'Yes') . ", Publish Mode=" . $input_data['publish_mode'] . ".");
 
         // Data validation
         $validation_errors = validate_input_data($input_data);
         if (!empty($validation_errors)) {
             debug_log("main_process: Validation failed. Errors: " . implode(' | ', $validation_errors));
-            $telegram_msg = "❌ 데이터 검증 실패:\n\n" . implode("\n• ", $validation_errors) . "\n\n입력된 데이터:\n제목: " . $input_data['title'] . "\n카테고리: " . get_category_name($input_data['category']) . "\n프롬프트: " . get_prompt_type_name($input_data['prompt_type']) . "\n키워드 수: " . count($input_data['keywords']) . "개";
+            $telegram_msg = "❌ 데이터 검증 실패:\n\n" . implode("\n• ", $validation_errors) . "\n\n입력된 데이터:\n제목: " . $input_data['title'] . "\n카테고리: " . get_category_name($input_data['category']) . "\n프롬프트: " . get_prompt_type_name($input_data['prompt_type']) . "\n키워드 수: " . safe_count($input_data['keywords']) . "개";
             send_telegram_notification($telegram_msg, true);
             main_log("Data validation failed: " . implode(', ', $validation_errors));
             
@@ -836,7 +847,7 @@ function main_process() {
                 redirect_to_editor(false, ['error' => '유효한 키워드 및 상품 링크를 찾을 수 없습니다.']);
             }
         }
-        debug_log("main_process: Product links cleaned. " . count($cleaned_keywords) . " keywords remain.");
+        debug_log("main_process: Product links cleaned. " . safe_count($cleaned_keywords) . " keywords remain.");
 
         // 사용자 상세 정보 처리 (안전하게)
         $user_details_data = null;
@@ -884,12 +895,12 @@ function main_process() {
             'has_user_details' => ($user_details_data !== null) // 사용자 상세 정보 존재 여부
         ];
         
-        // 링크 카운트 계산
+        // 링크 카운트 계산 (안전한 count 사용)
         $coupang_total = 0;
         $aliexpress_total = 0;
         foreach ($cleaned_keywords as $keyword_item) {
-            $coupang_total += count($keyword_item['coupang'] ?? []);
-            $aliexpress_total += count($keyword_item['aliexpress'] ?? []);
+            $coupang_total += safe_count($keyword_item['coupang'] ?? []);
+            $aliexpress_total += safe_count($keyword_item['aliexpress'] ?? []);
         }
         $queue_data['conversion_status']['coupang_total'] = $coupang_total;
         $queue_data['conversion_status']['aliexpress_total'] = $aliexpress_total;
@@ -927,7 +938,7 @@ function main_process() {
             $telegram_success_msg .= "• 제목: " . $input_data['title'] . "\n";
             $telegram_success_msg .= "• 카테고리: " . $queue_data['category_name'] . "\n";
             $telegram_success_msg .= "• 프롬프트 타입: " . $queue_data['prompt_type_name'] . "\n";
-            $telegram_success_msg .= "• 키워드 수: " . count($cleaned_keywords) . "개\n";
+            $telegram_success_msg .= "• 키워드 수: " . safe_count($cleaned_keywords) . "개\n";
             $telegram_success_msg .= "• 처리 모드: 4가지 프롬프트 템플릿 시스템\n";
             $telegram_success_msg .= "• 쿠팡 링크: " . $coupang_total . "개\n";
             $telegram_success_msg .= "• 알리익스프레스 링크: " . $aliexpress_total . "개\n";
