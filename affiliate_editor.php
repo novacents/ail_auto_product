@@ -43,54 +43,6 @@ if (isset($_POST['action']) && $_POST['action'] === 'generate_titles') {
     echo json_encode($result); exit;
 }
 
-// 즉시 발행 처리
-if (isset($_POST['action']) && $_POST['action'] === 'publish_now') {
-    header('Content-Type: application/json');
-    
-    // 데이터 검증
-    $required_fields = ['title', 'category', 'prompt_type', 'keywords', 'user_details'];
-    foreach ($required_fields as $field) {
-        if (!isset($_POST[$field])) {
-            echo json_encode(['success' => false, 'message' => "필수 필드가 누락되었습니다: $field"]);
-            exit;
-        }
-    }
-    
-    try {
-        // keyword_processor.php에 즉시 발행 모드로 데이터 전송
-        $post_data = [
-            'title' => $_POST['title'],
-            'category' => $_POST['category'],
-            'prompt_type' => $_POST['prompt_type'],
-            'keywords' => $_POST['keywords'],
-            'user_details' => $_POST['user_details'],
-            'publish_mode' => 'immediate' // 즉시 발행 모드
-        ];
-        
-        // keyword_processor.php 호출
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, 'keyword_processor.php');
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_data));
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 300); // 5분 타임아웃
-        
-        $response = curl_exec($ch);
-        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        
-        if ($http_code === 200) {
-            echo json_encode(['success' => true, 'message' => '글이 성공적으로 발행되었습니다!']);
-        } else {
-            echo json_encode(['success' => false, 'message' => '발행 중 오류가 발생했습니다.']);
-        }
-        
-    } catch (Exception $e) {
-        echo json_encode(['success' => false, 'message' => '발행 처리 중 오류: ' . $e->getMessage()]);
-    }
-    exit;
-}
-
 $success_message = ''; $error_message = '';
 if (isset($_GET['success']) && $_GET['success'] == '1') { $success_message = '글이 성공적으로 발행 대기열에 추가되었습니다!'; }
 if (isset($_GET['error'])) { $error_message = '오류: ' . urldecode($_GET['error']); }
@@ -1017,19 +969,19 @@ async function publishNow() {
     publishBtn.textContent = '발행 중...';
     
     try {
-        // 6. 즉시 발행 요청
-        const response = await fetch('', {
+        // 6. 즉시 발행 요청 - keyword_processor.php로 직접 전송
+        const response = await fetch('keyword_processor.php', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded'
             },
             body: new URLSearchParams({
-                action: 'publish_now',
                 title: formData.title,
                 category: formData.category,
                 prompt_type: formData.prompt_type,
                 keywords: JSON.stringify(formData.keywords),
-                user_details: JSON.stringify(formData.user_details)
+                user_details: JSON.stringify(formData.user_details),
+                publish_mode: 'immediate'
             })
         });
         
@@ -1037,8 +989,11 @@ async function publishNow() {
         
         if (result.success) {
             alert('✅ 글 발행이 완료되었습니다!');
+            if (result.post_url) {
+                window.open(result.post_url, '_blank');
+            }
         } else {
-            showDetailedError('발행 실패', result.message);
+            showDetailedError('발행 실패', result.message || '알 수 없는 오류가 발생했습니다.');
         }
         
     } catch (error) {
