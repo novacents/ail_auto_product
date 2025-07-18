@@ -2,7 +2,7 @@
 /**
  * 어필리에이트 상품 등록 자동화 입력 페이지 (AliExpress 공식 스타일 - 좌우 분할 + 📱 반응형)
  * 노바센트(novacents.com) 전용 - 압축 최적화 버전 + 사용자 상세 정보 수집 기능 + 프롬프트 선택 기능
- * 수정: 새 상품 선택 시 사용자 입력 필드 초기화 기능 추가
+ * 수정: 새 상품 선택 시 사용자 입력 필드 초기화 기능 추가 + 진행률 계산 수정 (저장 버튼 클릭 시에만 완료)
  */
 require_once($_SERVER['DOCUMENT_ROOT'] . '/wp-config.php');
 if (!current_user_can('manage_options')) { wp_die('접근 권한이 없습니다.'); }
@@ -552,7 +552,7 @@ document.addEventListener('DOMContentLoaded', function() { document.getElementBy
 function addKeyword() { toggleKeywordInput(); }
 
 function addProduct(keywordIndex) {
-    const product = { id: Date.now() + Math.random(), url: '', name: `상품 ${keywords[keywordIndex].products.length + 1}`, status: 'empty', analysisData: null, userData: {} };
+    const product = { id: Date.now() + Math.random(), url: '', name: `상품 ${keywords[keywordIndex].products.length + 1}`, status: 'empty', analysisData: null, userData: {}, isSaved: false }; // 🔧 isSaved 속성 추가
     keywords[keywordIndex].products.push(product); updateUI(); selectProduct(keywordIndex, keywords[keywordIndex].products.length - 1);
 }
 
@@ -808,14 +808,27 @@ function updateUI() { updateProductsList(); updateProgress(); }
 function updateProductsList() {
     const listEl = document.getElementById('productsList');
     if (keywords.length === 0) { listEl.innerHTML = `<div class="empty-state"><h3>📦 상품이 없습니다</h3><p>위의 "키워드 추가" 버튼을 클릭하여<br>첫 번째 키워드를 추가해보세요!</p></div>`; return; }
-    let html = ''; keywords.forEach((keyword, keywordIndex) => { html += `<div class="keyword-group"><div class="keyword-header"><div class="keyword-info"><span class="keyword-name">📁 ${keyword.name}</span><span class="product-count">${keyword.products.length}개</span></div><div class="keyword-actions"><button type="button" class="btn btn-success btn-small" onclick="addProduct(${keywordIndex})">+상품</button></div></div>`; keyword.products.forEach((product, productIndex) => { const statusIcon = getStatusIcon(product.status); html += `<div class="product-item" data-keyword="${keywordIndex}" data-product="${productIndex}" onclick="selectProduct(${keywordIndex}, ${productIndex})"><span class="product-status">${statusIcon}</span><span class="product-name">${product.name}</span></div>`; }); html += '</div>'; }); listEl.innerHTML = html;
+    let html = ''; keywords.forEach((keyword, keywordIndex) => { html += `<div class="keyword-group"><div class="keyword-header"><div class="keyword-info"><span class="keyword-name">📁 ${keyword.name}</span><span class="product-count">${keyword.products.length}개</span></div><div class="keyword-actions"><button type="button" class="btn btn-success btn-small" onclick="addProduct(${keywordIndex})">+상품</button></div></div>`; keyword.products.forEach((product, productIndex) => { const statusIcon = getStatusIcon(product.status, product.isSaved); html += `<div class="product-item" data-keyword="${keywordIndex}" data-product="${productIndex}" onclick="selectProduct(${keywordIndex}, ${productIndex})"><span class="product-status">${statusIcon}</span><span class="product-name">${product.name}</span></div>`; }); html += '</div>'; }); listEl.innerHTML = html;
 }
 
-function getStatusIcon(status) { switch (status) { case 'completed': return '✅'; case 'analyzing': return '🔄'; case 'error': return '⚠️'; default: return '❌'; } }
+// 🔧 수정된 상태 아이콘 함수 - 저장 여부까지 고려
+function getStatusIcon(status, isSaved = false) { 
+    switch (status) { 
+        case 'completed': 
+            return isSaved ? '✅' : '🔍'; // 분석 완료 + 저장됨 = ✅, 분석만 완료 = 🔍
+        case 'analyzing': 
+            return '🔄'; 
+        case 'error': 
+            return '⚠️'; 
+        default: 
+            return '❌'; 
+    } 
+}
 
+// 🔧 수정된 진행률 계산 함수 - 저장된 상품만 완료로 인정
 function updateProgress() {
     const totalProducts = keywords.reduce((sum, keyword) => sum + keyword.products.length, 0);
-    const completedProducts = keywords.reduce((sum, keyword) => sum + keyword.products.filter(p => p.status === 'completed').length, 0);
+    const completedProducts = keywords.reduce((sum, keyword) => sum + keyword.products.filter(p => p.isSaved).length, 0); // 🔧 isSaved가 true인 상품만 완료로 인정
     const percentage = totalProducts > 0 ? (completedProducts / totalProducts) * 100 : 0;
     document.getElementById('progressFill').style.width = percentage + '%'; document.getElementById('progressText').textContent = `${completedProducts}/${totalProducts} 완성`;
 }
@@ -1013,7 +1026,7 @@ async function publishNow() {
     }
 }
 
-// 🔧 수정된 저장 기능 (현재 상품만 저장)
+// 🔧 수정된 저장 기능 (현재 상품만 저장) - isSaved 플래그 추가
 function saveCurrentProduct() {
     if (currentKeywordIndex === -1 || currentProductIndex === -1) {
         showDetailedError('선택 오류', '저장할 상품을 먼저 선택해주세요.');
@@ -1031,6 +1044,12 @@ function saveCurrentProduct() {
     // 사용자 입력 상세 정보 수집하여 개별 상품에 저장
     const userDetails = collectUserInputDetails();
     product.userData = userDetails;
+    
+    // 🔧 저장 완료 플래그 설정
+    product.isSaved = true;
+    
+    // UI 업데이트
+    updateUI();
     
     alert('💾 현재 상품 정보가 저장되었습니다!');
     console.log('저장된 상품 정보:', product);
