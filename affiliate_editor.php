@@ -2,7 +2,7 @@
 /**
  * 어필리에이트 상품 등록 자동화 입력 페이지 (AliExpress 공식 스타일 - 좌우 분할 + 📱 반응형)
  * 노바센트(novacents.com) 전용 - 압축 최적화 버전 + 사용자 상세 정보 수집 기능 + 프롬프트 선택 기능
- * 수정: 새 상품 선택 시 사용자 입력 필드 초기화 기능 추가 + 진행률 계산 수정 (저장 버튼 클릭 시에만 완료) + 상단 이동 버튼 추가
+ * 수정: 새 상품 선택 시 사용자 입력 필드 초기화 기능 추가 + 진행률 계산 수정 (저장 버튼 클릭 시에만 완료) + 상단 이동 버튼 추가 + 키워드/상품 삭제 기능 추가
  */
 require_once($_SERVER['DOCUMENT_ROOT'] . '/wp-config.php');
 if (!current_user_can('manage_options')) { wp_die('접근 권한이 없습니다.'); }
@@ -92,6 +92,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .product-item.active{background:#e3f2fd;border-left:4px solid #2196F3}
 .product-status{font-size:18px;width:20px}
 .product-name{flex:1;font-size:14px;color:#555}
+.product-actions{display:flex;gap:5px;margin-left:auto}
 .sidebar-actions{padding:15px 20px;border-bottom:1px solid #e0e0e0;background:white}
 .keyword-input-section{margin-top:10px;padding:15px;background:#f8f9fa;border-radius:6px;border:1px solid #e9ecef;display:none}
 .keyword-input-section.show{display:block}
@@ -189,6 +190,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .btn-success{background-color:#28a745;color:white}
 .btn-success:hover{background-color:#1e7e34}
 .btn-danger{background-color:#dc3545;color:white}
+.btn-danger:hover{background-color:#c82333}
 .btn-small{padding:6px 12px;font-size:12px}
 .btn-large{padding:15px 30px;font-size:16px}
 .keyword-generator{margin-top:15px;padding:15px;background-color:rgba(255,255,255,0.1);border-radius:6px;display:none}
@@ -548,6 +550,49 @@ function addProduct(keywordIndex) {
     keywords[keywordIndex].products.push(product); updateUI(); selectProduct(keywordIndex, keywords[keywordIndex].products.length - 1);
 }
 
+// 🚀 새로 추가된 키워드 삭제 함수
+function deleteKeyword(keywordIndex) {
+    if (confirm(`"${keywords[keywordIndex].name}" 키워드를 삭제하시겠습니까?\n이 키워드에 포함된 모든 상품도 함께 삭제됩니다.`)) {
+        // 현재 선택된 키워드가 삭제되는 경우 초기화
+        if (currentKeywordIndex === keywordIndex) {
+            currentKeywordIndex = -1;
+            currentProductIndex = -1;
+            document.getElementById('topNavigation').style.display = 'none';
+            document.getElementById('productDetailContent').style.display = 'none';
+            document.getElementById('currentProductTitle').textContent = '상품을 선택해주세요';
+            document.getElementById('currentProductSubtitle').textContent = '왼쪽 목록에서 상품을 클릭하여 편집을 시작하세요.';
+        } else if (currentKeywordIndex > keywordIndex) {
+            // 삭제된 키워드보다 뒤에 있는 키워드가 선택된 경우 인덱스 조정
+            currentKeywordIndex--;
+        }
+        
+        keywords.splice(keywordIndex, 1);
+        updateUI();
+    }
+}
+
+// 🚀 새로 추가된 상품 삭제 함수
+function deleteProduct(keywordIndex, productIndex) {
+    const product = keywords[keywordIndex].products[productIndex];
+    if (confirm(`"${product.name}" 상품을 삭제하시겠습니까?`)) {
+        // 현재 선택된 상품이 삭제되는 경우 초기화
+        if (currentKeywordIndex === keywordIndex && currentProductIndex === productIndex) {
+            currentKeywordIndex = -1;
+            currentProductIndex = -1;
+            document.getElementById('topNavigation').style.display = 'none';
+            document.getElementById('productDetailContent').style.display = 'none';
+            document.getElementById('currentProductTitle').textContent = '상품을 선택해주세요';
+            document.getElementById('currentProductSubtitle').textContent = '왼쪽 목록에서 상품을 클릭하여 편집을 시작하세요.';
+        } else if (currentKeywordIndex === keywordIndex && currentProductIndex > productIndex) {
+            // 같은 키워드의 뒤에 있는 상품이 선택된 경우 인덱스 조정
+            currentProductIndex--;
+        }
+        
+        keywords[keywordIndex].products.splice(productIndex, 1);
+        updateUI();
+    }
+}
+
 // 🔧 새로운 사용자 입력 필드 초기화 함수
 function clearUserInputFields() {
     // 기능 및 스펙 초기화
@@ -800,7 +845,32 @@ function updateUI() { updateProductsList(); updateProgress(); }
 function updateProductsList() {
     const listEl = document.getElementById('productsList');
     if (keywords.length === 0) { listEl.innerHTML = `<div class="empty-state"><h3>📦 상품이 없습니다</h3><p>위의 "키워드 추가" 버튼을 클릭하여<br>첫 번째 키워드를 추가해보세요!</p></div>`; return; }
-    let html = ''; keywords.forEach((keyword, keywordIndex) => { html += `<div class="keyword-group"><div class="keyword-header"><div class="keyword-info"><span class="keyword-name">📁 ${keyword.name}</span><span class="product-count">${keyword.products.length}개</span></div><div class="keyword-actions"><button type="button" class="btn btn-success btn-small" onclick="addProduct(${keywordIndex})">+상품</button></div></div>`; keyword.products.forEach((product, productIndex) => { const statusIcon = getStatusIcon(product.status, product.isSaved); html += `<div class="product-item" data-keyword="${keywordIndex}" data-product="${productIndex}" onclick="selectProduct(${keywordIndex}, ${productIndex})"><span class="product-status">${statusIcon}</span><span class="product-name">${product.name}</span></div>`; }); html += '</div>'; }); listEl.innerHTML = html;
+    let html = ''; 
+    keywords.forEach((keyword, keywordIndex) => { 
+        html += `<div class="keyword-group">
+            <div class="keyword-header">
+                <div class="keyword-info">
+                    <span class="keyword-name">📁 ${keyword.name}</span>
+                    <span class="product-count">${keyword.products.length}개</span>
+                </div>
+                <div class="keyword-actions">
+                    <button type="button" class="btn btn-success btn-small" onclick="addProduct(${keywordIndex})">+상품</button>
+                    <button type="button" class="btn btn-danger btn-small" onclick="deleteKeyword(${keywordIndex})">🗑️</button>
+                </div>
+            </div>`; 
+        keyword.products.forEach((product, productIndex) => { 
+            const statusIcon = getStatusIcon(product.status, product.isSaved); 
+            html += `<div class="product-item" data-keyword="${keywordIndex}" data-product="${productIndex}" onclick="selectProduct(${keywordIndex}, ${productIndex})">
+                <span class="product-status">${statusIcon}</span>
+                <span class="product-name">${product.name}</span>
+                <div class="product-actions">
+                    <button type="button" class="btn btn-danger btn-small" onclick="event.stopPropagation(); deleteProduct(${keywordIndex}, ${productIndex})">🗑️</button>
+                </div>
+            </div>`; 
+        }); 
+        html += '</div>'; 
+    }); 
+    listEl.innerHTML = html;
 }
 
 // 🔧 수정된 상태 아이콘 함수 - 저장 여부까지 고려
