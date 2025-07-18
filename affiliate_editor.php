@@ -2,6 +2,7 @@
 /**
  * 어필리에이트 상품 등록 자동화 입력 페이지 (AliExpress 공식 스타일 - 좌우 분할 + 📱 반응형)
  * 노바센트(novacents.com) 전용 - 압축 최적화 버전 + 사용자 상세 정보 수집 기능 + 프롬프트 선택 기능
+ * 수정: 새 상품 선택 시 사용자 입력 필드 초기화 기능 추가
  */
 require_once($_SERVER['DOCUMENT_ROOT'] . '/wp-config.php');
 if (!current_user_can('manage_options')) { wp_die('접근 권한이 없습니다.'); }
@@ -555,6 +556,74 @@ function addProduct(keywordIndex) {
     keywords[keywordIndex].products.push(product); updateUI(); selectProduct(keywordIndex, keywords[keywordIndex].products.length - 1);
 }
 
+// 🔧 새로운 사용자 입력 필드 초기화 함수
+function clearUserInputFields() {
+    // 기능 및 스펙 초기화
+    document.getElementById('main_function').value = '';
+    document.getElementById('size_capacity').value = '';
+    document.getElementById('color').value = '';
+    document.getElementById('material').value = '';
+    document.getElementById('power_battery').value = '';
+    
+    // 효율성 분석 초기화
+    document.getElementById('problem_solving').value = '';
+    document.getElementById('time_saving').value = '';
+    document.getElementById('space_efficiency').value = '';
+    document.getElementById('cost_saving').value = '';
+    
+    // 사용 시나리오 초기화
+    document.getElementById('usage_location').value = '';
+    document.getElementById('usage_frequency').value = '';
+    document.getElementById('target_users').value = '';
+    document.getElementById('usage_method').value = '';
+    
+    // 장점 및 주의사항 초기화
+    document.getElementById('advantage1').value = '';
+    document.getElementById('advantage2').value = '';
+    document.getElementById('advantage3').value = '';
+    document.getElementById('precautions').value = '';
+}
+
+// 🔧 저장된 사용자 입력 필드 로드 함수
+function loadUserInputFields(userData) {
+    if (!userData) return;
+    
+    // 기능 및 스펙 로드
+    if (userData.specs) {
+        document.getElementById('main_function').value = userData.specs.main_function || '';
+        document.getElementById('size_capacity').value = userData.specs.size_capacity || '';
+        document.getElementById('color').value = userData.specs.color || '';
+        document.getElementById('material').value = userData.specs.material || '';
+        document.getElementById('power_battery').value = userData.specs.power_battery || '';
+    }
+    
+    // 효율성 분석 로드
+    if (userData.efficiency) {
+        document.getElementById('problem_solving').value = userData.efficiency.problem_solving || '';
+        document.getElementById('time_saving').value = userData.efficiency.time_saving || '';
+        document.getElementById('space_efficiency').value = userData.efficiency.space_efficiency || '';
+        document.getElementById('cost_saving').value = userData.efficiency.cost_saving || '';
+    }
+    
+    // 사용 시나리오 로드
+    if (userData.usage) {
+        document.getElementById('usage_location').value = userData.usage.usage_location || '';
+        document.getElementById('usage_frequency').value = userData.usage.usage_frequency || '';
+        document.getElementById('target_users').value = userData.usage.target_users || '';
+        document.getElementById('usage_method').value = userData.usage.usage_method || '';
+    }
+    
+    // 장점 및 주의사항 로드
+    if (userData.benefits) {
+        if (userData.benefits.advantages) {
+            document.getElementById('advantage1').value = userData.benefits.advantages[0] || '';
+            document.getElementById('advantage2').value = userData.benefits.advantages[1] || '';
+            document.getElementById('advantage3').value = userData.benefits.advantages[2] || '';
+        }
+        document.getElementById('precautions').value = userData.benefits.precautions || '';
+    }
+}
+
 function selectProduct(keywordIndex, productIndex) {
     currentKeywordIndex = keywordIndex; currentProductIndex = productIndex; const product = keywords[keywordIndex].products[productIndex];
     document.querySelectorAll('.product-item').forEach(item => { item.classList.remove('active'); });
@@ -570,6 +639,16 @@ function updateDetailPanel(product) {
     const titleEl = document.getElementById('currentProductTitle'); const subtitleEl = document.getElementById('currentProductSubtitle');
     const contentEl = document.getElementById('productDetailContent'); const urlInput = document.getElementById('productUrl');
     titleEl.textContent = product.name; subtitleEl.textContent = `키워드: ${keywords[currentKeywordIndex].name}`; urlInput.value = product.url || '';
+    
+    // 🔧 사용자 입력 필드 초기화 또는 기존 데이터 로드
+    if (product.userData && Object.keys(product.userData).length > 0) {
+        // 기존에 저장된 데이터가 있으면 로드
+        loadUserInputFields(product.userData);
+    } else {
+        // 새 상품이면 모든 필드 초기화
+        clearUserInputFields();
+    }
+    
     if (product.analysisData) { showAnalysisResult(product.analysisData); } else { hideAnalysisResult(); } contentEl.style.display = 'block';
 }
 
