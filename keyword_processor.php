@@ -5,7 +5,7 @@
  * 워드프레스 환경에 전혀 종속되지 않으며, 순수 PHP로만 작동합니다.
  *
  * 파일 위치: /var/www/novacents/tools/keyword_processor.php
- * 버전: v4.2 (count() 오류 수정)
+ * 버전: v4.3 (디버깅 강화)
  */
 
 // 1. 초기 에러 리포팅 설정 (스크립트 시작 시점부터 에러를 잡기 위함)
@@ -44,6 +44,33 @@ debug_log("Request Method: " . ($_SERVER['REQUEST_METHOD'] ?? 'N/A'));
 debug_log("POST Data Empty: " . (empty($_POST) ? 'YES' : 'NO'));
 debug_log("Script Path: " . __FILE__);
 debug_log("Base Path: " . BASE_PATH);
+
+// 🔧 POST 데이터 상세 로깅 추가
+debug_log("=== POST 데이터 상세 분석 ===");
+if (!empty($_POST)) {
+    foreach ($_POST as $key => $value) {
+        if ($key === 'keywords') {
+            debug_log("POST[{$key}] (raw): " . substr($value, 0, 500) . (strlen($value) > 500 ? '... (truncated)' : ''));
+            
+            // JSON 디코딩 시도
+            $decoded = json_decode($value, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                debug_log("POST[{$key}] (decoded type): " . gettype($decoded));
+                debug_log("POST[{$key}] (decoded count): " . safe_count($decoded));
+                if (is_array($decoded) && !empty($decoded)) {
+                    debug_log("POST[{$key}] (first item): " . json_encode($decoded[0], JSON_UNESCAPED_UNICODE));
+                }
+            } else {
+                debug_log("POST[{$key}] JSON decode error: " . json_last_error_msg());
+            }
+        } else {
+            debug_log("POST[{$key}]: " . (is_string($value) ? substr($value, 0, 200) : gettype($value)));
+        }
+    }
+} else {
+    debug_log("No POST data received");
+}
+debug_log("=== POST 데이터 분석 완료 ===");
 
 
 // 5. 환경 변수 로드 함수 (워드프레스 외부에서 .env 파일을 안전하게 로드)
@@ -481,40 +508,57 @@ function format_user_details_summary($user_details) {
 }
 
 
-// 15. 입력 데이터 검증 및 정리 함수 (프롬프트 타입 지원 추가)
+// 15. 입력 데이터 검증 및 정리 함수 (프롬프트 타입 지원 추가) - 🔧 강화된 디버깅
 function validate_input_data($data) {
     debug_log("validate_input_data: Starting validation with prompt type and user details support.");
+    debug_log("validate_input_data: Input data structure: " . json_encode(array_keys($data), JSON_UNESCAPED_UNICODE));
+    
     $errors = [];
 
     if (empty($data['title']) || strlen(trim($data['title'])) < 5) {
         $errors[] = '제목은 5자 이상이어야 합니다.';
+        debug_log("validate_input_data: Title validation failed. Title: " . ($data['title'] ?? 'NULL'));
     }
     
     $valid_categories = ['354', '355', '356', '12'];
     if (empty($data['category']) || !in_array((int)$data['category'], $valid_categories)) {
         $errors[] = '유효하지 않은 카테고리입니다.';
+        debug_log("validate_input_data: Category validation failed. Category: " . ($data['category'] ?? 'NULL'));
     }
 
     // 🚀 프롬프트 타입 검증 추가
     if (empty($data['prompt_type']) || !validate_prompt_type($data['prompt_type'])) {
         $errors[] = '유효하지 않은 프롬프트 타입입니다.';
+        debug_log("validate_input_data: Prompt type validation failed. Prompt type: " . ($data['prompt_type'] ?? 'NULL'));
     }
 
-    // 키워드 데이터 안전성 검사 추가
+    // 🔧 키워드 데이터 강화된 검증 및 디버깅
+    debug_log("validate_input_data: Keywords raw data type: " . gettype($data['keywords'] ?? null));
+    debug_log("validate_input_data: Keywords raw data (first 500 chars): " . substr(var_export($data['keywords'] ?? null, true), 0, 500));
+    
     if (empty($data['keywords']) || !is_array($data['keywords'])) {
         $errors[] = '최소 하나의 키워드가 필요합니다.';
-        debug_log("validate_input_data: Keywords is not array or empty. Type: " . gettype($data['keywords']) . ", Value: " . substr(var_export($data['keywords'], true), 0, 100));
+        debug_log("validate_input_data: Keywords is not array or empty. Type: " . gettype($data['keywords'] ?? null) . ", Count: " . safe_count($data['keywords'] ?? null));
     } else {
+        debug_log("validate_input_data: Processing " . safe_count($data['keywords']) . " keywords...");
+        
         foreach ($data['keywords'] as $index => $keyword_item) {
+            debug_log("validate_input_data: Processing keyword {$index}: " . json_encode($keyword_item, JSON_UNESCAPED_UNICODE));
+            
             if (empty($keyword_item['name']) || strlen(trim($keyword_item['name'])) < 2) {
                 $errors[] = "키워드 #" . ($index + 1) . "의 이름이 너무 짧습니다.";
+                debug_log("validate_input_data: Keyword {$index} name too short: " . ($keyword_item['name'] ?? 'NULL'));
             }
 
             $has_valid_link = false;
+            
+            // 쿠팡 링크 검증
             if (!empty($keyword_item['coupang']) && is_array($keyword_item['coupang'])) {
-                foreach ($keyword_item['coupang'] as $link) {
+                debug_log("validate_input_data: Keyword {$index} has " . safe_count($keyword_item['coupang']) . " Coupang links");
+                foreach ($keyword_item['coupang'] as $link_index => $link) {
                     if (!empty($link) && filter_var(trim($link), FILTER_VALIDATE_URL)) {
                         $has_valid_link = true;
+                        debug_log("validate_input_data: Keyword {$index} Coupang link {$link_index} is valid");
                         break;
                     }
                 }
@@ -523,10 +567,13 @@ function validate_input_data($data) {
                 }
             }
             
+            // 알리익스프레스 링크 검증
             if (!empty($keyword_item['aliexpress']) && is_array($keyword_item['aliexpress'])) {
-                foreach ($keyword_item['aliexpress'] as $link) {
+                debug_log("validate_input_data: Keyword {$index} has " . safe_count($keyword_item['aliexpress']) . " AliExpress links");
+                foreach ($keyword_item['aliexpress'] as $link_index => $link) {
                     if (!empty($link) && filter_var(trim($link), FILTER_VALIDATE_URL)) {
                         $has_valid_link = true;
+                        debug_log("validate_input_data: Keyword {$index} AliExpress link {$link_index} is valid");
                         break;
                     }
                 }
@@ -534,27 +581,41 @@ function validate_input_data($data) {
 
             if (!$has_valid_link) {
                 $errors[] = "키워드 '" . clean_input($keyword_item['name'] ?? '') . "'에 유효한 상품 링크가 없습니다.";
+                debug_log("validate_input_data: Keyword {$index} has no valid links");
+            } else {
+                debug_log("validate_input_data: Keyword {$index} validation passed");
             }
         }
     }
     
     // 사용자 상세 정보 검증 (선택사항이므로 오류는 아님)
     if (!empty($data['user_details'])) {
+        debug_log("validate_input_data: User details provided, attempting to parse...");
         $user_details = parse_user_details($data['user_details']);
         if ($user_details !== null && !validate_user_details($user_details)) {
             debug_log("validate_input_data: User details validation failed, but continuing as it's optional.");
             // 오류로 처리하지 않음 - 선택사항이므로
         }
+    } else {
+        debug_log("validate_input_data: No user details provided.");
     }
     
     debug_log("validate_input_data: Validation finished with " . safe_count($errors) . " errors.");
+    if (!empty($errors)) {
+        debug_log("validate_input_data: Validation errors: " . implode(' | ', $errors));
+    }
+    
     return $errors;
 }
 
 function clean_affiliate_links($keywords_raw) {
     debug_log("clean_affiliate_links: Starting link cleaning.");
+    debug_log("clean_affiliate_links: Input type: " . gettype($keywords_raw) . ", Count: " . safe_count($keywords_raw));
+    
     $cleaned_keywords = [];
     foreach ($keywords_raw as $index => $keyword_item) {
+        debug_log("clean_affiliate_links: Processing keyword {$index}: " . json_encode($keyword_item, JSON_UNESCAPED_UNICODE));
+        
         $cleaned_item = [
             'name' => clean_input($keyword_item['name'] ?? ''),
             'coupang' => [],
@@ -569,6 +630,7 @@ function clean_affiliate_links($keywords_raw) {
                     $cleaned_item['coupang'][] = $link;
                 }
             }
+            debug_log("clean_affiliate_links: Keyword {$index} cleaned Coupang links: " . safe_count($cleaned_item['coupang']));
         }
 
         // Clean AliExpress links
@@ -579,11 +641,13 @@ function clean_affiliate_links($keywords_raw) {
                     $cleaned_item['aliexpress'][] = $link;
                 }
             }
+            debug_log("clean_affiliate_links: Keyword {$index} cleaned AliExpress links: " . safe_count($cleaned_item['aliexpress']));
         }
 
         // Only add if keyword name is not empty and has at least one valid link
         if (!empty($cleaned_item['name']) && (!empty($cleaned_item['coupang']) || !empty($cleaned_item['aliexpress']))) {
             $cleaned_keywords[] = $cleaned_item;
+            debug_log("clean_affiliate_links: Keyword '" . $cleaned_item['name'] . "' added to cleaned list.");
         } else {
             debug_log("clean_affiliate_links: Keyword '" . ($keyword_item['name'] ?? 'N/A') . "' (index {$index}) removed due to empty name or no valid links.");
         }
@@ -779,7 +843,7 @@ function parse_python_output($output) {
 }
 
 
-// 17. 메인 처리 로직 (4가지 프롬프트 템플릿 시스템 + 즉시 발행 지원 + count() 오류 수정)
+// 17. 메인 처리 로직 (4가지 프롬프트 템플릿 시스템 + 즉시 발행 지원 + count() 오류 수정 + 강화된 디버깅)
 function main_process() {
     debug_log("main_process: Main processing started with 4-prompt template system + immediate publish support.");
 
@@ -803,10 +867,23 @@ function main_process() {
         debug_log("main_process: Title: " . $input_data['title']);
         debug_log("main_process: Category: " . $input_data['category']);
         debug_log("main_process: Prompt Type: " . $input_data['prompt_type']);
-        debug_log("main_process: Keywords count: " . safe_count($input_data['keywords']));
-        debug_log("main_process: Keywords type: " . gettype($input_data['keywords']));
+        debug_log("main_process: Keywords raw type: " . gettype($input_data['keywords']));
+        debug_log("main_process: Keywords raw count: " . safe_count($input_data['keywords']));
         debug_log("main_process: User details: " . (empty($input_data['user_details']) ? 'No' : 'Yes'));
         debug_log("main_process: Publish mode: " . $input_data['publish_mode']);
+        
+        // 🔧 키워드 데이터 JSON 디코딩 처리
+        if (is_string($input_data['keywords'])) {
+            debug_log("main_process: Keywords is string, attempting JSON decode...");
+            $decoded_keywords = json_decode($input_data['keywords'], true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded_keywords)) {
+                $input_data['keywords'] = $decoded_keywords;
+                debug_log("main_process: Successfully decoded keywords JSON. New count: " . safe_count($input_data['keywords']));
+            } else {
+                debug_log("main_process: Failed to decode keywords JSON: " . json_last_error_msg());
+                debug_log("main_process: Raw keywords string: " . substr($input_data['keywords'], 0, 500));
+            }
+        }
         
         main_log("Input data received: Title='" . $input_data['title'] . "', Category=" . $input_data['category'] . ", Prompt Type=" . $input_data['prompt_type'] . ", Keywords=" . safe_count($input_data['keywords']) . ", User Details=" . (empty($input_data['user_details']) ? 'No' : 'Yes') . ", Publish Mode=" . $input_data['publish_mode'] . ".");
 
