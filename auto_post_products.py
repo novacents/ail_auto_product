@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 
 """
-알리익스프레스 전용 어필리에이트 상품 자동 등록 시스템 (4가지 프롬프트 템플릿 시스템)
+알리익스프레스 전용 어필리에이트 상품 자동 등록 시스템 (4가지 프롬프트 템플릿 시스템 + 즉시 발행 지원)
 키워드 입력 → 알리익스프레스 API → AI 콘텐츠 생성 → 워드프레스 자동 발행
 
 작성자: Claude AI
-날짜: 2025-07-17
-버전: v3.0 (4가지 프롬프트 템플릿 시스템 적용)
+날짜: 2025-07-18
+버전: v4.0 (즉시 발행 지원 추가)
 """
 
 import os
@@ -16,6 +16,7 @@ import json
 import time
 import requests
 import traceback
+import argparse
 import google.generativeai as genai
 from datetime import datetime
 from dotenv import load_dotenv
@@ -40,6 +41,7 @@ class AliExpressPostingSystem:
         self.config = None
         self.gemini_model = None
         self.aliexpress_client = None
+        self.immediate_mode = False
         
     def load_configuration(self):
         """환경 변수 및 API 키 로드 (알리익스프레스 전용)"""
@@ -188,6 +190,46 @@ class AliExpressPostingSystem:
             
         except Exception as e:
             print(f"[❌] 작업 상태 업데이트 중 오류: {e}")
+    
+    # 🚀 즉시 발행 전용 함수들
+    def load_immediate_job(self, temp_file):
+        """즉시 발행용 임시 파일에서 작업 로드"""
+        try:
+            print(f"[📄] 즉시 발행 임시 파일 로드: {temp_file}")
+            
+            if not os.path.exists(temp_file):
+                print(f"[❌] 임시 파일을 찾을 수 없습니다: {temp_file}")
+                return None
+                
+            with open(temp_file, "r", encoding="utf-8") as f:
+                temp_data = json.load(f)
+                
+            # 데이터 구조 검증
+            if temp_data.get('mode') != 'immediate':
+                print(f"[❌] 잘못된 임시 파일 모드: {temp_data.get('mode')}")
+                return None
+                
+            job_data = temp_data.get('job_data')
+            if not job_data:
+                print(f"[❌] 임시 파일에 작업 데이터가 없습니다.")
+                return None
+                
+            print(f"[✅] 즉시 발행 작업 로드 성공: {job_data.get('title', 'N/A')}")
+            return job_data
+            
+        except Exception as e:
+            print(f"[❌] 즉시 발행 임시 파일 로드 중 오류: {e}")
+            return None
+            
+    def cleanup_temp_file(self, temp_file):
+        """임시 파일 정리 (선택사항)"""
+        try:
+            if os.path.exists(temp_file):
+                # 임시 파일을 바로 삭제하지 않고 유지 (사용자가 수동 삭제)
+                print(f"[🗂️] 임시 파일 유지: {temp_file}")
+                print(f"[💡] 수동 삭제 필요: rm {temp_file}")
+        except Exception as e:
+            print(f"[❌] 임시 파일 정리 중 오류: {e}")
     
     def extract_aliexpress_product_id(self, url):
         """알리익스프레스 URL에서 상품 ID 추출"""
@@ -374,7 +416,8 @@ class AliExpressPostingSystem:
             user_details = job_data.get('user_details', {})
             has_user_details = job_data.get('has_user_details', False)
             
-            print(f"[🤖] Gemini AI로 '{title}' 콘텐츠를 생성합니다...")
+            mode_text = "즉시 발행" if self.immediate_mode else "큐 처리"
+            print(f"[🤖] Gemini AI로 '{title}' 콘텐츠를 생성합니다... ({mode_text})")
             print(f"[🎯] 프롬프트 타입: {prompt_type}")
             print(f"[📝] 사용자 상세 정보: {'포함' if has_user_details else '없음'}")
             
@@ -527,7 +570,8 @@ class AliExpressPostingSystem:
     def post_to_wordpress(self, job_data, content):
         """워드프레스에 글 발행"""
         try:
-            print(f"[📝] 워드프레스에 '{job_data['title']}' 글을 발행합니다...")
+            mode_text = "즉시 발행" if self.immediate_mode else "큐 처리"
+            print(f"[📝] 워드프레스에 '{job_data['title']}' 글을 발행합니다... ({mode_text})")
             
             # 워드프레스 API 엔드포인트
             api_url = f"{self.config['wp_api_base']}/posts"
@@ -554,6 +598,8 @@ class AliExpressPostingSystem:
             meta_description = f"{job_data['title']} - {prompt_type_names.get(prompt_type, '상품')} 추천 및 2025년 알리익스프레스 구매 가이드"
             if job_data.get('has_user_details'):
                 meta_description += ". 사용자 맞춤 정보 기반 상세 리뷰"
+            if self.immediate_mode:
+                meta_description += " (즉시 발행)"
             
             # 게시물 데이터
             post_data = {
@@ -593,7 +639,8 @@ class AliExpressPostingSystem:
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             prompt_type = job_data.get('prompt_type', 'essential_items')
-            log_entry = f"[{timestamp}] {job_data['title']} ({prompt_type}) - {post_url}\n"
+            mode_text = "[즉시발행]" if self.immediate_mode else "[큐처리]"
+            log_entry = f"[{timestamp}] {mode_text} {job_data['title']} ({prompt_type}) - {post_url}\n"
             
             with open(PUBLISHED_LOG_FILE, "a", encoding="utf-8") as f:
                 f.write(log_entry)
@@ -602,7 +649,7 @@ class AliExpressPostingSystem:
             print(f"[❌] 발행 로그 저장 중 오류: {e}")
             
     def process_job(self, job_data):
-        """단일 작업 처리 (4가지 프롬프트 템플릿 시스템)"""
+        """단일 작업 처리 (4가지 프롬프트 템플릿 시스템 + 즉시 발행 지원)"""
         job_id = job_data["queue_id"]
         title = job_data["title"]
         prompt_type = job_data.get('prompt_type', 'essential_items')
@@ -617,21 +664,23 @@ class AliExpressPostingSystem:
         }
         
         prompt_name = prompt_type_names.get(prompt_type, '기본형')
+        mode_text = "즉시 발행" if self.immediate_mode else "큐 처리"
         
-        self.log_message(f"[🚀] 작업 시작: {title} (ID: {job_id})")
+        self.log_message(f"[🚀] 작업 시작: {title} (ID: {job_id}) - {mode_text}")
         self.log_message(f"[🎯] 프롬프트: {prompt_name}")
         self.log_message(f"[📝] 사용자 정보: {'포함' if has_user_details else '없음'}")
         
         # 텔레그램 알림
-        telegram_start_msg = f"🚀 알리익스프레스 자동화 시작\n제목: {title}\n프롬프트: {prompt_name}"
+        telegram_start_msg = f"🚀 알리익스프레스 자동화 시작 ({mode_text})\n제목: {title}\n프롬프트: {prompt_name}"
         if has_user_details:
             telegram_start_msg += "\n🎯 사용자 맞춤 정보 활용"
         
         self.send_telegram_notification(telegram_start_msg)
         
         try:
-            # 작업 상태를 processing으로 변경
-            self.update_job_status(job_id, "processing")
+            # 즉시 발행 모드가 아닌 경우에만 작업 상태 업데이트
+            if not self.immediate_mode:
+                self.update_job_status(job_id, "processing")
             
             # 1. 알리익스프레스 상품 처리
             products = self.process_aliexpress_products(job_data)
@@ -650,11 +699,12 @@ class AliExpressPostingSystem:
             
             if post_url:
                 # 성공 처리
-                self.update_job_status(job_id, "completed")
+                if not self.immediate_mode:
+                    self.update_job_status(job_id, "completed")
                 self.log_message(f"[✅] 작업 완료: {title} -> {post_url}")
                 
                 # 성공 알림
-                success_msg = f"✅ 알리익스프레스 자동화 완료\n제목: {title}\n프롬프트: {prompt_name}\nURL: {post_url}\n상품 수: {len(products)}개"
+                success_msg = f"✅ 알리익스프레스 자동화 완료 ({mode_text})\n제목: {title}\n프롬프트: {prompt_name}\nURL: {post_url}\n상품 수: {len(products)}개"
                 if has_user_details:
                     success_msg += "\n🎯 사용자 맞춤 정보 반영"
                 
@@ -666,18 +716,60 @@ class AliExpressPostingSystem:
         except Exception as e:
             # 실패 처리
             error_msg = str(e)
-            self.update_job_status(job_id, "failed", error_msg)
+            if not self.immediate_mode:
+                self.update_job_status(job_id, "failed", error_msg)
             self.log_message(f"[❌] 작업 실패: {title} - {error_msg}")
             self.send_telegram_notification(
-                f"❌ 알리익스프레스 자동화 실패\n"
+                f"❌ 알리익스프레스 자동화 실패 ({mode_text})\n"
                 f"제목: {title}\n"
                 f"프롬프트: {prompt_name}\n"
                 f"오류: {error_msg}"
             )
             return False
             
+    def run_immediate_mode(self, temp_file):
+        """🚀 즉시 발행 모드 실행"""
+        print("=" * 60)
+        print("🚀 알리익스프레스 즉시 발행 모드 시작")
+        print("=" * 60)
+        
+        self.immediate_mode = True
+        
+        # 1. 설정 로드
+        if not self.load_configuration():
+            print("[❌] 설정 로드 실패. 프로그램을 종료합니다.")
+            return False
+            
+        # 2. 임시 파일에서 작업 로드
+        job_data = self.load_immediate_job(temp_file)
+        if not job_data:
+            print("[❌] 즉시 발행 작업 로드 실패.")
+            return False
+            
+        # 3. 단일 작업 처리
+        success = self.process_job(job_data)
+        
+        # 4. 임시 파일 정리 (선택사항)
+        self.cleanup_temp_file(temp_file)
+        
+        # 5. 완료 메시지
+        if success:
+            completion_message = f"[🎉] 즉시 발행 완료! 제목: {job_data.get('title', 'N/A')}"
+            self.log_message(completion_message)
+            print("=" * 60)
+            print("🚀 알리익스프레스 즉시 발행 성공")
+            print("=" * 60)
+            return True
+        else:
+            error_message = f"[❌] 즉시 발행 실패! 제목: {job_data.get('title', 'N/A')}"
+            self.log_message(error_message)
+            print("=" * 60)
+            print("❌ 알리익스프레스 즉시 발행 실패")
+            print("=" * 60)
+            return False
+            
     def run(self):
-        """메인 실행 함수"""
+        """메인 실행 함수 (큐 모드)"""
         print("=" * 60)
         print("🌏 알리익스프레스 전용 어필리에이트 자동화 시스템 시작 (4가지 프롬프트 템플릿)")
         print("=" * 60)
@@ -721,12 +813,32 @@ class AliExpressPostingSystem:
         print("=" * 60)
 
 
-if __name__ == "__main__":
+def main():
+    """메인 함수 - 명령줄 인수 처리"""
+    parser = argparse.ArgumentParser(description='알리익스프레스 어필리에이트 자동화 시스템')
+    parser.add_argument('--immediate-file', help='즉시 발행용 임시 파일 경로')
+    
+    args = parser.parse_args()
+    
     try:
         system = AliExpressPostingSystem()
-        system.run()
+        
+        if args.immediate_file:
+            # 🚀 즉시 발행 모드
+            success = system.run_immediate_mode(args.immediate_file)
+            sys.exit(0 if success else 1)
+        else:
+            # 기존 큐 모드
+            system.run()
+            
     except KeyboardInterrupt:
         print("\n[⏹️] 사용자에 의해 프로그램이 중단되었습니다.")
+        sys.exit(1)
     except Exception as e:
         print(f"\n[❌] 예상치 못한 오류가 발생했습니다: {e}")
         print(traceback.format_exc())
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
