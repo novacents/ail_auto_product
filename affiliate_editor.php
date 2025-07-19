@@ -123,6 +123,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .scroll-to-top:hover{background:#764ba2;transform:translateY(-3px);box-shadow:0 6px 20px rgba(0,0,0,0.3)}
 .scroll-to-top.show{display:flex}
 
+/* 🎯 중앙 정렬 팝업 모달 스타일 */
+.success-modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10001;display:none;align-items:center;justify-content:center}
+.success-modal-content{background:white;border-radius:12px;padding:40px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.3);min-width:400px;max-width:500px}
+.success-modal-icon{font-size:60px;margin-bottom:20px}
+.success-modal-title{font-size:24px;font-weight:bold;color:#28a745;margin-bottom:15px}
+.success-modal-message{font-size:16px;color:#666;margin-bottom:30px;line-height:1.5}
+.success-modal-button{background:#28a745;color:white;border:none;padding:12px 30px;border-radius:6px;cursor:pointer;font-size:16px;font-weight:600;transition:all 0.3s}
+.success-modal-button:hover{background:#1e7e34}
+
 .product-url-section{margin-bottom:30px;padding:20px;background:#f8f9fa;border-radius:8px;border:1px solid #e9ecef}
 .url-input-group{display:flex;gap:10px;margin-bottom:15px}
 .url-input-group input{flex:1;padding:12px;border:1px solid #ddd;border-radius:6px;font-size:16px}
@@ -217,6 +226,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
         <div class="loading-spinner"></div>
         <div class="loading-text">글을 발행하고 있습니다...</div>
         <div style="margin-top: 10px; color: #666; font-size: 14px;">잠시만 기다려주세요.</div>
+    </div>
+</div>
+
+<!-- 🎯 중앙 정렬 성공 모달 -->
+<div class="success-modal" id="successModal">
+    <div class="success-modal-content">
+        <div class="success-modal-icon" id="successIcon">✅</div>
+        <div class="success-modal-title" id="successTitle">저장 완료!</div>
+        <div class="success-modal-message" id="successMessage">정보가 성공적으로 저장되었습니다.</div>
+        <button class="success-modal-button" onclick="closeSuccessModal()">확인</button>
     </div>
 </div>
 
@@ -462,6 +481,40 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <script>
 let keywords = []; let currentKeywordIndex = -1; let currentProductIndex = -1; let currentProductData = null;
 document.addEventListener('DOMContentLoaded', function() { updateUI(); handleScrollToTop(); });
+
+// 🎯 중앙 정렬 성공 모달 함수들
+function showSuccessModal(title, message, icon = '✅') {
+    const modal = document.getElementById('successModal');
+    const iconEl = document.getElementById('successIcon');
+    const titleEl = document.getElementById('successTitle');
+    const messageEl = document.getElementById('successMessage');
+    
+    iconEl.textContent = icon;
+    titleEl.textContent = title;
+    messageEl.textContent = message;
+    
+    modal.style.display = 'flex';
+    
+    // 2초 후 자동 닫기
+    setTimeout(() => {
+        closeSuccessModal();
+    }, 2000);
+}
+
+function closeSuccessModal() {
+    const modal = document.getElementById('successModal');
+    modal.style.display = 'none';
+}
+
+// 모달 외부 클릭 시 닫기
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = document.getElementById('successModal');
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+            closeSuccessModal();
+        }
+    });
+});
 
 // 🔝 상단으로 이동 버튼 관련 함수
 function handleScrollToTop() {
@@ -1168,7 +1221,7 @@ async function publishNow() {
         const result = await response.json();
         
         if (result.success) {
-            alert('✅ 글 발행이 완료되었습니다!');
+            showSuccessModal('발행 완료!', '글이 성공적으로 발행되었습니다!', '🚀');
             if (result.post_url) {
                 window.open(result.post_url, '_blank');
             }
@@ -1189,7 +1242,7 @@ async function publishNow() {
     }
 }
 
-// 🔧 수정된 저장 기능 (현재 상품만 저장) - isSaved 플래그 추가
+// 🔧 수정된 저장 기능 (현재 상품만 저장) - isSaved 플래그 추가 + 중앙 정렬 모달 적용
 function saveCurrentProduct() {
     if (currentKeywordIndex === -1 || currentProductIndex === -1) {
         showDetailedError('선택 오류', '저장할 상품을 먼저 선택해주세요.');
@@ -1214,7 +1267,8 @@ function saveCurrentProduct() {
     // UI 업데이트
     updateUI();
     
-    alert('💾 현재 상품 정보가 저장되었습니다!');
+    // 🎯 중앙 정렬 성공 모달로 변경
+    showSuccessModal('저장 완료!', '현재 상품 정보가 성공적으로 저장되었습니다.', '💾');
     console.log('저장된 상품 정보:', product);
 }
 
