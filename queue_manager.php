@@ -1,296 +1,46 @@
 <?php
 /**
- * 저장된 정보 관리 페이지 - 완전한 편집 기능이 포함된 큐 관리 시스템 + 상품 분석 데이터 표시
- * 저장된 큐 항목들을 확인하고 수정/삭제/즉시발행할 수 있는 관리 페이지
- * 버전: v2.1 (상품 분석 오류 수정 + 상품별 사용자 상세 정보)
+ * 저장된 정보 관리 페이지 - 최적화된 버전
+ * 버전: v2.2 (코드 최적화 및 파일 분리)
  */
 require_once($_SERVER['DOCUMENT_ROOT'] . '/wp-config.php');
 if (!current_user_can('manage_options')) { wp_die('접근 권한이 없습니다.'); }
 
-// 큐 파일 경로
 define('QUEUE_FILE', __DIR__ . '/product_queue.json');
 
-// 큐 로드 함수
 function load_queue() {
-    if (!file_exists(QUEUE_FILE)) {
-        return [];
-    }
-    
+    if (!file_exists(QUEUE_FILE)) return [];
     $content = file_get_contents(QUEUE_FILE);
-    if ($content === false) {
-        return [];
-    }
-    
+    if ($content === false) return [];
     $queue = json_decode($content, true);
     return is_array($queue) ? $queue : [];
 }
 
-// 큐 저장 함수
 function save_queue($queue) {
-    $json_options = JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES;
-    $json_data = json_encode($queue, $json_options);
-    
-    if ($json_data === false) {
-        return false;
-    }
-    
-    return file_put_contents(QUEUE_FILE, $json_data, LOCK_EX) !== false;
+    $json_data = json_encode($queue, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    return $json_data !== false && file_put_contents(QUEUE_FILE, $json_data, LOCK_EX) !== false;
 }
 
-// AJAX 요청 처리
-if (isset($_POST['action']) && $_POST['action'] === 'get_queue_list') {
-    header('Content-Type: application/json');
-    $queue = load_queue();
-    echo json_encode(['success' => true, 'queue' => $queue]);
-    exit;
-}
-
-if (isset($_POST['action']) && $_POST['action'] === 'delete_queue_item') {
-    header('Content-Type: application/json');
-    $queue_id = $_POST['queue_id'] ?? '';
-    $queue = load_queue();
-    
-    $found = false;
-    foreach ($queue as $index => $item) {
-        if ($item['queue_id'] === $queue_id) {
-            unset($queue[$index]);
-            $queue = array_values($queue); // 배열 인덱스 재정렬
-            $found = true;
-            break;
-        }
-    }
-    
-    if ($found && save_queue($queue)) {
-        echo json_encode(['success' => true, 'message' => '항목이 삭제되었습니다.']);
-    } else {
-        echo json_encode(['success' => false, 'message' => '삭제에 실패했습니다.']);
-    }
-    exit;
-}
-
-if (isset($_POST['action']) && $_POST['action'] === 'get_queue_item') {
-    header('Content-Type: application/json');
-    $queue_id = $_POST['queue_id'] ?? '';
-    $queue = load_queue();
-    
-    foreach ($queue as $item) {
-        if ($item['queue_id'] === $queue_id) {
-            echo json_encode(['success' => true, 'item' => $item]);
-            exit;
-        }
-    }
-    
-    echo json_encode(['success' => false, 'message' => '항목을 찾을 수 없습니다.']);
-    exit;
-}
-
-if (isset($_POST['action']) && $_POST['action'] === 'update_queue_item') {
-    header('Content-Type: application/json');
-    $queue_id = $_POST['queue_id'] ?? '';
-    $updated_data = json_decode($_POST['data'] ?? '{}', true);
-    
-    $queue = load_queue();
-    $found = false;
-    
-    foreach ($queue as $index => $item) {
-        if ($item['queue_id'] === $queue_id) {
-            // 기존 항목 업데이트
-            $queue[$index]['title'] = $updated_data['title'] ?? $item['title'];
-            $queue[$index]['category_id'] = $updated_data['category_id'] ?? $item['category_id'];
-            $queue[$index]['category_name'] = get_category_name($updated_data['category_id'] ?? $item['category_id']);
-            $queue[$index]['prompt_type'] = $updated_data['prompt_type'] ?? $item['prompt_type'];
-            $queue[$index]['prompt_type_name'] = get_prompt_type_name($updated_data['prompt_type'] ?? $item['prompt_type']);
-            $queue[$index]['keywords'] = $updated_data['keywords'] ?? $item['keywords'];
-            $queue[$index]['user_details'] = $updated_data['user_details'] ?? $item['user_details'];
-            $queue[$index]['has_user_details'] = !empty($updated_data['user_details']);
-            $queue[$index]['updated_at'] = date('Y-m-d H:i:s');
-            $found = true;
-            break;
-        }
-    }
-    
-    if ($found && save_queue($queue)) {
-        echo json_encode(['success' => true, 'message' => '항목이 업데이트되었습니다.']);
-    } else {
-        echo json_encode(['success' => false, 'message' => '업데이트에 실패했습니다.']);
-    }
-    exit;
-}
-
-if (isset($_POST['action']) && $_POST['action'] === 'reorder_queue') {
-    header('Content-Type: application/json');
-    $new_order = json_decode($_POST['order'] ?? '[]', true);
-    
-    if (empty($new_order)) {
-        echo json_encode(['success' => false, 'message' => '순서 데이터가 없습니다.']);
-        exit;
-    }
-    
-    $queue = load_queue();
-    $reordered_queue = [];
-    
-    // 새로운 순서에 따라 큐 재정렬
-    foreach ($new_order as $queue_id) {
-        foreach ($queue as $item) {
-            if ($item['queue_id'] === $queue_id) {
-                $reordered_queue[] = $item;
-                break;
-            }
-        }
-    }
-    
-    if (count($reordered_queue) === count($queue) && save_queue($reordered_queue)) {
-        echo json_encode(['success' => true, 'message' => '순서가 변경되었습니다.']);
-    } else {
-        echo json_encode(['success' => false, 'message' => '순서 변경에 실패했습니다.']);
-    }
-    exit;
-}
-
-// 즉시 발행 처리
-if (isset($_POST['action']) && $_POST['action'] === 'immediate_publish') {
-    header('Content-Type: application/json');
-    $queue_id = $_POST['queue_id'] ?? '';
-    $queue = load_queue();
-    
-    $selected_item = null;
-    foreach ($queue as $item) {
-        if ($item['queue_id'] === $queue_id) {
-            $selected_item = $item;
-            break;
-        }
-    }
-    
-    if (!$selected_item) {
-        echo json_encode(['success' => false, 'message' => '선택된 항목을 찾을 수 없습니다.']);
-        exit;
-    }
-    
-    // keyword_processor.php로 즉시 발행 요청
-    $publish_data = [
-        'title' => $selected_item['title'],
-        'category' => $selected_item['category_id'],
-        'prompt_type' => $selected_item['prompt_type'],
-        'keywords' => json_encode($selected_item['keywords']),
-        'user_details' => json_encode($selected_item['user_details']),
-        'publish_mode' => 'immediate'
-    ];
-    
-    // cURL로 keyword_processor.php 호출
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, 'keyword_processor.php');
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($publish_data));
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 300); // 5분 타임아웃
-    
-    $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    
-    if ($http_code === 200 && $response) {
-        $result = json_decode($response, true);
-        if ($result && isset($result['success'])) {
-            echo $response; // 그대로 전달
-        } else {
-            echo json_encode(['success' => false, 'message' => '발행 처리 중 오류가 발생했습니다.']);
-        }
-    } else {
-        echo json_encode(['success' => false, 'message' => '발행 요청 전송에 실패했습니다.']);
-    }
-    exit;
-}
-
-// 상품 분석 처리 - 수정됨
-if (isset($_POST['action']) && $_POST['action'] === 'analyze_product') {
-    header('Content-Type: application/json');
-    $url = $_POST['url'] ?? '';
-    
-    if (empty($url)) {
-        echo json_encode(['success' => false, 'message' => '상품 URL을 입력해주세요.']);
-        exit;
-    }
-    
-    // product_analyzer_v2.php 호출 - 상대 경로로 수정
-    $ch = curl_init();
-    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
-    $absolute_url = $protocol . $_SERVER['HTTP_HOST'] . dirname($_SERVER['REQUEST_URI']) . '/product_analyzer_v2.php';
-    
-    curl_setopt($ch, CURLOPT_URL, $absolute_url);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-        'action' => 'analyze_product',
-        'url' => $url,
-        'platform' => 'aliexpress'
-    ]));
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 120);
-    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-    curl_setopt($ch, CURLOPT_MAXREDIRS, 3);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-    
-    $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curl_error = curl_error($ch);
-    curl_close($ch);
-    
-    if ($curl_error) {
-        echo json_encode(['success' => false, 'message' => 'cURL 오류: ' . $curl_error]);
-        exit;
-    }
-    
-    if ($http_code === 200 && $response) {
-        echo $response; // 그대로 전달
-    } else {
-        echo json_encode(['success' => false, 'message' => '상품 분석 요청에 실패했습니다. HTTP 코드: ' . $http_code]);
-    }
-    exit;
-}
-
-// 유틸리티 함수들
 function get_category_name($category_id) {
-    $categories = [
-        '354' => 'Today\'s Pick',
-        '355' => '기발한 잡화점',
-        '356' => '스마트 리빙',
-        '12' => '우리잇템'
-    ];
+    $categories = ['354' => 'Today\'s Pick', '355' => '기발한 잡화점', '356' => '스마트 리빙', '12' => '우리잇템'];
     return $categories[$category_id] ?? '알 수 없는 카테고리';
 }
 
 function get_prompt_type_name($prompt_type) {
-    $prompt_types = [
-        'essential_items' => '필수템형 🎯',
-        'friend_review' => '친구 추천형 👫',
-        'professional_analysis' => '전문 분석형 📊',
-        'amazing_discovery' => '놀라움 발견형 ✨'
-    ];
+    $prompt_types = ['essential_items' => '필수템형 🎯', 'friend_review' => '친구 추천형 👫', 'professional_analysis' => '전문 분석형 📊', 'amazing_discovery' => '놀라움 발견형 ✨'];
     return $prompt_types[$prompt_type] ?? '기본형';
 }
 
-// 🔧 새로 추가: 상품 분석 데이터 관련 유틸리티 함수들
 function get_products_summary($keywords) {
-    $total_products = 0;
-    $products_with_data = 0;
-    $product_samples = [];
-    
-    if (!is_array($keywords)) {
-        return [
-            'total_products' => 0,
-            'products_with_data' => 0,
-            'product_samples' => []
-        ];
-    }
+    $total_products = 0; $products_with_data = 0; $product_samples = [];
+    if (!is_array($keywords)) return ['total_products' => 0, 'products_with_data' => 0, 'product_samples' => []];
     
     foreach ($keywords as $keyword) {
         if (isset($keyword['products_data']) && is_array($keyword['products_data'])) {
             foreach ($keyword['products_data'] as $product_data) {
                 $total_products++;
-                
                 if (!empty($product_data['analysis_data'])) {
                     $products_with_data++;
-                    
-                    // 샘플 데이터 수집 (최대 3개)
                     if (count($product_samples) < 3) {
                         $analysis = $product_data['analysis_data'];
                         $product_samples[] = [
@@ -303,28 +53,181 @@ function get_products_summary($keywords) {
                 }
             }
         }
-        
-        // 기존 URL 기반 데이터도 체크 (하위 호환성)
-        if (isset($keyword['aliexpress']) && is_array($keyword['aliexpress'])) {
-            $total_products += count($keyword['aliexpress']);
-        }
-        if (isset($keyword['coupang']) && is_array($keyword['coupang'])) {
-            $total_products += count($keyword['coupang']);
-        }
+        if (isset($keyword['aliexpress']) && is_array($keyword['aliexpress'])) $total_products += count($keyword['aliexpress']);
+        if (isset($keyword['coupang']) && is_array($keyword['coupang'])) $total_products += count($keyword['coupang']);
     }
+    return ['total_products' => $total_products, 'products_with_data' => $products_with_data, 'product_samples' => $product_samples];
+}
+
+// AJAX 요청 처리
+if (isset($_POST['action'])) {
+    header('Content-Type: application/json');
+    $action = $_POST['action'];
     
-    return [
-        'total_products' => $total_products,
-        'products_with_data' => $products_with_data,
-        'product_samples' => $product_samples
-    ];
+    switch ($action) {
+        case 'get_queue_list':
+            echo json_encode(['success' => true, 'queue' => load_queue()]);
+            exit;
+            
+        case 'delete_queue_item':
+            $queue_id = $_POST['queue_id'] ?? '';
+            $queue = load_queue();
+            $found = false;
+            foreach ($queue as $index => $item) {
+                if ($item['queue_id'] === $queue_id) {
+                    unset($queue[$index]);
+                    $queue = array_values($queue);
+                    $found = true;
+                    break;
+                }
+            }
+            echo json_encode($found && save_queue($queue) ? 
+                ['success' => true, 'message' => '항목이 삭제되었습니다.'] : 
+                ['success' => false, 'message' => '삭제에 실패했습니다.']
+            );
+            exit;
+            
+        case 'get_queue_item':
+            $queue_id = $_POST['queue_id'] ?? '';
+            $queue = load_queue();
+            foreach ($queue as $item) {
+                if ($item['queue_id'] === $queue_id) {
+                    echo json_encode(['success' => true, 'item' => $item]);
+                    exit;
+                }
+            }
+            echo json_encode(['success' => false, 'message' => '항목을 찾을 수 없습니다.']);
+            exit;
+            
+        case 'update_queue_item':
+            $queue_id = $_POST['queue_id'] ?? '';
+            $updated_data = json_decode($_POST['data'] ?? '{}', true);
+            $queue = load_queue();
+            $found = false;
+            
+            foreach ($queue as $index => $item) {
+                if ($item['queue_id'] === $queue_id) {
+                    $queue[$index]['title'] = $updated_data['title'] ?? $item['title'];
+                    $queue[$index]['category_id'] = $updated_data['category_id'] ?? $item['category_id'];
+                    $queue[$index]['category_name'] = get_category_name($updated_data['category_id'] ?? $item['category_id']);
+                    $queue[$index]['prompt_type'] = $updated_data['prompt_type'] ?? $item['prompt_type'];
+                    $queue[$index]['prompt_type_name'] = get_prompt_type_name($updated_data['prompt_type'] ?? $item['prompt_type']);
+                    $queue[$index]['keywords'] = $updated_data['keywords'] ?? $item['keywords'];
+                    $queue[$index]['user_details'] = $updated_data['user_details'] ?? $item['user_details'];
+                    $queue[$index]['has_user_details'] = !empty($updated_data['user_details']);
+                    $queue[$index]['updated_at'] = date('Y-m-d H:i:s');
+                    $found = true;
+                    break;
+                }
+            }
+            echo json_encode($found && save_queue($queue) ? 
+                ['success' => true, 'message' => '항목이 업데이트되었습니다.'] : 
+                ['success' => false, 'message' => '업데이트에 실패했습니다.']
+            );
+            exit;
+            
+        case 'reorder_queue':
+            $new_order = json_decode($_POST['order'] ?? '[]', true);
+            if (empty($new_order)) {
+                echo json_encode(['success' => false, 'message' => '순서 데이터가 없습니다.']);
+                exit;
+            }
+            
+            $queue = load_queue();
+            $reordered_queue = [];
+            foreach ($new_order as $queue_id) {
+                foreach ($queue as $item) {
+                    if ($item['queue_id'] === $queue_id) {
+                        $reordered_queue[] = $item;
+                        break;
+                    }
+                }
+            }
+            echo json_encode(count($reordered_queue) === count($queue) && save_queue($reordered_queue) ? 
+                ['success' => true, 'message' => '순서가 변경되었습니다.'] : 
+                ['success' => false, 'message' => '순서 변경에 실패했습니다.']
+            );
+            exit;
+            
+        case 'immediate_publish':
+            $queue_id = $_POST['queue_id'] ?? '';
+            $queue = load_queue();
+            $selected_item = null;
+            foreach ($queue as $item) {
+                if ($item['queue_id'] === $queue_id) {
+                    $selected_item = $item;
+                    break;
+                }
+            }
+            
+            if (!$selected_item) {
+                echo json_encode(['success' => false, 'message' => '선택된 항목을 찾을 수 없습니다.']);
+                exit;
+            }
+            
+            $publish_data = [
+                'title' => $selected_item['title'],
+                'category' => $selected_item['category_id'],
+                'prompt_type' => $selected_item['prompt_type'],
+                'keywords' => json_encode($selected_item['keywords']),
+                'user_details' => json_encode($selected_item['user_details']),
+                'publish_mode' => 'immediate'
+            ];
+            
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, 'keyword_processor.php');
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($publish_data));
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 300);
+            
+            $response = curl_exec($ch);
+            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            if ($http_code === 200 && $response) {
+                $result = json_decode($response, true);
+                echo $result && isset($result['success']) ? $response : json_encode(['success' => false, 'message' => '발행 처리 중 오류가 발생했습니다.']);
+            } else {
+                echo json_encode(['success' => false, 'message' => '발행 요청 전송에 실패했습니다.']);
+            }
+            exit;
+            
+        case 'analyze_product':
+            $url = $_POST['url'] ?? '';
+            if (empty($url)) {
+                echo json_encode(['success' => false, 'message' => '상품 URL을 입력해주세요.']);
+                exit;
+            }
+            
+            $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+            $absolute_url = $protocol . $_SERVER['HTTP_HOST'] . dirname($_SERVER['REQUEST_URI']) . '/product_analyzer_v2.php';
+            
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $absolute_url);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['action' => 'analyze_product', 'url' => $url, 'platform' => 'aliexpress']));
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_MAXREDIRS, 3);
+            
+            $response = curl_exec($ch);
+            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curl_error = curl_error($ch);
+            curl_close($ch);
+            
+            if ($curl_error) {
+                echo json_encode(['success' => false, 'message' => 'cURL 오류: ' . $curl_error]);
+            } elseif ($http_code === 200 && $response) {
+                echo $response;
+            } else {
+                echo json_encode(['success' => false, 'message' => '상품 분석 요청에 실패했습니다. HTTP 코드: ' . $http_code]);
+            }
+            exit;
+    }
 }
-
-function format_price($price) {
-    if (empty($price)) return '가격 정보 없음';
-    return preg_replace('/₩(\d)/', '₩ $1', $price);
-}
-
 ?>
 <!DOCTYPE html>
 <html lang="ko">
@@ -332,139 +235,9 @@ function format_price($price) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>저장된 정보 관리 - 노바센트</title>
-<style>
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:20px;background-color:#f5f5f5;min-width:1200px;color:#1c1c1c}
-.main-container{max-width:1800px;margin:0 auto;background:white;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1);overflow:hidden}
-.header-section{padding:30px;border-bottom:1px solid #e0e0e0;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white}
-.header-section h1{margin:0 0 10px 0;font-size:28px}
-.header-section .subtitle{margin:0 0 20px 0;opacity:0.9}
-.header-actions{display:flex;gap:10px;margin-top:20px}
-.btn{padding:12px 20px;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;transition:all 0.3s;text-decoration:none;display:inline-block}
-.btn-primary{background-color:#007bff;color:white}
-.btn-primary:hover{background-color:#0056b3}
-.btn-secondary{background-color:#6c757d;color:white}
-.btn-secondary:hover{background-color:#545b62}
-.btn-success{background-color:#28a745;color:white}
-.btn-success:hover{background-color:#1e7e34}
-.btn-danger{background-color:#dc3545;color:white}
-.btn-danger:hover{background-color:#c82333}
-.btn-warning{background-color:#ffc107;color:#212529}
-.btn-warning:hover{background-color:#e0a800}
-.btn-orange{background:#ff9900;color:white}
-.btn-orange:hover{background:#e68a00}
-.btn-small{padding:6px 12px;font-size:12px;margin:0 2px}
-.btn-large{padding:15px 30px;font-size:16px}
-.main-content{padding:30px}
-.queue-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;margin-bottom:30px}
-.stat-card{background:#f8f9fa;padding:20px;border-radius:8px;text-align:center;border:1px solid #e9ecef}
-.stat-number{font-size:24px;font-weight:bold;color:#007bff}
-.stat-label{margin-top:5px;color:#666;font-size:14px}
-.queue-list{display:grid;gap:20px}
-.queue-item{background:white;border:1px solid #e9ecef;border-radius:12px;padding:25px;box-shadow:0 2px 8px rgba(0,0,0,0.05);transition:all 0.3s}
-.queue-item:hover{box-shadow:0 4px 16px rgba(0,0,0,0.1);transform:translateY(-2px)}
-.queue-header{display:flex;justify-content:space-between;align-items:start;margin-bottom:15px}
-.queue-title{font-size:18px;font-weight:600;color:#1c1c1c;margin:0 0 5px 0}
-.queue-meta{font-size:14px;color:#666;margin:0}
-.queue-actions{display:flex;gap:5px}
-.queue-content{margin:15px 0}
-.queue-info{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:15px}
-.info-item{background:#f8f9fa;padding:12px;border-radius:6px;text-align:center}
-.info-value{font-size:16px;font-weight:600;color:#007bff}
-.info-label{font-size:12px;color:#666;margin-top:2px}
-.keywords-preview{margin-top:15px}
-.keywords-preview h4{margin:0 0 10px 0;font-size:14px;color:#333}
-.keyword-tags{display:flex;gap:5px;flex-wrap:wrap}
-.keyword-tag{background:#e3f2fd;color:#1976d2;padding:4px 8px;border-radius:12px;font-size:12px}
-.status-badge{padding:4px 8px;border-radius:12px;font-size:12px;font-weight:600}
-.status-pending{background:#fff3cd;color:#856404}
-.status-processing{background:#d4edda;color:#155724}
-.status-completed{background:#cce5ff;color:#004085}
-.status-failed{background:#f8d7da;color:#721c24}
-.empty-state{text-align:center;padding:60px 20px;color:#666}
-.empty-state h3{margin:0 0 15px 0;font-size:24px;color:#999}
-.empty-state p{margin:0 0 20px 0;font-size:16px}
-.loading-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10000;display:none;align-items:center;justify-content:center}
-.loading-content{background:white;border-radius:10px;padding:40px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.3)}
-.loading-spinner{display:inline-block;width:40px;height:40px;border:4px solid #f3f3f3;border-top:4px solid #ff9900;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:20px}
-.loading-text{font-size:18px;color:#333;font-weight:600}
-@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
-.sort-controls{display:flex;gap:10px;margin-bottom:20px;align-items:center}
-.sort-controls label{font-weight:600;color:#333}
-.sort-controls select{padding:8px;border:1px solid #ddd;border-radius:4px}
-.queue-item.dragging{opacity:0.5}
-.queue-item.drag-over{border-color:#007bff;box-shadow:0 0 10px rgba(0,123,255,0.3)}
-
-/* 🔧 새로 추가: 상품 분석 데이터 표시 스타일 */
-.products-preview{margin-top:20px;padding:15px;background:#f8fffe;border-radius:8px;border:1px solid #d4edda}
-.products-preview h4{margin:0 0 15px 0;font-size:14px;color:#155724;font-weight:600}
-.products-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:15px}
-.product-card{background:white;border:1px solid #e0e0e0;border-radius:8px;padding:15px;display:flex;gap:12px;align-items:start;box-shadow:0 2px 4px rgba(0,0,0,0.05)}
-.product-image{width:60px;height:60px;border-radius:6px;object-fit:cover;border:1px solid #e0e0e0}
-.product-info{flex:1;min-width:0}
-.product-title{font-size:13px;font-weight:600;color:#1c1c1c;margin:0 0 5px 0;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.product-price{font-size:14px;font-weight:700;color:#e62e04;margin:0 0 3px 0}
-.product-url{font-size:11px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.no-products-data{color:#666;font-style:italic;text-align:center;padding:20px}
-
-/* 편집 모달 스타일 */
-.modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10001;display:none;align-items:center;justify-content:center}
-.modal-content{background:white;border-radius:12px;max-width:1200px;width:90%;max-height:90vh;overflow-y:auto;box-shadow:0 10px 30px rgba(0,0,0,0.3)}
-.modal-header{padding:20px 30px;border-bottom:1px solid #e0e0e0;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border-radius:12px 12px 0 0}
-.modal-title{margin:0;font-size:24px}
-.modal-close{position:absolute;top:20px;right:30px;background:none;border:none;color:white;font-size:24px;cursor:pointer;padding:0;width:30px;height:30px;display:flex;align-items:center;justify-content:center}
-.modal-body{padding:30px}
-.form-section{margin-bottom:30px;padding:20px;background:#f8f9fa;border-radius:8px}
-.form-section h3{margin:0 0 20px 0;color:#333;font-size:18px;padding-bottom:10px;border-bottom:2px solid #e0e0e0}
-.form-row{display:grid;gap:15px;margin-bottom:15px}
-.form-row.two-col{grid-template-columns:1fr 1fr}
-.form-row.three-col{grid-template-columns:1fr 1fr 1fr}
-.form-field{margin-bottom:15px}
-.form-field label{display:block;margin-bottom:5px;font-weight:600;color:#333;font-size:14px}
-.form-field input,.form-field textarea,.form-field select{width:100%;padding:10px;border:1px solid #ddd;border-radius:4px;font-size:14px;box-sizing:border-box}
-.form-field textarea{min-height:60px;resize:vertical}
-.modal-footer{padding:20px 30px;border-top:1px solid #e0e0e0;display:flex;gap:10px;justify-content:flex-end}
-
-/* 키워드 관리 */
-.keyword-manager{margin-bottom:30px}
-.keyword-list{display:grid;gap:15px}
-.keyword-item{background:white;border:1px solid #e0e0e0;border-radius:8px;padding:15px}
-.keyword-item-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-.keyword-item-title{font-weight:600;color:#333}
-.keyword-item-actions{display:flex;gap:5px}
-.product-list{margin-top:10px}
-.product-item-edit{background:#f8f9fa;padding:10px;border-radius:4px;margin-bottom:10px;border:1px solid #e0e0e0}
-.product-item-edit-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-.product-url-input{flex:1;margin-right:10px}
-.add-product-section{margin-top:15px;padding:15px;background:#f0f8ff;border-radius:6px;border:1px solid #b3d9ff}
-.add-keyword-section{margin-top:20px;padding:15px;background:#f0f8ff;border-radius:6px;border:1px solid #b3d9ff}
-
-/* 사용자 상세 정보 */
-.user-details-section{margin-bottom:30px}
-.advantages-list{list-style:none;padding:0;margin:0}
-.advantages-list li{margin-bottom:10px}
-.advantages-list input{width:100%;padding:8px;border:1px solid #ddd;border-radius:4px}
-
-/* 상품 분석 결과 */
-.analysis-result{margin-top:15px;padding:15px;background:#f1f8ff;border-radius:6px;border:1px solid #b3d9ff}
-.product-preview{display:grid;grid-template-columns:150px 1fr;gap:15px;align-items:start}
-.product-preview img{width:100%;border-radius:6px}
-.product-info-detail{font-size:14px;color:#333}
-.product-info-detail h4{margin:0 0 10px 0;font-size:16px;color:#1c1c1c}
-.product-info-detail p{margin:5px 0}
-
-/* 상품별 사용자 상세 정보 스타일 */
-.product-details-toggle{background:#e3f2fd;color:#1976d2;padding:6px 12px;border-radius:4px;font-size:12px;cursor:pointer;margin-top:10px;display:inline-block}
-.product-details-toggle:hover{background:#bbdefb}
-.product-user-details{margin-top:15px;padding:15px;background:#fff3e0;border-radius:6px;border:1px solid #ffcc80;display:none}
-.product-user-details.active{display:block}
-.product-user-details h5{margin:0 0 10px 0;font-size:14px;color:#e65100}
-.product-detail-field{margin-bottom:10px}
-.product-detail-field label{font-size:12px;color:#666;display:block;margin-bottom:3px}
-.product-detail-field input{width:100%;padding:6px;border:1px solid #ddd;border-radius:3px;font-size:12px}
-</style>
+<link rel="stylesheet" href="assets/queue_manager.css">
 </head>
 <body>
-<!-- 로딩 오버레이 -->
 <div class="loading-overlay" id="loadingOverlay">
     <div class="loading-content">
         <div class="loading-spinner"></div>
@@ -473,7 +246,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
     </div>
 </div>
 
-<!-- 편집 모달 -->
 <div class="modal" id="editModal">
     <div class="modal-content">
         <div class="modal-header">
@@ -481,7 +253,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
             <button class="modal-close" onclick="closeEditModal()">×</button>
         </div>
         <div class="modal-body">
-            <!-- 기본 정보 -->
             <div class="form-section">
                 <h3>기본 정보</h3>
                 <div class="form-row three-col">
@@ -510,13 +281,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
                 </div>
             </div>
 
-            <!-- 키워드 관리 -->
             <div class="form-section">
                 <h3>키워드 관리</h3>
                 <div class="keyword-manager">
-                    <div class="keyword-list" id="keywordList">
-                        <!-- 키워드 항목들이 여기에 동적으로 추가됩니다 -->
-                    </div>
+                    <div class="keyword-list" id="keywordList"></div>
                     <div class="add-keyword-section">
                         <div class="form-row">
                             <div class="form-field">
@@ -531,12 +299,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
                 </div>
             </div>
 
-            <!-- 사용자 상세 정보 -->
             <div class="form-section">
                 <h3>사용자 상세 정보 (기본값)</h3>
-                <p style="font-size: 12px; color: #666; margin-bottom: 15px;">
-                    ※ 여기서 입력한 정보는 기본값으로 사용됩니다. 각 상품별로 개별 정보를 입력할 수 있습니다.
-                </p>
+                <p style="font-size: 12px; color: #666; margin-bottom: 15px;">※ 여기서 입력한 정보는 기본값으로 사용됩니다. 각 상품별로 개별 정보를 입력할 수 있습니다.</p>
                 <div class="user-details-section">
                     <div class="form-section">
                         <h4>기능 및 스펙</h4>
@@ -650,7 +415,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <div class="main-container">
     <div class="header-section">
         <h1>📋 저장된 정보 관리</h1>
-        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v2.1 - 상품별 상세 정보)</p>
+        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v2.2 - 최적화 버전)</p>
         <div class="header-actions">
             <a href="affiliate_editor.php" class="btn btn-primary">📝 새 글 작성</a>
             <button type="button" class="btn btn-secondary" onclick="refreshQueue()">🔄 새로고침</button>
@@ -658,7 +423,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
     </div>
 
     <div class="main-content">
-        <!-- 큐 통계 -->
         <div class="queue-stats" id="queueStats">
             <div class="stat-card">
                 <div class="stat-number" id="totalCount">0</div>
@@ -678,7 +442,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
             </div>
         </div>
 
-        <!-- 정렬 컨트롤 -->
         <div class="sort-controls">
             <label for="sortBy">정렬 기준:</label>
             <select id="sortBy" onchange="sortQueue()">
@@ -696,7 +459,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
             </button>
         </div>
 
-        <!-- 큐 목록 -->
         <div class="queue-list" id="queueList">
             <div class="empty-state">
                 <h3>📦 저장된 정보가 없습니다</h3>
@@ -707,1130 +469,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
     </div>
 </div>
 
-<script>
-let currentQueue = [];
-let dragEnabled = false;
-let currentEditingQueueId = null;
-let currentEditingData = null;
-
-// 페이지 로드 시 큐 데이터 로드
-document.addEventListener('DOMContentLoaded', function() {
-    loadQueue();
-});
-
-// 큐 데이터 로드
-async function loadQueue() {
-    try {
-        showLoading();
-        const response = await fetch('', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: 'action=get_queue_list'
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            currentQueue = result.queue;
-            updateQueueStats();
-            displayQueue();
-        } else {
-            alert('큐 데이터를 불러오는데 실패했습니다.');
-        }
-    } catch (error) {
-        console.error('큐 로드 오류:', error);
-        alert('큐 데이터를 불러오는 중 오류가 발생했습니다.');
-    } finally {
-        hideLoading();
-    }
-}
-
-// 큐 통계 업데이트
-function updateQueueStats() {
-    const stats = {
-        total: currentQueue.length,
-        pending: currentQueue.filter(item => item.status === 'pending').length,
-        processing: currentQueue.filter(item => item.status === 'processing').length,
-        completed: currentQueue.filter(item => item.status === 'completed').length
-    };
-    
-    document.getElementById('totalCount').textContent = stats.total;
-    document.getElementById('pendingCount').textContent = stats.pending;
-    document.getElementById('processingCount').textContent = stats.processing;
-    document.getElementById('completedCount').textContent = stats.completed;
-}
-
-// 🔧 강화된 큐 목록 표시 - 상품 분석 데이터 포함
-function displayQueue() {
-    const queueList = document.getElementById('queueList');
-    
-    if (currentQueue.length === 0) {
-        queueList.innerHTML = `
-            <div class="empty-state">
-                <h3>📦 저장된 정보가 없습니다</h3>
-                <p>아직 저장된 큐 항목이 없습니다.</p>
-                <a href="affiliate_editor.php" class="btn btn-primary">첫 번째 글 작성하기</a>
-            </div>
-        `;
-        return;
-    }
-    
-    let html = '';
-    currentQueue.forEach(item => {
-        const keywordCount = item.keywords ? item.keywords.length : 0;
-        const totalLinks = item.keywords ? item.keywords.reduce((sum, k) => sum + (k.coupang?.length || 0) + (k.aliexpress?.length || 0), 0) : 0;
-        const statusClass = `status-${item.status}`;
-        const statusText = getStatusText(item.status);
-        
-        // 🔧 상품 분석 데이터 추출
-        const productsSummary = getProductsSummary(item.keywords);
-        
-        html += `
-            <div class="queue-item" data-queue-id="${item.queue_id}" draggable="${dragEnabled}">
-                <div class="queue-header">
-                    <div>
-                        <h3 class="queue-title">${item.title}</h3>
-                        <p class="queue-meta">
-                            ${item.category_name} | ${item.prompt_type_name || '기본형'} | 
-                            ${item.created_at} | 
-                            <span class="status-badge ${statusClass}">${statusText}</span>
-                        </p>
-                    </div>
-                    <div class="queue-actions">
-                        <button class="btn btn-primary btn-small" onclick="editQueue('${item.queue_id}')">✏️ 편집</button>
-                        <button class="btn btn-orange btn-small" onclick="immediatePublish('${item.queue_id}')">🚀 즉시발행</button>
-                        <button class="btn btn-danger btn-small" onclick="deleteQueue('${item.queue_id}')">🗑️ 삭제</button>
-                    </div>
-                </div>
-                
-                <div class="queue-content">
-                    <div class="queue-info">
-                        <div class="info-item">
-                            <div class="info-value">${keywordCount}</div>
-                            <div class="info-label">키워드</div>
-                        </div>
-                        <div class="info-item">
-                            <div class="info-value">${totalLinks}</div>
-                            <div class="info-label">총 링크</div>
-                        </div>
-                        <div class="info-item">
-                            <div class="info-value">${productsSummary.products_with_data}</div>
-                            <div class="info-label">분석완료</div>
-                        </div>
-                        <div class="info-item">
-                            <div class="info-value">${item.priority || 1}</div>
-                            <div class="info-label">우선순위</div>
-                        </div>
-                        <div class="info-item">
-                            <div class="info-value">${item.has_user_details ? 'O' : 'X'}</div>
-                            <div class="info-label">상세정보</div>
-                        </div>
-                        <div class="info-item">
-                            <div class="info-value">${item.has_product_data ? 'O' : 'X'}</div>
-                            <div class="info-label">상품데이터</div>
-                        </div>
-                    </div>
-                    
-                    ${item.keywords && item.keywords.length > 0 ? `
-                        <div class="keywords-preview">
-                            <h4>키워드:</h4>
-                            <div class="keyword-tags">
-                                ${item.keywords.map(k => `<span class="keyword-tag">${k.name}</span>`).join('')}
-                            </div>
-                        </div>
-                    ` : ''}
-                    
-                    ${generateProductsPreview(productsSummary)}
-                </div>
-            </div>
-        `;
-    });
-    
-    queueList.innerHTML = html;
-    
-    // 드래그 앤 드롭 이벤트 추가
-    if (dragEnabled) {
-        addDragEvents();
-    }
-}
-
-// 🔧 새로 추가: 상품 분석 데이터에서 정보 추출
-function getProductsSummary(keywords) {
-    let total_products = 0;
-    let products_with_data = 0;
-    let product_samples = [];
-    
-    if (!Array.isArray(keywords)) {
-        return {
-            total_products: 0,
-            products_with_data: 0,
-            product_samples: []
-        };
-    }
-    
-    keywords.forEach(keyword => {
-        if (keyword.products_data && Array.isArray(keyword.products_data)) {
-            keyword.products_data.forEach(product_data => {
-                total_products++;
-                
-                if (product_data.analysis_data) {
-                    products_with_data++;
-                    
-                    // 샘플 데이터 수집 (최대 3개)
-                    if (product_samples.length < 3) {
-                        const analysis = product_data.analysis_data;
-                        product_samples.push({
-                            title: analysis.title || '상품명 없음',
-                            image_url: analysis.image_url || '',
-                            price: analysis.price || '가격 정보 없음',
-                            url: product_data.url || ''
-                        });
-                    }
-                }
-            });
-        }
-        
-        // 기존 URL 기반 데이터도 체크 (하위 호환성)
-        if (keyword.aliexpress && Array.isArray(keyword.aliexpress)) {
-            total_products += keyword.aliexpress.length;
-        }
-        if (keyword.coupang && Array.isArray(keyword.coupang)) {
-            total_products += keyword.coupang.length;
-        }
-    });
-    
-    return {
-        total_products: total_products,
-        products_with_data: products_with_data,
-        product_samples: product_samples
-    };
-}
-
-// 🔧 새로 추가: 상품 미리보기 HTML 생성
-function generateProductsPreview(productsSummary) {
-    if (productsSummary.product_samples.length === 0) {
-        return `
-            <div class="products-preview">
-                <h4>🛍️ 상품 정보:</h4>
-                <div class="no-products-data">상품 분석 데이터가 없습니다.</div>
-            </div>
-        `;
-    }
-    
-    const productsHtml = productsSummary.product_samples.map(product => {
-        const imageHtml = product.image_url ? 
-            `<img src="${product.image_url}" alt="${product.title}" class="product-image" onerror="this.style.display='none'">` :
-            `<div class="product-image" style="background:#f0f0f0;display:flex;align-items:center;justify-content:center;color:#999;font-size:10px;">이미지<br>없음</div>`;
-        
-        return `
-            <div class="product-card">
-                ${imageHtml}
-                <div class="product-info">
-                    <div class="product-title">${product.title}</div>
-                    <div class="product-price">${formatPrice(product.price)}</div>
-                    <div class="product-url">${product.url.substring(0, 50)}...</div>
-                </div>
-            </div>
-        `;
-    }).join('');
-    
-    return `
-        <div class="products-preview">
-            <h4>🛍️ 상품 정보 (${productsSummary.products_with_data}/${productsSummary.total_products}개 분석완료):</h4>
-            <div class="products-grid">
-                ${productsHtml}
-            </div>
-        </div>
-    `;
-}
-
-// 🔧 새로 추가: 가격 포맷 함수
-function formatPrice(price) {
-    if (!price || price === '가격 정보 없음') return '가격 정보 없음';
-    return price.replace(/₩(\d)/, '₩ $1');
-}
-
-// 상태 텍스트 변환
-function getStatusText(status) {
-    const statusMap = {
-        'pending': '대기 중',
-        'processing': '처리 중',
-        'completed': '완료',
-        'failed': '실패',
-        'immediate': '즉시발행'
-    };
-    return statusMap[status] || status;
-}
-
-// 큐 정렬
-function sortQueue() {
-    const sortBy = document.getElementById('sortBy').value;
-    const sortOrder = document.getElementById('sortOrder').value;
-    
-    currentQueue.sort((a, b) => {
-        let aValue = a[sortBy];
-        let bValue = b[sortBy];
-        
-        // 문자열 비교
-        if (typeof aValue === 'string' && typeof bValue === 'string') {
-            aValue = aValue.toLowerCase();
-            bValue = bValue.toLowerCase();
-        }
-        
-        if (sortOrder === 'asc') {
-            return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
-        } else {
-            return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
-        }
-    });
-    
-    displayQueue();
-}
-
-// 드래그 정렬 토글
-function toggleDragSort() {
-    dragEnabled = !dragEnabled;
-    const toggleText = document.getElementById('dragToggleText');
-    toggleText.textContent = dragEnabled ? '드래그 정렬 비활성화' : '드래그 정렬 활성화';
-    
-    // 모든 큐 아이템의 draggable 속성 업데이트
-    document.querySelectorAll('.queue-item').forEach(item => {
-        item.draggable = dragEnabled;
-    });
-    
-    if (dragEnabled) {
-        addDragEvents();
-    }
-}
-
-// 드래그 이벤트 추가
-function addDragEvents() {
-    const items = document.querySelectorAll('.queue-item');
-    
-    items.forEach(item => {
-        item.addEventListener('dragstart', handleDragStart);
-        item.addEventListener('dragover', handleDragOver);
-        item.addEventListener('drop', handleDrop);
-        item.addEventListener('dragend', handleDragEnd);
-    });
-}
-
-let draggedItem = null;
-
-function handleDragStart(e) {
-    draggedItem = this;
-    this.classList.add('dragging');
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', this.outerHTML);
-}
-
-function handleDragOver(e) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    this.classList.add('drag-over');
-}
-
-function handleDrop(e) {
-    e.preventDefault();
-    this.classList.remove('drag-over');
-    
-    if (draggedItem !== this) {
-        const draggedId = draggedItem.dataset.queueId;
-        const targetId = this.dataset.queueId;
-        
-        // 배열에서 순서 변경
-        const draggedIndex = currentQueue.findIndex(item => item.queue_id === draggedId);
-        const targetIndex = currentQueue.findIndex(item => item.queue_id === targetId);
-        
-        const draggedElement = currentQueue.splice(draggedIndex, 1)[0];
-        currentQueue.splice(targetIndex, 0, draggedElement);
-        
-        // 순서 변경 서버에 저장
-        saveQueueOrder();
-        
-        // 화면 업데이트
-        displayQueue();
-    }
-}
-
-function handleDragEnd(e) {
-    this.classList.remove('dragging');
-    document.querySelectorAll('.queue-item').forEach(item => {
-        item.classList.remove('drag-over');
-    });
-}
-
-// 큐 순서 저장
-async function saveQueueOrder() {
-    try {
-        const order = currentQueue.map(item => item.queue_id);
-        
-        const response = await fetch('', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: `action=reorder_queue&order=${encodeURIComponent(JSON.stringify(order))}`
-        });
-        
-        const result = await response.json();
-        
-        if (!result.success) {
-            alert('순서 저장에 실패했습니다: ' + result.message);
-            loadQueue(); // 실패 시 다시 로드
-        }
-    } catch (error) {
-        console.error('순서 저장 오류:', error);
-        alert('순서 저장 중 오류가 발생했습니다.');
-        loadQueue(); // 오류 시 다시 로드
-    }
-}
-
-// 큐 삭제
-async function deleteQueue(queueId) {
-    if (!confirm('정말로 이 항목을 삭제하시겠습니까?')) {
-        return;
-    }
-    
-    try {
-        showLoading();
-        const response = await fetch('', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: `action=delete_queue_item&queue_id=${encodeURIComponent(queueId)}`
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            alert('항목이 삭제되었습니다.');
-            loadQueue(); // 삭제 후 다시 로드
-        } else {
-            alert('삭제에 실패했습니다: ' + result.message);
-        }
-    } catch (error) {
-        console.error('삭제 오류:', error);
-        alert('삭제 중 오류가 발생했습니다.');
-    } finally {
-        hideLoading();
-    }
-}
-
-// 즉시 발행
-async function immediatePublish(queueId) {
-    if (!confirm('선택한 항목을 즉시 발행하시겠습니까?')) {
-        return;
-    }
-    
-    try {
-        showLoading();
-        const response = await fetch('', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: `action=immediate_publish&queue_id=${encodeURIComponent(queueId)}`
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            alert('✅ 글이 성공적으로 발행되었습니다!');
-            if (result.post_url) {
-                window.open(result.post_url, '_blank');
-            }
-            loadQueue(); // 발행 후 다시 로드
-        } else {
-            alert('발행에 실패했습니다: ' + result.message);
-        }
-    } catch (error) {
-        console.error('발행 오류:', error);
-        alert('발행 중 오류가 발생했습니다.');
-    } finally {
-        hideLoading();
-    }
-}
-
-// 큐 편집 모달 열기
-async function editQueue(queueId) {
-    try {
-        showLoading();
-        const response = await fetch('', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: `action=get_queue_item&queue_id=${encodeURIComponent(queueId)}`
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            currentEditingQueueId = queueId;
-            currentEditingData = result.item;
-            populateEditModal(result.item);
-            document.getElementById('editModal').style.display = 'flex';
-        } else {
-            alert('항목을 불러오는데 실패했습니다: ' + result.message);
-        }
-    } catch (error) {
-        console.error('편집 데이터 로드 오류:', error);
-        alert('편집 데이터를 불러오는 중 오류가 발생했습니다.');
-    } finally {
-        hideLoading();
-    }
-}
-
-// 편집 모달에 데이터 채우기
-function populateEditModal(item) {
-    // 기본 정보
-    document.getElementById('editTitle').value = item.title || '';
-    document.getElementById('editCategory').value = item.category_id || '356';
-    document.getElementById('editPromptType').value = item.prompt_type || 'essential_items';
-    
-    // 키워드 목록 표시
-    displayKeywords(item.keywords || []);
-    
-    // 사용자 상세 정보
-    const userDetails = item.user_details || {};
-    
-    // 기능 및 스펙
-    const specs = userDetails.specs || {};
-    document.getElementById('editMainFunction').value = specs.main_function || '';
-    document.getElementById('editSizeCapacity').value = specs.size_capacity || '';
-    document.getElementById('editColor').value = specs.color || '';
-    document.getElementById('editMaterial').value = specs.material || '';
-    document.getElementById('editPowerBattery').value = specs.power_battery || '';
-    
-    // 효율성 분석
-    const efficiency = userDetails.efficiency || {};
-    document.getElementById('editProblemSolving').value = efficiency.problem_solving || '';
-    document.getElementById('editTimeSaving').value = efficiency.time_saving || '';
-    document.getElementById('editSpaceEfficiency').value = efficiency.space_efficiency || '';
-    document.getElementById('editCostSaving').value = efficiency.cost_saving || '';
-    
-    // 사용 시나리오
-    const usage = userDetails.usage || {};
-    document.getElementById('editUsageLocation').value = usage.usage_location || '';
-    document.getElementById('editUsageFrequency').value = usage.usage_frequency || '';
-    document.getElementById('editTargetUsers').value = usage.target_users || '';
-    document.getElementById('editUsageMethod').value = usage.usage_method || '';
-    
-    // 장점 및 주의사항
-    const benefits = userDetails.benefits || {};
-    const advantages = benefits.advantages || [];
-    document.getElementById('editAdvantage1').value = advantages[0] || '';
-    document.getElementById('editAdvantage2').value = advantages[1] || '';
-    document.getElementById('editAdvantage3').value = advantages[2] || '';
-    document.getElementById('editPrecautions').value = benefits.precautions || '';
-}
-
-// 키워드 목록 표시
-function displayKeywords(keywords) {
-    const keywordList = document.getElementById('keywordList');
-    let html = '';
-    
-    keywords.forEach((keyword, index) => {
-        const aliexpressLinks = keyword.aliexpress || [];
-        const coupangLinks = keyword.coupang || [];
-        
-        html += `
-            <div class="keyword-item" data-keyword-index="${index}">
-                <div class="keyword-item-header">
-                    <input type="text" class="keyword-item-title" value="${keyword.name}" placeholder="키워드 이름">
-                    <div class="keyword-item-actions">
-                        <button type="button" class="btn btn-danger btn-small" onclick="removeKeyword(${index})">삭제</button>
-                    </div>
-                </div>
-                
-                <div class="product-list">
-                    <h5>알리익스프레스 상품 (${aliexpressLinks.length}개)</h5>
-                    <div class="aliexpress-products" id="aliexpress-products-${index}">
-                        ${aliexpressLinks.map((url, urlIndex) => {
-                            // 🔧 상품 분석 데이터가 있는지 확인
-                            let analysisHtml = '';
-                            let productUserDetails = null;
-                            
-                            if (keyword.products_data && keyword.products_data[urlIndex]) {
-                                const productData = keyword.products_data[urlIndex];
-                                
-                                // 분석 데이터 표시
-                                if (productData.analysis_data) {
-                                    const analysis = productData.analysis_data;
-                                    analysisHtml = `
-                                        <div class="analysis-result">
-                                            <div class="product-preview">
-                                                <img src="${analysis.image_url}" alt="${analysis.title}" onerror="this.style.display='none'">
-                                                <div class="product-info-detail">
-                                                    <h4>${analysis.title}</h4>
-                                                    <p><strong>가격:</strong> ${formatPrice(analysis.price)}</p>
-                                                    <p><strong>평점:</strong> ${analysis.rating_display || '평점 정보 없음'}</p>
-                                                    <p><strong>판매량:</strong> ${analysis.lastest_volume || '판매량 정보 없음'}</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    `;
-                                }
-                                
-                                // 상품별 사용자 상세 정보
-                                productUserDetails = productData.user_details || null;
-                            }
-                            
-                            return `
-                                <div class="product-item-edit" data-product-index="${urlIndex}">
-                                    <div class="product-item-edit-header">
-                                        <input type="url" class="product-url-input" value="${url}" placeholder="상품 URL" onchange="updateProductUrl(${index}, 'aliexpress', ${urlIndex}, this.value)">
-                                        <button type="button" class="btn btn-secondary btn-small" onclick="analyzeProduct(${index}, 'aliexpress', ${urlIndex})">분석</button>
-                                        <button type="button" class="btn btn-danger btn-small" onclick="removeProduct(${index}, 'aliexpress', ${urlIndex})">삭제</button>
-                                    </div>
-                                    ${analysisHtml}
-                                    <div class="analysis-result" id="analysis-${index}-aliexpress-${urlIndex}" style="${analysisHtml ? 'display:none;' : ''}"></div>
-                                    
-                                    <!-- 상품별 사용자 상세 정보 토글 버튼 -->
-                                    <div class="product-details-toggle" onclick="toggleProductDetails(${index}, 'aliexpress', ${urlIndex})">
-                                        📝 상품별 상세 정보 ${productUserDetails ? '(입력됨)' : '(미입력)'}
-                                    </div>
-                                    
-                                    <!-- 상품별 사용자 상세 정보 입력 폼 -->
-                                    <div class="product-user-details" id="product-details-${index}-aliexpress-${urlIndex}">
-                                        <h5>이 상품의 상세 정보</h5>
-                                        ${generateProductDetailsForm(index, 'aliexpress', urlIndex, productUserDetails)}
-                                    </div>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
-                    
-                    <div class="add-product-section">
-                        <div style="display: flex; gap: 10px;">
-                            <input type="url" class="new-product-url" id="new-product-url-${index}" placeholder="새 알리익스프레스 상품 URL">
-                            <button type="button" class="btn btn-success btn-small" onclick="addProduct(${index}, 'aliexpress')">추가</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-    });
-    
-    keywordList.innerHTML = html;
-}
-
-// 상품별 상세 정보 폼 생성
-function generateProductDetailsForm(keywordIndex, platform, productIndex, existingDetails) {
-    const details = existingDetails || {};
-    const specs = details.specs || {};
-    const efficiency = details.efficiency || {};
-    const usage = details.usage || {};
-    const benefits = details.benefits || {};
-    const advantages = benefits.advantages || [];
-    
-    return `
-        <div class="product-detail-field">
-            <label>주요 기능</label>
-            <input type="text" id="pd-main-function-${keywordIndex}-${platform}-${productIndex}" 
-                   value="${specs.main_function || ''}" placeholder="예: 자동 압축, 물 절약">
-        </div>
-        <div class="product-detail-field">
-            <label>크기/용량</label>
-            <input type="text" id="pd-size-capacity-${keywordIndex}-${platform}-${productIndex}" 
-                   value="${specs.size_capacity || ''}" placeholder="예: 30cm × 20cm">
-        </div>
-        <div class="product-detail-field">
-            <label>색상</label>
-            <input type="text" id="pd-color-${keywordIndex}-${platform}-${productIndex}" 
-                   value="${specs.color || ''}" placeholder="예: 화이트, 블랙">
-        </div>
-        <div class="product-detail-field">
-            <label>재질/소재</label>
-            <input type="text" id="pd-material-${keywordIndex}-${platform}-${productIndex}" 
-                   value="${specs.material || ''}" placeholder="예: 스테인리스 스틸">
-        </div>
-        <div class="product-detail-field">
-            <label>전원/배터리</label>
-            <input type="text" id="pd-power-battery-${keywordIndex}-${platform}-${productIndex}" 
-                   value="${specs.power_battery || ''}" placeholder="예: USB 충전">
-        </div>
-        <div class="product-detail-field">
-            <label>해결하는 문제</label>
-            <input type="text" id="pd-problem-solving-${keywordIndex}-${platform}-${productIndex}" 
-                   value="${efficiency.problem_solving || ''}" placeholder="예: 설거지 시간 오래 걸림">
-        </div>
-        <div class="product-detail-field">
-            <label>시간 절약 효과</label>
-            <input type="text" id="pd-time-saving-${keywordIndex}-${platform}-${productIndex}" 
-                   value="${efficiency.time_saving || ''}" placeholder="예: 10분 → 3분">
-        </div>
-        <div class="product-detail-field">
-            <label>공간 활용</label>
-            <input type="text" id="pd-space-efficiency-${keywordIndex}-${platform}-${productIndex}" 
-                   value="${efficiency.space_efficiency || ''}" placeholder="예: 50% 공간 절약">
-        </div>
-        <div class="product-detail-field">
-            <label>비용 절감</label>
-            <input type="text" id="pd-cost-saving-${keywordIndex}-${platform}-${productIndex}" 
-                   value="${efficiency.cost_saving || ''}" placeholder="예: 월 전기료 30% 절약">
-        </div>
-        <div class="product-detail-field">
-            <label>주요 사용 장소</label>
-            <input type="text" id="pd-usage-location-${keywordIndex}-${platform}-${productIndex}" 
-                   value="${usage.usage_location || ''}" placeholder="예: 주방, 욕실">
-        </div>
-        <div class="product-detail-field">
-            <label>사용 빈도</label>
-            <input type="text" id="pd-usage-frequency-${keywordIndex}-${platform}-${productIndex}" 
-                   value="${usage.usage_frequency || ''}" placeholder="예: 매일">
-        </div>
-        <div class="product-detail-field">
-            <label>적합한 사용자</label>
-            <input type="text" id="pd-target-users-${keywordIndex}-${platform}-${productIndex}" 
-                   value="${usage.target_users || ''}" placeholder="예: 1인 가구">
-        </div>
-        <div class="product-detail-field">
-            <label>핵심 장점 1</label>
-            <input type="text" id="pd-advantage1-${keywordIndex}-${platform}-${productIndex}" 
-                   value="${advantages[0] || ''}" placeholder="예: 설치 간편함">
-        </div>
-        <div class="product-detail-field">
-            <label>핵심 장점 2</label>
-            <input type="text" id="pd-advantage2-${keywordIndex}-${platform}-${productIndex}" 
-                   value="${advantages[1] || ''}" placeholder="예: 유지비 저렴함">
-        </div>
-        <div class="product-detail-field">
-            <label>핵심 장점 3</label>
-            <input type="text" id="pd-advantage3-${keywordIndex}-${platform}-${productIndex}" 
-                   value="${advantages[2] || ''}" placeholder="예: 내구성 뛰어남">
-        </div>
-        <div class="product-detail-field">
-            <label>주의사항</label>
-            <input type="text" id="pd-precautions-${keywordIndex}-${platform}-${productIndex}" 
-                   value="${benefits.precautions || ''}" placeholder="예: 물기 주의">
-        </div>
-    `;
-}
-
-// 상품별 상세 정보 토글
-function toggleProductDetails(keywordIndex, platform, productIndex) {
-    const detailsDiv = document.getElementById(`product-details-${keywordIndex}-${platform}-${productIndex}`);
-    if (detailsDiv) {
-        detailsDiv.classList.toggle('active');
-    }
-}
-
-// 상품 URL 업데이트
-function updateProductUrl(keywordIndex, platform, productIndex, newUrl) {
-    if (!currentEditingData.keywords[keywordIndex][platform]) {
-        currentEditingData.keywords[keywordIndex][platform] = [];
-    }
-    currentEditingData.keywords[keywordIndex][platform][productIndex] = newUrl;
-}
-
-// 키워드 추가
-function addKeyword() {
-    const nameInput = document.getElementById('newKeywordName');
-    const name = nameInput.value.trim();
-    
-    if (!name) {
-        alert('키워드 이름을 입력해주세요.');
-        return;
-    }
-    
-    if (!currentEditingData.keywords) {
-        currentEditingData.keywords = [];
-    }
-    
-    currentEditingData.keywords.push({
-        name: name,
-        aliexpress: [],
-        coupang: [],
-        products_data: []
-    });
-    
-    displayKeywords(currentEditingData.keywords);
-    nameInput.value = '';
-}
-
-// 키워드 제거
-function removeKeyword(index) {
-    if (confirm('이 키워드를 삭제하시겠습니까?')) {
-        currentEditingData.keywords.splice(index, 1);
-        displayKeywords(currentEditingData.keywords);
-    }
-}
-
-// 상품 추가
-function addProduct(keywordIndex, platform) {
-    const urlInput = document.getElementById(`new-product-url-${keywordIndex}`);
-    const url = urlInput.value.trim();
-    
-    if (!url) {
-        alert('상품 URL을 입력해주세요.');
-        return;
-    }
-    
-    if (!currentEditingData.keywords[keywordIndex][platform]) {
-        currentEditingData.keywords[keywordIndex][platform] = [];
-    }
-    
-    if (!currentEditingData.keywords[keywordIndex].products_data) {
-        currentEditingData.keywords[keywordIndex].products_data = [];
-    }
-    
-    currentEditingData.keywords[keywordIndex][platform].push(url);
-    currentEditingData.keywords[keywordIndex].products_data.push({
-        url: url,
-        platform: platform,
-        analysis_data: null,
-        user_details: null
-    });
-    
-    displayKeywords(currentEditingData.keywords);
-}
-
-// 상품 제거
-function removeProduct(keywordIndex, platform, urlIndex) {
-    if (confirm('이 상품을 삭제하시겠습니까?')) {
-        currentEditingData.keywords[keywordIndex][platform].splice(urlIndex, 1);
-        if (currentEditingData.keywords[keywordIndex].products_data) {
-            currentEditingData.keywords[keywordIndex].products_data.splice(urlIndex, 1);
-        }
-        displayKeywords(currentEditingData.keywords);
-    }
-}
-
-// 상품 분석 - 수정됨
-async function analyzeProduct(keywordIndex, platform, urlIndex) {
-    const url = currentEditingData.keywords[keywordIndex][platform][urlIndex];
-    
-    if (!url) {
-        alert('분석할 상품 URL이 없습니다.');
-        return;
-    }
-    
-    const resultDiv = document.getElementById(`analysis-${keywordIndex}-${platform}-${urlIndex}`);
-    if (resultDiv) {
-        resultDiv.innerHTML = '<div style="text-align:center;padding:20px;">분석 중...</div>';
-        resultDiv.style.display = 'block';
-    }
-    
-    try {
-        const response = await fetch('', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: `action=analyze_product&url=${encodeURIComponent(url)}`
-        });
-        
-        const result = await response.json();
-        
-        if (result.success && result.data) {
-            // 분석 결과를 products_data에 저장
-            if (!currentEditingData.keywords[keywordIndex].products_data) {
-                currentEditingData.keywords[keywordIndex].products_data = [];
-            }
-            
-            // products_data 배열이 짧으면 확장
-            while (currentEditingData.keywords[keywordIndex].products_data.length <= urlIndex) {
-                currentEditingData.keywords[keywordIndex].products_data.push({
-                    url: currentEditingData.keywords[keywordIndex][platform][currentEditingData.keywords[keywordIndex].products_data.length] || '',
-                    platform: platform,
-                    analysis_data: null,
-                    user_details: null
-                });
-            }
-            
-            currentEditingData.keywords[keywordIndex].products_data[urlIndex] = {
-                url: url,
-                platform: platform,
-                analysis_data: result.data,
-                user_details: currentEditingData.keywords[keywordIndex].products_data[urlIndex]?.user_details || null
-            };
-            
-            displayAnalysisResult(keywordIndex, platform, urlIndex, result.data);
-        } else {
-            if (resultDiv) {
-                resultDiv.innerHTML = `<div style="color:red;padding:10px;">분석 실패: ${result.message || '알 수 없는 오류'}</div>`;
-            }
-        }
-    } catch (error) {
-        console.error('상품 분석 오류:', error);
-        if (resultDiv) {
-            resultDiv.innerHTML = '<div style="color:red;padding:10px;">상품 분석 중 오류가 발생했습니다.</div>';
-        }
-    }
-}
-
-// 분석 결과 표시
-function displayAnalysisResult(keywordIndex, platform, urlIndex, data) {
-    const resultDiv = document.getElementById(`analysis-${keywordIndex}-${platform}-${urlIndex}`);
-    
-    if (!resultDiv) return;
-    
-    const formattedPrice = formatPrice(data.price);
-    const ratingDisplay = data.rating_display || '평점 정보 없음';
-    
-    resultDiv.innerHTML = `
-        <div class="product-preview">
-            <img src="${data.image_url}" alt="${data.title}" onerror="this.style.display='none'">
-            <div class="product-info-detail">
-                <h4>${data.title}</h4>
-                <p><strong>가격:</strong> ${formattedPrice}</p>
-                <p><strong>평점:</strong> ${ratingDisplay}</p>
-                <p><strong>판매량:</strong> ${data.lastest_volume || '판매량 정보 없음'}</p>
-            </div>
-        </div>
-    `;
-    
-    resultDiv.style.display = 'block';
-    
-    // 상품별 상세 정보 토글 버튼 업데이트
-    const productItemEdit = document.querySelector(`.keyword-item[data-keyword-index="${keywordIndex}"] .product-item-edit[data-product-index="${urlIndex}"]`);
-    if (productItemEdit) {
-        const toggleBtn = productItemEdit.querySelector('.product-details-toggle');
-        if (toggleBtn) {
-            const hasDetails = currentEditingData.keywords[keywordIndex].products_data?.[urlIndex]?.user_details;
-            toggleBtn.innerHTML = `📝 상품별 상세 정보 ${hasDetails ? '(입력됨)' : '(미입력)'}`;
-        }
-    }
-}
-
-// 편집된 큐 저장
-async function saveEditedQueue() {
-    try {
-        // 폼 데이터 수집
-        const updatedData = {
-            title: document.getElementById('editTitle').value.trim(),
-            category_id: parseInt(document.getElementById('editCategory').value),
-            prompt_type: document.getElementById('editPromptType').value,
-            keywords: collectEditedKeywords(),
-            user_details: collectEditedUserDetails()
-        };
-        
-        // 유효성 검사
-        if (!updatedData.title || updatedData.title.length < 5) {
-            alert('제목은 5자 이상이어야 합니다.');
-            return;
-        }
-        
-        if (!updatedData.keywords || updatedData.keywords.length === 0) {
-            alert('최소 하나의 키워드가 필요합니다.');
-            return;
-        }
-        
-        showLoading();
-        const response = await fetch('', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: `action=update_queue_item&queue_id=${encodeURIComponent(currentEditingQueueId)}&data=${encodeURIComponent(JSON.stringify(updatedData))}`
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            alert('항목이 성공적으로 업데이트되었습니다.');
-            closeEditModal();
-            loadQueue(); // 저장 후 다시 로드
-        } else {
-            alert('업데이트에 실패했습니다: ' + result.message);
-        }
-    } catch (error) {
-        console.error('저장 오류:', error);
-        alert('저장 중 오류가 발생했습니다.');
-    } finally {
-        hideLoading();
-    }
-}
-
-// 편집된 키워드 데이터 수집
-function collectEditedKeywords() {
-    const keywords = [];
-    const keywordItems = document.querySelectorAll('.keyword-item');
-    
-    keywordItems.forEach((item, keywordIndex) => {
-        const nameInput = item.querySelector('.keyword-item-title');
-        const name = nameInput.value.trim();
-        
-        if (name) {
-            const keywordData = currentEditingData.keywords[keywordIndex];
-            const aliexpressUrls = [];
-            const coupangUrls = [];
-            const products_data = [];
-            
-            // 알리익스프레스 URL 및 상품별 상세 정보 수집
-            const aliexpressInputs = item.querySelectorAll('.aliexpress-products .product-url-input');
-            aliexpressInputs.forEach((input, productIndex) => {
-                const url = input.value.trim();
-                if (url) {
-                    aliexpressUrls.push(url);
-                    
-                    // 상품별 상세 정보 수집
-                    const productDetails = collectProductDetails(keywordIndex, 'aliexpress', productIndex);
-                    
-                    // 기존 분석 데이터와 병합
-                    const existingData = keywordData?.products_data?.[productIndex] || {};
-                    products_data.push({
-                        url: url,
-                        platform: 'aliexpress',
-                        analysis_data: existingData.analysis_data || null,
-                        user_details: Object.keys(productDetails).length > 0 ? productDetails : null
-                    });
-                }
-            });
-            
-            keywords.push({
-                name: name,
-                aliexpress: aliexpressUrls,
-                coupang: coupangUrls,
-                products_data: products_data
-            });
-        }
-    });
-    
-    return keywords;
-}
-
-// 상품별 상세 정보 수집
-function collectProductDetails(keywordIndex, platform, productIndex) {
-    const details = {};
-    
-    // 기능 및 스펙
-    const specs = {};
-    addIfNotEmptyProduct(specs, 'main_function', `pd-main-function-${keywordIndex}-${platform}-${productIndex}`);
-    addIfNotEmptyProduct(specs, 'size_capacity', `pd-size-capacity-${keywordIndex}-${platform}-${productIndex}`);
-    addIfNotEmptyProduct(specs, 'color', `pd-color-${keywordIndex}-${platform}-${productIndex}`);
-    addIfNotEmptyProduct(specs, 'material', `pd-material-${keywordIndex}-${platform}-${productIndex}`);
-    addIfNotEmptyProduct(specs, 'power_battery', `pd-power-battery-${keywordIndex}-${platform}-${productIndex}`);
-    if (Object.keys(specs).length > 0) details.specs = specs;
-    
-    // 효율성 분석
-    const efficiency = {};
-    addIfNotEmptyProduct(efficiency, 'problem_solving', `pd-problem-solving-${keywordIndex}-${platform}-${productIndex}`);
-    addIfNotEmptyProduct(efficiency, 'time_saving', `pd-time-saving-${keywordIndex}-${platform}-${productIndex}`);
-    addIfNotEmptyProduct(efficiency, 'space_efficiency', `pd-space-efficiency-${keywordIndex}-${platform}-${productIndex}`);
-    addIfNotEmptyProduct(efficiency, 'cost_saving', `pd-cost-saving-${keywordIndex}-${platform}-${productIndex}`);
-    if (Object.keys(efficiency).length > 0) details.efficiency = efficiency;
-    
-    // 사용 시나리오
-    const usage = {};
-    addIfNotEmptyProduct(usage, 'usage_location', `pd-usage-location-${keywordIndex}-${platform}-${productIndex}`);
-    addIfNotEmptyProduct(usage, 'usage_frequency', `pd-usage-frequency-${keywordIndex}-${platform}-${productIndex}`);
-    addIfNotEmptyProduct(usage, 'target_users', `pd-target-users-${keywordIndex}-${platform}-${productIndex}`);
-    if (Object.keys(usage).length > 0) details.usage = usage;
-    
-    // 장점 및 주의사항
-    const benefits = {};
-    const advantages = [];
-    [`pd-advantage1-${keywordIndex}-${platform}-${productIndex}`,
-     `pd-advantage2-${keywordIndex}-${platform}-${productIndex}`,
-     `pd-advantage3-${keywordIndex}-${platform}-${productIndex}`].forEach(id => {
-        const value = document.getElementById(id)?.value.trim();
-        if (value) advantages.push(value);
-    });
-    if (advantages.length > 0) benefits.advantages = advantages;
-    addIfNotEmptyProduct(benefits, 'precautions', `pd-precautions-${keywordIndex}-${platform}-${productIndex}`);
-    if (Object.keys(benefits).length > 0) details.benefits = benefits;
-    
-    return details;
-}
-
-// 상품별 값이 있으면 객체에 추가하는 유틸리티 함수
-function addIfNotEmptyProduct(obj, key, elementId) {
-    const element = document.getElementById(elementId);
-    if (element) {
-        const value = element.value.trim();
-        if (value) obj[key] = value;
-    }
-}
-
-// 편집된 사용자 상세 정보 수집
-function collectEditedUserDetails() {
-    const details = {};
-    
-    // 기능 및 스펙
-    const specs = {};
-    addIfNotEmpty(specs, 'main_function', 'editMainFunction');
-    addIfNotEmpty(specs, 'size_capacity', 'editSizeCapacity');
-    addIfNotEmpty(specs, 'color', 'editColor');
-    addIfNotEmpty(specs, 'material', 'editMaterial');
-    addIfNotEmpty(specs, 'power_battery', 'editPowerBattery');
-    if (Object.keys(specs).length > 0) details.specs = specs;
-    
-    // 효율성 분석
-    const efficiency = {};
-    addIfNotEmpty(efficiency, 'problem_solving', 'editProblemSolving');
-    addIfNotEmpty(efficiency, 'time_saving', 'editTimeSaving');
-    addIfNotEmpty(efficiency, 'space_efficiency', 'editSpaceEfficiency');
-    addIfNotEmpty(efficiency, 'cost_saving', 'editCostSaving');
-    if (Object.keys(efficiency).length > 0) details.efficiency = efficiency;
-    
-    // 사용 시나리오
-    const usage = {};
-    addIfNotEmpty(usage, 'usage_location', 'editUsageLocation');
-    addIfNotEmpty(usage, 'usage_frequency', 'editUsageFrequency');
-    addIfNotEmpty(usage, 'target_users', 'editTargetUsers');
-    addIfNotEmpty(usage, 'usage_method', 'editUsageMethod');
-    if (Object.keys(usage).length > 0) details.usage = usage;
-    
-    // 장점 및 주의사항
-    const benefits = {};
-    const advantages = [];
-    ['editAdvantage1', 'editAdvantage2', 'editAdvantage3'].forEach(id => {
-        const value = document.getElementById(id)?.value.trim();
-        if (value) advantages.push(value);
-    });
-    if (advantages.length > 0) benefits.advantages = advantages;
-    addIfNotEmpty(benefits, 'precautions', 'editPrecautions');
-    if (Object.keys(benefits).length > 0) details.benefits = benefits;
-    
-    return details;
-}
-
-// 값이 있으면 객체에 추가하는 유틸리티 함수
-function addIfNotEmpty(obj, key, elementId) {
-    const value = document.getElementById(elementId)?.value.trim();
-    if (value) obj[key] = value;
-}
-
-// 편집 모달 닫기
-function closeEditModal() {
-    document.getElementById('editModal').style.display = 'none';
-    currentEditingQueueId = null;
-    currentEditingData = null;
-}
-
-// 큐 새로고침
-function refreshQueue() {
-    loadQueue();
-}
-
-// 로딩 표시/숨김
-function showLoading() {
-    document.getElementById('loadingOverlay').style.display = 'flex';
-}
-
-function hideLoading() {
-    document.getElementById('loadingOverlay').style.display = 'none';
-}
-
-// 모달 외부 클릭 시 닫기
-document.getElementById('editModal').addEventListener('click', function(e) {
-    if (e.target === this) {
-        closeEditModal();
-    }
-});
-
-// ESC 키로 모달 닫기
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape' && document.getElementById('editModal').style.display === 'flex') {
-        closeEditModal();
-    }
-});
-</script>
+<script src="assets/queue_manager.js"></script>
 </body>
 </html>
