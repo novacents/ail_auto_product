@@ -6,7 +6,7 @@
 require_once($_SERVER['DOCUMENT_ROOT'] . '/wp-config.php');
 if (!current_user_can('manage_options')) { wp_die('접근 권한이 없습니다.'); }
 
-define('QUEUE_FILE', __DIR__ . '/product_queue.json');
+define('QUEUE_FILE', '/var/www/novacents/tools/product_queue.json');
 
 function load_queue() {
     if (!file_exists(QUEUE_FILE)) return [];
@@ -310,7 +310,7 @@ if (isset($_POST['action'])) {
 <div class="main-container">
     <div class="header-section">
         <h1>📋 저장된 정보 관리</h1>
-        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v2.3 - 상품별 통합 정보 관리)</p>
+        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v2.2 - 최적화 버전)</p>
         <div class="header-actions">
             <a href="affiliate_editor.php" class="btn btn-primary">📝 새 글 작성</a>
             <button type="button" class="btn btn-secondary" onclick="refreshQueue()">🔄 새로고침</button>
