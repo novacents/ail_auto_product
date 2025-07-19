@@ -31,3 +31,5 @@
 [2025-07-18 22:29:35] INFO: Item successfully added to queue with prompt type 'essential_items', user details, and product data. Queue stats: {"total":1,"pending":1,"processing":0,"completed":0,"failed":0}
 [2025-07-19 14:19:29] INFO: Input data received: Title='2025년 여름피서, 지금 당장 준비해야 할 스마트 물놀이 피서 용품', Category=356, Prompt Type=essential_items, Keywords=2, User Details=Yes, Publish Mode=queue.
 [2025-07-19 14:19:30] INFO: Item successfully added to queue with prompt type 'essential_items', user details, and product data. Queue stats: {"total":1,"pending":1,"processing":0,"completed":0,"failed":0}
+[2025-07-19 18:07:43] INFO: Input data received: Title='물놀이 필수템 추천', Category=356, Prompt Type=essential_items, Keywords=2, User Details=Yes, Publish Mode=queue.
+[2025-07-19 18:07:44] INFO: Item successfully added to queue with prompt type 'essential_items', user details, and product data. Queue stats: {"total":1,"pending":1,"processing":0,"completed":0,"failed":0}
