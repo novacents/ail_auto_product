@@ -19,7 +19,7 @@ define('BASE_PATH', __DIR__); // 현재 파일이 있는 디렉토리
 define('ENV_FILE', '/home/novacents/.env'); // .env 파일은 홈 디렉토리에 고정
 define('DEBUG_LOG_FILE', BASE_PATH . '/debug_processor.txt');
 define('MAIN_LOG_FILE', BASE_PATH . '/processor_log.txt');
-define('QUEUE_FILE', BASE_PATH . '/product_queue.json');
+define('QUEUE_FILE', '/var/www/novacents/tools/product_queue.json');
 define('TEMP_DIR', BASE_PATH . '/temp'); // 즉시 발행용 임시 파일 디렉토리
 
 // 3. 안전한 count 함수
