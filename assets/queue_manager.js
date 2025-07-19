@@ -334,18 +334,26 @@ function displayKeywords(keywords) {
 }
 
 function generateProductDetailsForm(keywordIndex, platform, productIndex, existingDetails) {
-    // 🔧 더 안전한 기본값 설정 및 null 체크 강화
+    // 🔧 강화된 안전한 기본값 설정 및 null 체크
     console.log(`🔍 상품 상세 정보 폼 생성 - 키워드: ${keywordIndex}, 플랫폼: ${platform}, 상품: ${productIndex}`, existingDetails);
     
     // null, undefined, 빈 객체에 대한 안전한 처리
     const details = existingDetails && typeof existingDetails === 'object' ? existingDetails : {};
+    
+    // 각 섹션별로 안전하게 처리
     const specs = details.specs && typeof details.specs === 'object' ? details.specs : {};
     const efficiency = details.efficiency && typeof details.efficiency === 'object' ? details.efficiency : {};
     const usage = details.usage && typeof details.usage === 'object' ? details.usage : {};
     const benefits = details.benefits && typeof details.benefits === 'object' ? details.benefits : {};
-    const advantages = Array.isArray(benefits.advantages) ? benefits.advantages : [];
+    
+    // advantages 배열 처리
+    let advantages = [];
+    if (benefits.advantages && Array.isArray(benefits.advantages)) {
+        advantages = benefits.advantages;
+    }
     
     console.log(`📝 상품 상세 정보 파싱 결과:`, {
+        originalDetails: existingDetails,
         specs: specs,
         efficiency: efficiency,
         usage: usage,
@@ -354,7 +362,10 @@ function generateProductDetailsForm(keywordIndex, platform, productIndex, existi
     });
     
     // 안전한 값 추출을 위한 함수
-    const safeValue = (value) => value && typeof value === 'string' ? value : '';
+    const safeValue = (value) => {
+        if (value === null || value === undefined) return '';
+        return typeof value === 'string' ? value : String(value);
+    };
     
     return `
         <div class="product-detail-field"><label>주요 기능</label><input type="text" id="pd-main-function-${keywordIndex}-${platform}-${productIndex}" value="${safeValue(specs.main_function)}" placeholder="예: 자동 압축, 물 절약"></div>
