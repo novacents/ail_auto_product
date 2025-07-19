@@ -256,32 +256,8 @@ function populateEditModal(item) {
     document.getElementById('editPromptType').value = item.prompt_type || 'essential_items';
     displayKeywords(item.keywords || []);
     
-    const userDetails = item.user_details || {};
-    const specs = userDetails.specs || {};
-    document.getElementById('editMainFunction').value = specs.main_function || '';
-    document.getElementById('editSizeCapacity').value = specs.size_capacity || '';
-    document.getElementById('editColor').value = specs.color || '';
-    document.getElementById('editMaterial').value = specs.material || '';
-    document.getElementById('editPowerBattery').value = specs.power_battery || '';
-    
-    const efficiency = userDetails.efficiency || {};
-    document.getElementById('editProblemSolving').value = efficiency.problem_solving || '';
-    document.getElementById('editTimeSaving').value = efficiency.time_saving || '';
-    document.getElementById('editSpaceEfficiency').value = efficiency.space_efficiency || '';
-    document.getElementById('editCostSaving').value = efficiency.cost_saving || '';
-    
-    const usage = userDetails.usage || {};
-    document.getElementById('editUsageLocation').value = usage.usage_location || '';
-    document.getElementById('editUsageFrequency').value = usage.usage_frequency || '';
-    document.getElementById('editTargetUsers').value = usage.target_users || '';
-    document.getElementById('editUsageMethod').value = usage.usage_method || '';
-    
-    const benefits = userDetails.benefits || {};
-    const advantages = benefits.advantages || [];
-    document.getElementById('editAdvantage1').value = advantages[0] || '';
-    document.getElementById('editAdvantage2').value = advantages[1] || '';
-    document.getElementById('editAdvantage3').value = advantages[2] || '';
-    document.getElementById('editPrecautions').value = benefits.precautions || '';
+    // 🔧 수정: 기본값 섹션 제거로 인한 코드 삭제
+    // 모든 상품별 정보는 각 상품의 products_data에서 관리
 }
 
 function displayKeywords(keywords) {
@@ -402,7 +378,7 @@ function addProduct(keywordIndex, platform) {
     if (!currentEditingData.keywords[keywordIndex].products_data) currentEditingData.keywords[keywordIndex].products_data = [];
     
     currentEditingData.keywords[keywordIndex][platform].push(url);
-    currentEditingData.keywords[keywordIndex].products_data.push({url: url, platform: platform, analysis_data: null, user_details: null});
+    currentEditingData.keywords[keywordIndex].products_data.push({url: url, platform: platform, analysis_data: null, user_details: null, generated_html: null});
     displayKeywords(currentEditingData.keywords);
 }
 
@@ -452,11 +428,18 @@ async function analyzeProduct(keywordIndex, platform, urlIndex) {
             while (currentEditingData.keywords[keywordIndex].products_data.length <= urlIndex) {
                 currentEditingData.keywords[keywordIndex].products_data.push({
                     url: currentEditingData.keywords[keywordIndex][platform][currentEditingData.keywords[keywordIndex].products_data.length] || '',
-                    platform: platform, analysis_data: null, user_details: null
+                    platform: platform, analysis_data: null, user_details: null, generated_html: null
                 });
             }
+            
+            // 🔧 affiliate_editor.php와 동일한 HTML 생성
+            const generatedHtml = generateOptimizedMobileHtml(result.data);
+            
             currentEditingData.keywords[keywordIndex].products_data[urlIndex] = {
-                url: url, platform: platform, analysis_data: result.data,
+                url: url, 
+                platform: platform, 
+                analysis_data: result.data,
+                generated_html: generatedHtml,  // 🔧 HTML 소스 저장
                 user_details: currentEditingData.keywords[keywordIndex].products_data[urlIndex]?.user_details || null
             };
             displayAnalysisResult(keywordIndex, platform, urlIndex, result.data);
@@ -467,6 +450,127 @@ async function analyzeProduct(keywordIndex, platform, urlIndex) {
         console.error('상품 분석 오류:', error);
         if (resultDiv) resultDiv.innerHTML = `<div style="color:red;padding:10px;">상품 분석 중 오류가 발생했습니다: ${error.message}</div>`;
     }
+}
+
+// 🔧 affiliate_editor.php와 동일한 HTML 생성 함수 추가
+function generateOptimizedMobileHtml(data) {
+    if (!data) return null;
+    const ratingDisplay = data.rating_display ? data.rating_display.replace(/⭐/g, '').replace(/[()]/g, '').trim() : '정보 없음';
+    const formattedPrice = formatPrice(data.price);
+    const htmlCode = `<div style="display: flex; justify-content: center; margin: 25px 0;">
+    <div style="border: 2px solid #eee; padding: 30px; border-radius: 15px; background: #f9f9f9; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 1000px; width: 100%;">
+        
+        <div style="display: grid; grid-template-columns: 400px 1fr; gap: 30px; align-items: start; margin-bottom: 25px;">
+            <div style="text-align: center;">
+                <img src="${data.image_url}" alt="${data.title}" style="width: 100%; max-width: 400px; border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,0.15);">
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+                <div style="margin-bottom: 15px; text-align: center;">
+                    <img src="https://novacents.com/tools/images/Ali_black_logo.webp" alt="AliExpress" style="width: 250px; height: 60px; object-fit: contain;" />
+                </div>
+                
+                <h3 style="color: #1c1c1c; margin: 0 0 20px 0; font-size: 21px; font-weight: 600; line-height: 1.4; word-break: keep-all; overflow-wrap: break-word; text-align: center;">${data.title}</h3>
+                
+                <div style="background: linear-gradient(135deg, #e62e04 0%, #ff9900 100%); color: white; padding: 14px 30px; border-radius: 10px; font-size: 40px; font-weight: 700; text-align: center; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(230, 46, 4, 0.3);">
+                    <strong>${formattedPrice}</strong>
+                </div>
+                
+                <div style="color: #1c1c1c; font-size: 20px; display: flex; align-items: center; gap: 10px; margin-bottom: 15px; justify-content: center; flex-wrap: nowrap;">
+                    <span style="color: #ff9900;">⭐⭐⭐⭐⭐</span>
+                    <span>(고객만족도: ${ratingDisplay})</span>
+                </div>
+                
+                <p style="color: #1c1c1c; font-size: 18px; margin: 0 0 15px 0; text-align: center;"><strong>📦 판매량:</strong> ${data.lastest_volume || '판매량 정보 없음'}</p>
+            </div>
+        </div>
+        
+        <div style="text-align: center; margin-top: 30px; width: 100%;">
+            <a href="${data.affiliate_link}" target="_blank" rel="nofollow" style="text-decoration: none;">
+                <picture>
+                    <source media="(max-width: 1600px)" srcset="https://novacents.com/tools/images/aliexpress-button-mobile.png">
+                    <img src="https://novacents.com/tools/images/aliexpress-button-pc.png" 
+                         alt="알리익스프레스에서 구매하기" 
+                         style="max-width: 100%; height: auto; cursor: pointer;">
+                </picture>
+            </a>
+        </div>
+    </div>
+</div>
+
+<style>
+@media (max-width: 1600px) {
+    div[style*="grid-template-columns: 400px 1fr"] {
+        display: block !important;
+        grid-template-columns: none !important;
+        gap: 15px !important;
+    }
+    
+    img[style*="max-width: 400px"] {
+        width: 95% !important;
+        max-width: none !important;
+        margin-bottom: 30px !important;
+    }
+    
+    div[style*="gap: 20px"] {
+        gap: 10px !important;
+    }
+    
+    div[style*="text-align: center"] img[alt="AliExpress"] {
+        display: block;
+        margin: 0 !important;
+    }
+    div[style*="text-align: center"]:has(img[alt="AliExpress"]) {
+        text-align: left !important;
+        margin-bottom: 10px !important;
+    }
+    
+    h3[style*="text-align: center"] {
+        text-align: left !important;
+        font-size: 18px !important;
+        margin-bottom: 10px !important;
+    }
+    
+    div[style*="font-size: 40px"] {
+        font-size: 28px !important;
+        padding: 12px 20px !important;
+        margin-bottom: 10px !important;
+    }
+    
+    div[style*="justify-content: center"][style*="flex-wrap: nowrap"] {
+        justify-content: flex-start !important;
+        font-size: 16px !important;
+        margin-bottom: 10px !important;
+        gap: 8px !important;
+    }
+    
+    p[style*="text-align: center"] {
+        text-align: left !important;
+        font-size: 16px !important;
+        margin-bottom: 10px !important;
+    }
+    
+    div[style*="margin-top: 30px"] {
+        margin-top: 15px !important;
+    }
+}
+
+@media (max-width: 480px) {
+    img[style*="width: 95%"] {
+        width: 100% !important;
+    }
+    
+    h3[style*="font-size: 18px"] {
+        font-size: 16px !important;
+    }
+    
+    div[style*="font-size: 28px"] {
+        font-size: 24px !important;
+    }
+}
+</style>`;
+    
+    return htmlCode;
 }
 
 function displayAnalysisResult(keywordIndex, platform, urlIndex, data) {
@@ -493,7 +597,7 @@ async function saveEditedQueue() {
             category_id: parseInt(document.getElementById('editCategory').value),
             prompt_type: document.getElementById('editPromptType').value,
             keywords: collectEditedKeywords(),
-            user_details: collectEditedUserDetails()
+            user_details: {}  // 🔧 기본값 섹션 제거로 인해 빈 객체
         };
         
         if (!updatedData.title || updatedData.title.length < 5) { alert('제목은 5자 이상이어야 합니다.'); return; }
@@ -529,6 +633,7 @@ function collectEditedKeywords() {
                     products_data.push({
                         url: url, platform: 'aliexpress',
                         analysis_data: existingData.analysis_data || null,
+                        generated_html: existingData.generated_html || null,  // 🔧 HTML 소스 포함
                         user_details: Object.keys(productDetails).length > 0 ? productDetails : null
                     });
                 }
@@ -578,44 +683,7 @@ function addIfNotEmptyProduct(obj, key, elementId) {
     if (element) { const value = element.value.trim(); if (value) obj[key] = value; }
 }
 
-function collectEditedUserDetails() {
-    const details = {}, specs = {}, efficiency = {}, usage = {}, benefits = {};
-    
-    addIfNotEmpty(specs, 'main_function', 'editMainFunction');
-    addIfNotEmpty(specs, 'size_capacity', 'editSizeCapacity');
-    addIfNotEmpty(specs, 'color', 'editColor');
-    addIfNotEmpty(specs, 'material', 'editMaterial');
-    addIfNotEmpty(specs, 'power_battery', 'editPowerBattery');
-    if (Object.keys(specs).length > 0) details.specs = specs;
-    
-    addIfNotEmpty(efficiency, 'problem_solving', 'editProblemSolving');
-    addIfNotEmpty(efficiency, 'time_saving', 'editTimeSaving');
-    addIfNotEmpty(efficiency, 'space_efficiency', 'editSpaceEfficiency');
-    addIfNotEmpty(efficiency, 'cost_saving', 'editCostSaving');
-    if (Object.keys(efficiency).length > 0) details.efficiency = efficiency;
-    
-    addIfNotEmpty(usage, 'usage_location', 'editUsageLocation');
-    addIfNotEmpty(usage, 'usage_frequency', 'editUsageFrequency');
-    addIfNotEmpty(usage, 'target_users', 'editTargetUsers');
-    addIfNotEmpty(usage, 'usage_method', 'editUsageMethod');
-    if (Object.keys(usage).length > 0) details.usage = usage;
-    
-    const advantages = [];
-    ['editAdvantage1', 'editAdvantage2', 'editAdvantage3'].forEach(id => {
-        const value = document.getElementById(id)?.value.trim();
-        if (value) advantages.push(value);
-    });
-    if (advantages.length > 0) benefits.advantages = advantages;
-    addIfNotEmpty(benefits, 'precautions', 'editPrecautions');
-    if (Object.keys(benefits).length > 0) details.benefits = benefits;
-    
-    return details;
-}
-
-function addIfNotEmpty(obj, key, elementId) {
-    const value = document.getElementById(elementId)?.value.trim();
-    if (value) obj[key] = value;
-}
+// 🔧 collectEditedUserDetails 및 addIfNotEmpty 함수 제거 - 기본값 섹션 제거로 인해 더 이상 필요 없음
 
 function closeEditModal() {
     document.getElementById('editModal').style.display = 'none';
