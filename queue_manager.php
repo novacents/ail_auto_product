@@ -2,7 +2,7 @@
 /**
  * 저장된 정보 관리 페이지 - 완전한 편집 기능이 포함된 큐 관리 시스템 + 상품 분석 데이터 표시
  * 저장된 큐 항목들을 확인하고 수정/삭제/즉시발행할 수 있는 관리 페이지
- * 버전: v2.0 (상품 분석 데이터 표시 기능 추가)
+ * 버전: v2.1 (상품 분석 오류 수정 + 상품별 사용자 상세 정보)
  */
 require_once($_SERVER['DOCUMENT_ROOT'] . '/wp-config.php');
 if (!current_user_can('manage_options')) { wp_die('접근 권한이 없습니다.'); }
@@ -201,7 +201,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'immediate_publish') {
     exit;
 }
 
-// 상품 분석 처리
+// 상품 분석 처리 - 수정됨
 if (isset($_POST['action']) && $_POST['action'] === 'analyze_product') {
     header('Content-Type: application/json');
     $url = $_POST['url'] ?? '';
@@ -211,9 +211,11 @@ if (isset($_POST['action']) && $_POST['action'] === 'analyze_product') {
         exit;
     }
     
-    // product_analyzer_v2.php 호출
+    // product_analyzer_v2.php 호출 - 상대 경로로 수정
     $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, 'product_analyzer_v2.php');
+    $absolute_url = 'http://' . $_SERVER['HTTP_HOST'] . dirname($_SERVER['REQUEST_URI']) . '/product_analyzer_v2.php';
+    
+    curl_setopt($ch, CURLOPT_URL, $absolute_url);
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
         'action' => 'analyze_product',
@@ -226,12 +228,18 @@ if (isset($_POST['action']) && $_POST['action'] === 'analyze_product') {
     
     $response = curl_exec($ch);
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curl_error = curl_error($ch);
     curl_close($ch);
+    
+    if ($curl_error) {
+        echo json_encode(['success' => false, 'message' => 'cURL 오류: ' . $curl_error]);
+        exit;
+    }
     
     if ($http_code === 200 && $response) {
         echo $response; // 그대로 전달
     } else {
-        echo json_encode(['success' => false, 'message' => '상품 분석 요청에 실패했습니다.']);
+        echo json_encode(['success' => false, 'message' => '상품 분석 요청에 실패했습니다. HTTP 코드: ' . $http_code]);
     }
     exit;
 }
@@ -440,6 +448,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .product-info-detail{font-size:14px;color:#333}
 .product-info-detail h4{margin:0 0 10px 0;font-size:16px;color:#1c1c1c}
 .product-info-detail p{margin:5px 0}
+
+/* 상품별 사용자 상세 정보 스타일 */
+.product-details-toggle{background:#e3f2fd;color:#1976d2;padding:6px 12px;border-radius:4px;font-size:12px;cursor:pointer;margin-top:10px;display:inline-block}
+.product-details-toggle:hover{background:#bbdefb}
+.product-user-details{margin-top:15px;padding:15px;background:#fff3e0;border-radius:6px;border:1px solid #ffcc80;display:none}
+.product-user-details.active{display:block}
+.product-user-details h5{margin:0 0 10px 0;font-size:14px;color:#e65100}
+.product-detail-field{margin-bottom:10px}
+.product-detail-field label{font-size:12px;color:#666;display:block;margin-bottom:3px}
+.product-detail-field input{width:100%;padding:6px;border:1px solid #ddd;border-radius:3px;font-size:12px}
 </style>
 </head>
 <body>
@@ -512,7 +530,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 
             <!-- 사용자 상세 정보 -->
             <div class="form-section">
-                <h3>사용자 상세 정보</h3>
+                <h3>사용자 상세 정보 (기본값)</h3>
+                <p style="font-size: 12px; color: #666; margin-bottom: 15px;">
+                    ※ 여기서 입력한 정보는 기본값으로 사용됩니다. 각 상품별로 개별 정보를 입력할 수 있습니다.
+                </p>
                 <div class="user-details-section">
                     <div class="form-section">
                         <h4>기능 및 스펙</h4>
@@ -626,7 +647,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <div class="main-container">
     <div class="header-section">
         <h1>📋 저장된 정보 관리</h1>
-        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v2.0 - 상품 분석 데이터 표시)</p>
+        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v2.1 - 상품별 상세 정보)</p>
         <div class="header-actions">
             <a href="affiliate_editor.php" class="btn btn-primary">📝 새 글 작성</a>
             <button type="button" class="btn btn-secondary" onclick="refreshQueue()">🔄 새로고침</button>
@@ -1225,36 +1246,57 @@ function displayKeywords(keywords) {
                 
                 <div class="product-list">
                     <h5>알리익스프레스 상품 (${aliexpressLinks.length}개)</h5>
-                    <div class="aliexpress-products">
+                    <div class="aliexpress-products" id="aliexpress-products-${index}">
                         ${aliexpressLinks.map((url, urlIndex) => {
                             // 🔧 상품 분석 데이터가 있는지 확인
                             let analysisHtml = '';
-                            if (keyword.products_data && keyword.products_data[urlIndex] && keyword.products_data[urlIndex].analysis_data) {
-                                const analysis = keyword.products_data[urlIndex].analysis_data;
-                                analysisHtml = `
-                                    <div class="analysis-result">
-                                        <div class="product-preview">
-                                            <img src="${analysis.image_url}" alt="${analysis.title}" onerror="this.style.display='none'">
-                                            <div class="product-info-detail">
-                                                <h4>${analysis.title}</h4>
-                                                <p><strong>가격:</strong> ${formatPrice(analysis.price)}</p>
-                                                <p><strong>평점:</strong> ${analysis.rating_display || '평점 정보 없음'}</p>
-                                                <p><strong>판매량:</strong> ${analysis.lastest_volume || '판매량 정보 없음'}</p>
+                            let productUserDetails = null;
+                            
+                            if (keyword.products_data && keyword.products_data[urlIndex]) {
+                                const productData = keyword.products_data[urlIndex];
+                                
+                                // 분석 데이터 표시
+                                if (productData.analysis_data) {
+                                    const analysis = productData.analysis_data;
+                                    analysisHtml = `
+                                        <div class="analysis-result">
+                                            <div class="product-preview">
+                                                <img src="${analysis.image_url}" alt="${analysis.title}" onerror="this.style.display='none'">
+                                                <div class="product-info-detail">
+                                                    <h4>${analysis.title}</h4>
+                                                    <p><strong>가격:</strong> ${formatPrice(analysis.price)}</p>
+                                                    <p><strong>평점:</strong> ${analysis.rating_display || '평점 정보 없음'}</p>
+                                                    <p><strong>판매량:</strong> ${analysis.lastest_volume || '판매량 정보 없음'}</p>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                `;
+                                    `;
+                                }
+                                
+                                // 상품별 사용자 상세 정보
+                                productUserDetails = productData.user_details || null;
                             }
                             
                             return `
-                                <div class="product-item-edit">
+                                <div class="product-item-edit" data-product-index="${urlIndex}">
                                     <div class="product-item-edit-header">
-                                        <input type="url" class="product-url-input" value="${url}" placeholder="상품 URL">
+                                        <input type="url" class="product-url-input" value="${url}" placeholder="상품 URL" onchange="updateProductUrl(${index}, 'aliexpress', ${urlIndex}, this.value)">
                                         <button type="button" class="btn btn-secondary btn-small" onclick="analyzeProduct(${index}, 'aliexpress', ${urlIndex})">분석</button>
                                         <button type="button" class="btn btn-danger btn-small" onclick="removeProduct(${index}, 'aliexpress', ${urlIndex})">삭제</button>
                                     </div>
                                     ${analysisHtml}
                                     <div class="analysis-result" id="analysis-${index}-aliexpress-${urlIndex}" style="${analysisHtml ? 'display:none;' : ''}"></div>
+                                    
+                                    <!-- 상품별 사용자 상세 정보 토글 버튼 -->
+                                    <div class="product-details-toggle" onclick="toggleProductDetails(${index}, 'aliexpress', ${urlIndex})">
+                                        📝 상품별 상세 정보 ${productUserDetails ? '(입력됨)' : '(미입력)'}
+                                    </div>
+                                    
+                                    <!-- 상품별 사용자 상세 정보 입력 폼 -->
+                                    <div class="product-user-details" id="product-details-${index}-aliexpress-${urlIndex}">
+                                        <h5>이 상품의 상세 정보</h5>
+                                        ${generateProductDetailsForm(index, 'aliexpress', urlIndex, productUserDetails)}
+                                    </div>
                                 </div>
                             `;
                         }).join('')}
@@ -1262,7 +1304,7 @@ function displayKeywords(keywords) {
                     
                     <div class="add-product-section">
                         <div style="display: flex; gap: 10px;">
-                            <input type="url" class="new-product-url" placeholder="새 알리익스프레스 상품 URL">
+                            <input type="url" class="new-product-url" id="new-product-url-${index}" placeholder="새 알리익스프레스 상품 URL">
                             <button type="button" class="btn btn-success btn-small" onclick="addProduct(${index}, 'aliexpress')">추가</button>
                         </div>
                     </div>
@@ -1272,6 +1314,115 @@ function displayKeywords(keywords) {
     });
     
     keywordList.innerHTML = html;
+}
+
+// 상품별 상세 정보 폼 생성
+function generateProductDetailsForm(keywordIndex, platform, productIndex, existingDetails) {
+    const details = existingDetails || {};
+    const specs = details.specs || {};
+    const efficiency = details.efficiency || {};
+    const usage = details.usage || {};
+    const benefits = details.benefits || {};
+    const advantages = benefits.advantages || [];
+    
+    return `
+        <div class="product-detail-field">
+            <label>주요 기능</label>
+            <input type="text" id="pd-main-function-${keywordIndex}-${platform}-${productIndex}" 
+                   value="${specs.main_function || ''}" placeholder="예: 자동 압축, 물 절약">
+        </div>
+        <div class="product-detail-field">
+            <label>크기/용량</label>
+            <input type="text" id="pd-size-capacity-${keywordIndex}-${platform}-${productIndex}" 
+                   value="${specs.size_capacity || ''}" placeholder="예: 30cm × 20cm">
+        </div>
+        <div class="product-detail-field">
+            <label>색상</label>
+            <input type="text" id="pd-color-${keywordIndex}-${platform}-${productIndex}" 
+                   value="${specs.color || ''}" placeholder="예: 화이트, 블랙">
+        </div>
+        <div class="product-detail-field">
+            <label>재질/소재</label>
+            <input type="text" id="pd-material-${keywordIndex}-${platform}-${productIndex}" 
+                   value="${specs.material || ''}" placeholder="예: 스테인리스 스틸">
+        </div>
+        <div class="product-detail-field">
+            <label>전원/배터리</label>
+            <input type="text" id="pd-power-battery-${keywordIndex}-${platform}-${productIndex}" 
+                   value="${specs.power_battery || ''}" placeholder="예: USB 충전">
+        </div>
+        <div class="product-detail-field">
+            <label>해결하는 문제</label>
+            <input type="text" id="pd-problem-solving-${keywordIndex}-${platform}-${productIndex}" 
+                   value="${efficiency.problem_solving || ''}" placeholder="예: 설거지 시간 오래 걸림">
+        </div>
+        <div class="product-detail-field">
+            <label>시간 절약 효과</label>
+            <input type="text" id="pd-time-saving-${keywordIndex}-${platform}-${productIndex}" 
+                   value="${efficiency.time_saving || ''}" placeholder="예: 10분 → 3분">
+        </div>
+        <div class="product-detail-field">
+            <label>공간 활용</label>
+            <input type="text" id="pd-space-efficiency-${keywordIndex}-${platform}-${productIndex}" 
+                   value="${efficiency.space_efficiency || ''}" placeholder="예: 50% 공간 절약">
+        </div>
+        <div class="product-detail-field">
+            <label>비용 절감</label>
+            <input type="text" id="pd-cost-saving-${keywordIndex}-${platform}-${productIndex}" 
+                   value="${efficiency.cost_saving || ''}" placeholder="예: 월 전기료 30% 절약">
+        </div>
+        <div class="product-detail-field">
+            <label>주요 사용 장소</label>
+            <input type="text" id="pd-usage-location-${keywordIndex}-${platform}-${productIndex}" 
+                   value="${usage.usage_location || ''}" placeholder="예: 주방, 욕실">
+        </div>
+        <div class="product-detail-field">
+            <label>사용 빈도</label>
+            <input type="text" id="pd-usage-frequency-${keywordIndex}-${platform}-${productIndex}" 
+                   value="${usage.usage_frequency || ''}" placeholder="예: 매일">
+        </div>
+        <div class="product-detail-field">
+            <label>적합한 사용자</label>
+            <input type="text" id="pd-target-users-${keywordIndex}-${platform}-${productIndex}" 
+                   value="${usage.target_users || ''}" placeholder="예: 1인 가구">
+        </div>
+        <div class="product-detail-field">
+            <label>핵심 장점 1</label>
+            <input type="text" id="pd-advantage1-${keywordIndex}-${platform}-${productIndex}" 
+                   value="${advantages[0] || ''}" placeholder="예: 설치 간편함">
+        </div>
+        <div class="product-detail-field">
+            <label>핵심 장점 2</label>
+            <input type="text" id="pd-advantage2-${keywordIndex}-${platform}-${productIndex}" 
+                   value="${advantages[1] || ''}" placeholder="예: 유지비 저렴함">
+        </div>
+        <div class="product-detail-field">
+            <label>핵심 장점 3</label>
+            <input type="text" id="pd-advantage3-${keywordIndex}-${platform}-${productIndex}" 
+                   value="${advantages[2] || ''}" placeholder="예: 내구성 뛰어남">
+        </div>
+        <div class="product-detail-field">
+            <label>주의사항</label>
+            <input type="text" id="pd-precautions-${keywordIndex}-${platform}-${productIndex}" 
+                   value="${benefits.precautions || ''}" placeholder="예: 물기 주의">
+        </div>
+    `;
+}
+
+// 상품별 상세 정보 토글
+function toggleProductDetails(keywordIndex, platform, productIndex) {
+    const detailsDiv = document.getElementById(`product-details-${keywordIndex}-${platform}-${productIndex}`);
+    if (detailsDiv) {
+        detailsDiv.classList.toggle('active');
+    }
+}
+
+// 상품 URL 업데이트
+function updateProductUrl(keywordIndex, platform, productIndex, newUrl) {
+    if (!currentEditingData.keywords[keywordIndex][platform]) {
+        currentEditingData.keywords[keywordIndex][platform] = [];
+    }
+    currentEditingData.keywords[keywordIndex][platform][productIndex] = newUrl;
 }
 
 // 키워드 추가
@@ -1291,7 +1442,8 @@ function addKeyword() {
     currentEditingData.keywords.push({
         name: name,
         aliexpress: [],
-        coupang: []
+        coupang: [],
+        products_data: []
     });
     
     displayKeywords(currentEditingData.keywords);
@@ -1308,8 +1460,7 @@ function removeKeyword(index) {
 
 // 상품 추가
 function addProduct(keywordIndex, platform) {
-    const keywordItem = document.querySelector(`[data-keyword-index="${keywordIndex}"]`);
-    const urlInput = keywordItem.querySelector('.new-product-url');
+    const urlInput = document.getElementById(`new-product-url-${keywordIndex}`);
     const url = urlInput.value.trim();
     
     if (!url) {
@@ -1321,7 +1472,18 @@ function addProduct(keywordIndex, platform) {
         currentEditingData.keywords[keywordIndex][platform] = [];
     }
     
+    if (!currentEditingData.keywords[keywordIndex].products_data) {
+        currentEditingData.keywords[keywordIndex].products_data = [];
+    }
+    
     currentEditingData.keywords[keywordIndex][platform].push(url);
+    currentEditingData.keywords[keywordIndex].products_data.push({
+        url: url,
+        platform: platform,
+        analysis_data: null,
+        user_details: null
+    });
+    
     displayKeywords(currentEditingData.keywords);
 }
 
@@ -1329,17 +1491,26 @@ function addProduct(keywordIndex, platform) {
 function removeProduct(keywordIndex, platform, urlIndex) {
     if (confirm('이 상품을 삭제하시겠습니까?')) {
         currentEditingData.keywords[keywordIndex][platform].splice(urlIndex, 1);
+        if (currentEditingData.keywords[keywordIndex].products_data) {
+            currentEditingData.keywords[keywordIndex].products_data.splice(urlIndex, 1);
+        }
         displayKeywords(currentEditingData.keywords);
     }
 }
 
-// 상품 분석
+// 상품 분석 - 수정됨
 async function analyzeProduct(keywordIndex, platform, urlIndex) {
     const url = currentEditingData.keywords[keywordIndex][platform][urlIndex];
     
     if (!url) {
         alert('분석할 상품 URL이 없습니다.');
         return;
+    }
+    
+    const resultDiv = document.getElementById(`analysis-${keywordIndex}-${platform}-${urlIndex}`);
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div style="text-align:center;padding:20px;">분석 중...</div>';
+        resultDiv.style.display = 'block';
     }
     
     try {
@@ -1353,14 +1524,40 @@ async function analyzeProduct(keywordIndex, platform, urlIndex) {
         
         const result = await response.json();
         
-        if (result.success) {
+        if (result.success && result.data) {
+            // 분석 결과를 products_data에 저장
+            if (!currentEditingData.keywords[keywordIndex].products_data) {
+                currentEditingData.keywords[keywordIndex].products_data = [];
+            }
+            
+            // products_data 배열이 짧으면 확장
+            while (currentEditingData.keywords[keywordIndex].products_data.length <= urlIndex) {
+                currentEditingData.keywords[keywordIndex].products_data.push({
+                    url: currentEditingData.keywords[keywordIndex][platform][currentEditingData.keywords[keywordIndex].products_data.length] || '',
+                    platform: platform,
+                    analysis_data: null,
+                    user_details: null
+                });
+            }
+            
+            currentEditingData.keywords[keywordIndex].products_data[urlIndex] = {
+                url: url,
+                platform: platform,
+                analysis_data: result.data,
+                user_details: currentEditingData.keywords[keywordIndex].products_data[urlIndex]?.user_details || null
+            };
+            
             displayAnalysisResult(keywordIndex, platform, urlIndex, result.data);
         } else {
-            alert('상품 분석에 실패했습니다: ' + result.message);
+            if (resultDiv) {
+                resultDiv.innerHTML = `<div style="color:red;padding:10px;">분석 실패: ${result.message || '알 수 없는 오류'}</div>`;
+            }
         }
     } catch (error) {
         console.error('상품 분석 오류:', error);
-        alert('상품 분석 중 오류가 발생했습니다.');
+        if (resultDiv) {
+            resultDiv.innerHTML = '<div style="color:red;padding:10px;">상품 분석 중 오류가 발생했습니다.</div>';
+        }
     }
 }
 
@@ -1386,6 +1583,16 @@ function displayAnalysisResult(keywordIndex, platform, urlIndex, data) {
     `;
     
     resultDiv.style.display = 'block';
+    
+    // 상품별 상세 정보 토글 버튼 업데이트
+    const productItemEdit = document.querySelector(`.keyword-item[data-keyword-index="${keywordIndex}"] .product-item-edit[data-product-index="${urlIndex}"]`);
+    if (productItemEdit) {
+        const toggleBtn = productItemEdit.querySelector('.product-details-toggle');
+        if (toggleBtn) {
+            const hasDetails = currentEditingData.keywords[keywordIndex].products_data?.[urlIndex]?.user_details;
+            toggleBtn.innerHTML = `📝 상품별 상세 정보 ${hasDetails ? '(입력됨)' : '(미입력)'}`;
+        }
+    }
 }
 
 // 편집된 큐 저장
@@ -1442,30 +1649,100 @@ function collectEditedKeywords() {
     const keywords = [];
     const keywordItems = document.querySelectorAll('.keyword-item');
     
-    keywordItems.forEach(item => {
+    keywordItems.forEach((item, keywordIndex) => {
         const nameInput = item.querySelector('.keyword-item-title');
         const name = nameInput.value.trim();
         
         if (name) {
+            const keywordData = currentEditingData.keywords[keywordIndex];
             const aliexpressUrls = [];
             const coupangUrls = [];
+            const products_data = [];
             
-            // 알리익스프레스 URL 수집
+            // 알리익스프레스 URL 및 상품별 상세 정보 수집
             const aliexpressInputs = item.querySelectorAll('.aliexpress-products .product-url-input');
-            aliexpressInputs.forEach(input => {
+            aliexpressInputs.forEach((input, productIndex) => {
                 const url = input.value.trim();
-                if (url) aliexpressUrls.push(url);
+                if (url) {
+                    aliexpressUrls.push(url);
+                    
+                    // 상품별 상세 정보 수집
+                    const productDetails = collectProductDetails(keywordIndex, 'aliexpress', productIndex);
+                    
+                    // 기존 분석 데이터와 병합
+                    const existingData = keywordData?.products_data?.[productIndex] || {};
+                    products_data.push({
+                        url: url,
+                        platform: 'aliexpress',
+                        analysis_data: existingData.analysis_data || null,
+                        user_details: Object.keys(productDetails).length > 0 ? productDetails : null
+                    });
+                }
             });
             
             keywords.push({
                 name: name,
                 aliexpress: aliexpressUrls,
-                coupang: coupangUrls
+                coupang: coupangUrls,
+                products_data: products_data
             });
         }
     });
     
     return keywords;
+}
+
+// 상품별 상세 정보 수집
+function collectProductDetails(keywordIndex, platform, productIndex) {
+    const details = {};
+    
+    // 기능 및 스펙
+    const specs = {};
+    addIfNotEmptyProduct(specs, 'main_function', `pd-main-function-${keywordIndex}-${platform}-${productIndex}`);
+    addIfNotEmptyProduct(specs, 'size_capacity', `pd-size-capacity-${keywordIndex}-${platform}-${productIndex}`);
+    addIfNotEmptyProduct(specs, 'color', `pd-color-${keywordIndex}-${platform}-${productIndex}`);
+    addIfNotEmptyProduct(specs, 'material', `pd-material-${keywordIndex}-${platform}-${productIndex}`);
+    addIfNotEmptyProduct(specs, 'power_battery', `pd-power-battery-${keywordIndex}-${platform}-${productIndex}`);
+    if (Object.keys(specs).length > 0) details.specs = specs;
+    
+    // 효율성 분석
+    const efficiency = {};
+    addIfNotEmptyProduct(efficiency, 'problem_solving', `pd-problem-solving-${keywordIndex}-${platform}-${productIndex}`);
+    addIfNotEmptyProduct(efficiency, 'time_saving', `pd-time-saving-${keywordIndex}-${platform}-${productIndex}`);
+    addIfNotEmptyProduct(efficiency, 'space_efficiency', `pd-space-efficiency-${keywordIndex}-${platform}-${productIndex}`);
+    addIfNotEmptyProduct(efficiency, 'cost_saving', `pd-cost-saving-${keywordIndex}-${platform}-${productIndex}`);
+    if (Object.keys(efficiency).length > 0) details.efficiency = efficiency;
+    
+    // 사용 시나리오
+    const usage = {};
+    addIfNotEmptyProduct(usage, 'usage_location', `pd-usage-location-${keywordIndex}-${platform}-${productIndex}`);
+    addIfNotEmptyProduct(usage, 'usage_frequency', `pd-usage-frequency-${keywordIndex}-${platform}-${productIndex}`);
+    addIfNotEmptyProduct(usage, 'target_users', `pd-target-users-${keywordIndex}-${platform}-${productIndex}`);
+    if (Object.keys(usage).length > 0) details.usage = usage;
+    
+    // 장점 및 주의사항
+    const benefits = {};
+    const advantages = [];
+    [`pd-advantage1-${keywordIndex}-${platform}-${productIndex}`,
+     `pd-advantage2-${keywordIndex}-${platform}-${productIndex}`,
+     `pd-advantage3-${keywordIndex}-${platform}-${productIndex}`].forEach(id => {
+        const value = document.getElementById(id)?.value.trim();
+        if (value) advantages.push(value);
+    });
+    if (advantages.length > 0) benefits.advantages = advantages;
+    addIfNotEmptyProduct(benefits, 'precautions', `pd-precautions-${keywordIndex}-${platform}-${productIndex}`);
+    if (Object.keys(benefits).length > 0) details.benefits = benefits;
+    
+    return details;
+}
+
+// 상품별 값이 있으면 객체에 추가하는 유틸리티 함수
+function addIfNotEmptyProduct(obj, key, elementId) {
+    const element = document.getElementById(elementId);
+    if (element) {
+        const value = element.value.trim();
+        if (value) obj[key] = value;
+    }
 }
 
 // 편집된 사용자 상세 정보 수집
