@@ -361,21 +361,30 @@ function toggleProductDetails(keywordIndex, platform, productIndex) {
 }
 
 function updateProductUrl(keywordIndex, platform, productIndex, newUrl) {
+    console.log(`🔄 URL 업데이트: 키워드 ${keywordIndex}, ${platform} ${productIndex} -> ${newUrl}`);
+    
     if (!currentEditingData.keywords[keywordIndex][platform]) currentEditingData.keywords[keywordIndex][platform] = [];
     if (!currentEditingData.keywords[keywordIndex].products_data) currentEditingData.keywords[keywordIndex].products_data = [];
+    
+    // 기존 URL 저장
+    const oldUrl = currentEditingData.keywords[keywordIndex][platform][productIndex];
     
     // URL 배열 업데이트
     currentEditingData.keywords[keywordIndex][platform][productIndex] = newUrl;
     
-    // products_data 배열도 동기화 - URL로 매칭하여 업데이트
-    const existingProductIndex = currentEditingData.keywords[keywordIndex].products_data.findIndex(pd => pd.url === currentEditingData.keywords[keywordIndex][platform][productIndex]);
-    if (existingProductIndex >= 0) {
-        currentEditingData.keywords[keywordIndex].products_data[existingProductIndex].url = newUrl;
+    // products_data 배열도 동기화 - 기존 URL을 찾아서 업데이트
+    if (oldUrl) {
+        const existingProductIndex = currentEditingData.keywords[keywordIndex].products_data.findIndex(pd => pd.url === oldUrl);
+        if (existingProductIndex >= 0) {
+            currentEditingData.keywords[keywordIndex].products_data[existingProductIndex].url = newUrl;
+            console.log(`✅ 기존 상품 데이터 URL 업데이트: ${oldUrl} -> ${newUrl}`);
+        }
     } else {
         // 새로운 상품 데이터 추가
         currentEditingData.keywords[keywordIndex].products_data.push({
             url: newUrl, platform: platform, analysis_data: null, user_details: null, generated_html: null
         });
+        console.log(`➕ 새 상품 데이터 추가: ${newUrl}`);
     }
 }
 
@@ -404,8 +413,21 @@ function addProduct(keywordIndex, platform) {
     if (!currentEditingData.keywords[keywordIndex][platform]) currentEditingData.keywords[keywordIndex][platform] = [];
     if (!currentEditingData.keywords[keywordIndex].products_data) currentEditingData.keywords[keywordIndex].products_data = [];
     
+    // 🔧 중복 URL 체크
+    if (currentEditingData.keywords[keywordIndex][platform].includes(url)) {
+        alert('이미 추가된 상품 URL입니다.');
+        return;
+    }
+    
     currentEditingData.keywords[keywordIndex][platform].push(url);
-    currentEditingData.keywords[keywordIndex].products_data.push({url: url, platform: platform, analysis_data: null, user_details: null, generated_html: null});
+    currentEditingData.keywords[keywordIndex].products_data.push({
+        url: url, 
+        platform: platform, 
+        analysis_data: null, 
+        user_details: null, 
+        generated_html: null
+    });
+    
     displayKeywords(currentEditingData.keywords);
     urlInput.value = '';
     
@@ -428,6 +450,7 @@ function removeProduct(keywordIndex, platform, urlIndex) {
             const productIndex = currentEditingData.keywords[keywordIndex].products_data.findIndex(pd => pd.url === removedUrl);
             if (productIndex >= 0) {
                 currentEditingData.keywords[keywordIndex].products_data.splice(productIndex, 1);
+                console.log(`🗑️ 상품 데이터 삭제됨: ${removedUrl}`);
             }
         }
         displayKeywords(currentEditingData.keywords);
@@ -437,6 +460,8 @@ function removeProduct(keywordIndex, platform, urlIndex) {
 async function analyzeProduct(keywordIndex, platform, urlIndex) {
     const url = currentEditingData.keywords[keywordIndex][platform][urlIndex];
     if (!url) { alert('분석할 상품 URL이 없습니다.'); return; }
+    
+    console.log(`🔍 상품 분석 시작: ${url}`);
     
     const resultDiv = document.getElementById(`analysis-${keywordIndex}-${platform}-${urlIndex}`);
     if (resultDiv) { resultDiv.innerHTML = '<div style="text-align:center;padding:20px;">분석 중...</div>'; resultDiv.style.display = 'block'; }
@@ -482,7 +507,7 @@ async function analyzeProduct(keywordIndex, platform, urlIndex) {
             const generatedHtml = generateOptimizedMobileHtml(result.data);
             
             // 기존 user_details 보존
-            const existingUserDetails = currentEditingData.keywords[keywordIndex].products_data[productIndex].user_details || null;
+            const existingUserDetails = currentEditingData.keywords[keywordIndex].products_data[productIndex].user_details || currentEditingData.keywords[keywordIndex].products_data[productIndex].user_data || null;
             
             currentEditingData.keywords[keywordIndex].products_data[productIndex] = {
                 url: url, 
@@ -496,7 +521,7 @@ async function analyzeProduct(keywordIndex, platform, urlIndex) {
             
             console.log('🔍 상품 분석 완료:', {
                 url: url,
-                analysisData: result.data,
+                analysisData: result.data.title,
                 generatedHtml: generatedHtml ? '생성됨' : '생성 실패',
                 productData: currentEditingData.keywords[keywordIndex].products_data[productIndex]
             });
@@ -652,6 +677,11 @@ function displayAnalysisResult(keywordIndex, platform, urlIndex, data) {
 
 async function saveEditedQueue() {
     try {
+        console.log('💾 저장 시작 - 현재 편집 데이터:', currentEditingData);
+        
+        // 🔧 먼저 모든 사용자 입력 상세 정보를 수집하여 currentEditingData에 저장
+        collectAllUserDetailsToCurrentData();
+        
         const collectedKeywords = collectEditedKeywords();
         const updatedData = {
             title: document.getElementById('editTitle').value.trim(),
@@ -661,7 +691,6 @@ async function saveEditedQueue() {
             user_details: {}  // 🔧 기본값 섹션 제거로 인해 빈 객체
         };
         
-        // 🔧 디버깅을 위한 로그 추가
         console.log('💾 저장할 데이터:', updatedData);
         console.log('📦 수집된 키워드:', collectedKeywords);
         collectedKeywords.forEach((keyword, index) => {
@@ -693,9 +722,49 @@ async function saveEditedQueue() {
         });
         const result = await response.json();
         
-        if (result.success) { alert('항목이 성공적으로 업데이트되었습니다.'); closeEditModal(); loadQueue(); } 
-        else { alert('업데이트에 실패했습니다: ' + result.message); }
-    } catch (error) { console.error('저장 오류:', error); alert('저장 중 오류가 발생했습니다.'); } finally { hideLoading(); }
+        if (result.success) { 
+            alert('항목이 성공적으로 업데이트되었습니다.'); 
+            closeEditModal(); 
+            loadQueue(); 
+        } else { 
+            alert('업데이트에 실패했습니다: ' + result.message); 
+        }
+    } catch (error) { 
+        console.error('저장 오류:', error); 
+        alert('저장 중 오류가 발생했습니다.'); 
+    } finally { 
+        hideLoading(); 
+    }
+}
+
+// 🔧 새로 추가: 현재 폼의 모든 사용자 입력 정보를 currentEditingData에 저장
+function collectAllUserDetailsToCurrentData() {
+    console.log('📝 사용자 상세 정보 수집 시작...');
+    
+    currentEditingData.keywords.forEach((keyword, keywordIndex) => {
+        if (keyword.aliexpress && Array.isArray(keyword.aliexpress)) {
+            keyword.aliexpress.forEach((url, urlIndex) => {
+                const productDetails = collectProductDetails(keywordIndex, 'aliexpress', urlIndex);
+                
+                // products_data에서 해당 URL의 상품 찾기
+                if (keyword.products_data && Array.isArray(keyword.products_data)) {
+                    const productData = keyword.products_data.find(pd => pd.url === url);
+                    if (productData) {
+                        // 기존 user_details와 새로 입력된 정보 병합
+                        if (Object.keys(productDetails).length > 0) {
+                            productData.user_details = productDetails;
+                            console.log(`📝 상품 ${keywordIndex}-${urlIndex} 상세 정보 업데이트:`, productDetails);
+                        } else if (!productData.user_details) {
+                            // 새로 입력된 정보가 없고 기존 정보도 없으면 null 유지
+                            productData.user_details = null;
+                        }
+                    }
+                }
+            });
+        }
+    });
+    
+    console.log('📝 사용자 상세 정보 수집 완료');
 }
 
 function collectEditedKeywords() {
@@ -717,16 +786,13 @@ function collectEditedKeywords() {
                         existingData = keywordData.products_data.find(pd => pd.url === url);
                     }
                     
-                    // 폼에서 사용자 입력 상세 정보 수집
-                    const productDetails = collectProductDetails(keywordIndex, 'aliexpress', productIndex);
-                    
-                    // 🔧 상품 데이터 구성 - 기존 데이터와 새 입력 데이터 병합
+                    // 🔧 상품 데이터 구성 - 기존 데이터 사용 (이미 collectAllUserDetailsToCurrentData에서 업데이트됨)
                     const productData = {
                         url: url, 
                         platform: 'aliexpress',
                         analysis_data: existingData ? existingData.analysis_data : null,
                         generated_html: existingData ? existingData.generated_html : null,
-                        user_details: Object.keys(productDetails).length > 0 ? productDetails : (existingData ? (existingData.user_details || existingData.user_data) : null)
+                        user_details: existingData ? existingData.user_details : null
                     };
                     
                     products_data.push(productData);
@@ -734,7 +800,6 @@ function collectEditedKeywords() {
                     console.log(`📝 상품 ${productIndex} 데이터 수집:`, {
                         url: url,
                         existingData: existingData ? '있음' : '없음',
-                        productDetails: productDetails,
                         finalUserDetails: productData.user_details
                     });
                 }
