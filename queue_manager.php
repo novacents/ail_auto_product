@@ -299,111 +299,6 @@ if (isset($_POST['action'])) {
                 </div>
             </div>
 
-            <div class="form-section">
-                <h3>사용자 상세 정보 (기본값)</h3>
-                <p style="font-size: 12px; color: #666; margin-bottom: 15px;">※ 여기서 입력한 정보는 기본값으로 사용됩니다. 각 상품별로 개별 정보를 입력할 수 있습니다.</p>
-                <div class="user-details-section">
-                    <div class="form-section">
-                        <h4>기능 및 스펙</h4>
-                        <div class="form-row">
-                            <div class="form-field">
-                                <label>주요 기능</label>
-                                <input type="text" id="editMainFunction" placeholder="예: 자동 압축, 물 절약, 시간 단축 등">
-                            </div>
-                        </div>
-                        <div class="form-row two-col">
-                            <div class="form-field">
-                                <label>크기/용량</label>
-                                <input type="text" id="editSizeCapacity" placeholder="예: 30cm × 20cm, 500ml 등">
-                            </div>
-                            <div class="form-field">
-                                <label>색상</label>
-                                <input type="text" id="editColor" placeholder="예: 화이트, 블랙, 실버 등">
-                            </div>
-                        </div>
-                        <div class="form-row two-col">
-                            <div class="form-field">
-                                <label>재질/소재</label>
-                                <input type="text" id="editMaterial" placeholder="예: 스테인리스 스틸, 실리콘 등">
-                            </div>
-                            <div class="form-field">
-                                <label>전원/배터리</label>
-                                <input type="text" id="editPowerBattery" placeholder="예: USB 충전, 건전지 등">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="form-section">
-                        <h4>효율성 분석</h4>
-                        <div class="form-row">
-                            <div class="form-field">
-                                <label>해결하는 문제</label>
-                                <input type="text" id="editProblemSolving" placeholder="예: 설거지 시간 오래 걸림">
-                            </div>
-                        </div>
-                        <div class="form-row two-col">
-                            <div class="form-field">
-                                <label>시간 절약 효과</label>
-                                <input type="text" id="editTimeSaving" placeholder="예: 기존 10분 → 3분으로 단축">
-                            </div>
-                            <div class="form-field">
-                                <label>공간 활용</label>
-                                <input type="text" id="editSpaceEfficiency" placeholder="예: 50% 공간 절약">
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-field">
-                                <label>비용 절감</label>
-                                <input type="text" id="editCostSaving" placeholder="예: 월 전기료 30% 절약">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="form-section">
-                        <h4>사용 시나리오</h4>
-                        <div class="form-row two-col">
-                            <div class="form-field">
-                                <label>주요 사용 장소</label>
-                                <input type="text" id="editUsageLocation" placeholder="예: 주방, 욕실, 거실 등">
-                            </div>
-                            <div class="form-field">
-                                <label>사용 빈도</label>
-                                <input type="text" id="editUsageFrequency" placeholder="예: 매일, 주 2-3회 등">
-                            </div>
-                        </div>
-                        <div class="form-row two-col">
-                            <div class="form-field">
-                                <label>적합한 사용자</label>
-                                <input type="text" id="editTargetUsers" placeholder="예: 1인 가구, 맞벌이 부부 등">
-                            </div>
-                            <div class="form-field">
-                                <label>사용법 요약</label>
-                                <input type="text" id="editUsageMethod" placeholder="간단한 사용 단계">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="form-section">
-                        <h4>장점 및 주의사항</h4>
-                        <div class="form-row">
-                            <div class="form-field">
-                                <label>핵심 장점 3가지</label>
-                                <ol class="advantages-list">
-                                    <li><input type="text" id="editAdvantage1" placeholder="예: 설치 간편함"></li>
-                                    <li><input type="text" id="editAdvantage2" placeholder="예: 유지비 저렴함"></li>
-                                    <li><input type="text" id="editAdvantage3" placeholder="예: 내구성 뛰어남"></li>
-                                </ol>
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-field">
-                                <label>주의사항</label>
-                                <textarea id="editPrecautions" placeholder="예: 물기 주의, 정기 청소 필요 등"></textarea>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
         </div>
         <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onclick="closeEditModal()">취소</button>
@@ -415,7 +310,7 @@ if (isset($_POST['action'])) {
 <div class="main-container">
     <div class="header-section">
         <h1>📋 저장된 정보 관리</h1>
-        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v2.2 - 최적화 버전)</p>
+        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v2.3 - 상품별 통합 정보 관리)</p>
         <div class="header-actions">
             <a href="affiliate_editor.php" class="btn btn-primary">📝 새 글 작성</a>
             <button type="button" class="btn btn-secondary" onclick="refreshQueue()">🔄 새로고침</button>
