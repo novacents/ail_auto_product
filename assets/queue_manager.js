@@ -349,7 +349,18 @@ function toggleProductDetails(keywordIndex, platform, productIndex) {
 
 function updateProductUrl(keywordIndex, platform, productIndex, newUrl) {
     if (!currentEditingData.keywords[keywordIndex][platform]) currentEditingData.keywords[keywordIndex][platform] = [];
+    if (!currentEditingData.keywords[keywordIndex].products_data) currentEditingData.keywords[keywordIndex].products_data = [];
+    
+    // URL 배열 업데이트
     currentEditingData.keywords[keywordIndex][platform][productIndex] = newUrl;
+    
+    // products_data 배열도 동기화
+    while (currentEditingData.keywords[keywordIndex].products_data.length <= productIndex) {
+        currentEditingData.keywords[keywordIndex].products_data.push({
+            url: '', platform: platform, analysis_data: null, user_details: null, generated_html: null
+        });
+    }
+    currentEditingData.keywords[keywordIndex].products_data[productIndex].url = newUrl;
 }
 
 function addKeyword() {
@@ -592,13 +603,24 @@ function displayAnalysisResult(keywordIndex, platform, urlIndex, data) {
 
 async function saveEditedQueue() {
     try {
+        const collectedKeywords = collectEditedKeywords();
         const updatedData = {
             title: document.getElementById('editTitle').value.trim(),
             category_id: parseInt(document.getElementById('editCategory').value),
             prompt_type: document.getElementById('editPromptType').value,
-            keywords: collectEditedKeywords(),
+            keywords: collectedKeywords,
             user_details: {}  // 🔧 기본값 섹션 제거로 인해 빈 객체
         };
+        
+        // 🔧 디버깅을 위한 로그 추가
+        console.log('💾 저장할 데이터:', updatedData);
+        console.log('📦 수집된 키워드:', collectedKeywords);
+        collectedKeywords.forEach((keyword, index) => {
+            console.log(`🔍 키워드 ${index}: ${keyword.name}`, {
+                aliexpress: keyword.aliexpress,
+                products_data: keyword.products_data
+            });
+        });
         
         if (!updatedData.title || updatedData.title.length < 5) { alert('제목은 5자 이상이어야 합니다.'); return; }
         if (!updatedData.keywords || updatedData.keywords.length === 0) { alert('최소 하나의 키워드가 필요합니다.'); return; }
@@ -629,12 +651,19 @@ function collectEditedKeywords() {
                 if (url) {
                     aliexpressUrls.push(url);
                     const productDetails = collectProductDetails(keywordIndex, 'aliexpress', productIndex);
-                    const existingData = keywordData?.products_data?.[productIndex] || {};
+                    
+                    // 🔧 더 안전한 기존 데이터 참조
+                    let existingData = {};
+                    if (keywordData && keywordData.products_data && keywordData.products_data[productIndex]) {
+                        existingData = keywordData.products_data[productIndex];
+                    }
+                    
                     products_data.push({
-                        url: url, platform: 'aliexpress',
+                        url: url, 
+                        platform: 'aliexpress',
                         analysis_data: existingData.analysis_data || null,
-                        generated_html: existingData.generated_html || null,  // 🔧 HTML 소스 포함
-                        user_details: Object.keys(productDetails).length > 0 ? productDetails : null
+                        generated_html: existingData.generated_html || null,
+                        user_details: Object.keys(productDetails).length > 0 ? productDetails : (existingData.user_details || null)
                     });
                 }
             });
