@@ -213,7 +213,8 @@ if (isset($_POST['action']) && $_POST['action'] === 'analyze_product') {
     
     // product_analyzer_v2.php 호출 - 상대 경로로 수정
     $ch = curl_init();
-    $absolute_url = 'http://' . $_SERVER['HTTP_HOST'] . dirname($_SERVER['REQUEST_URI']) . '/product_analyzer_v2.php';
+    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+    $absolute_url = $protocol . $_SERVER['HTTP_HOST'] . dirname($_SERVER['REQUEST_URI']) . '/product_analyzer_v2.php';
     
     curl_setopt($ch, CURLOPT_URL, $absolute_url);
     curl_setopt($ch, CURLOPT_POST, true);
@@ -224,6 +225,8 @@ if (isset($_POST['action']) && $_POST['action'] === 'analyze_product') {
     ]));
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    curl_setopt($ch, CURLOPT_MAXREDIRS, 3);
     curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
     
     $response = curl_exec($ch);
