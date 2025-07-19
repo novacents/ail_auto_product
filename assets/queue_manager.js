@@ -424,12 +424,28 @@ async function analyzeProduct(keywordIndex, platform, urlIndex) {
     if (resultDiv) { resultDiv.innerHTML = '<div style="text-align:center;padding:20px;">분석 중...</div>'; resultDiv.style.display = 'block'; }
     
     try {
-        const response = await fetch('', {
+        // affiliate_editor.php와 동일한 방식으로 product_analyzer_v2.php에 직접 요청
+        const response = await fetch('product_analyzer_v2.php', {
             method: 'POST',
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: `action=analyze_product&url=${encodeURIComponent(url)}`
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                action: 'analyze_product', 
+                url: url, 
+                platform: 'aliexpress' 
+            })
         });
-        const result = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(`HTTP 오류: ${response.status} ${response.statusText}`);
+        }
+        
+        const responseText = await response.text();
+        let result;
+        try {
+            result = JSON.parse(responseText);
+        } catch (parseError) {
+            throw new Error(`JSON 파싱 오류: ${parseError.message}`);
+        }
         
         if (result.success && result.data) {
             if (!currentEditingData.keywords[keywordIndex].products_data) currentEditingData.keywords[keywordIndex].products_data = [];
@@ -449,7 +465,7 @@ async function analyzeProduct(keywordIndex, platform, urlIndex) {
         }
     } catch (error) {
         console.error('상품 분석 오류:', error);
-        if (resultDiv) resultDiv.innerHTML = '<div style="color:red;padding:10px;">상품 분석 중 오류가 발생했습니다.</div>';
+        if (resultDiv) resultDiv.innerHTML = `<div style="color:red;padding:10px;">상품 분석 중 오류가 발생했습니다: ${error.message}</div>`;
     }
 }
 
