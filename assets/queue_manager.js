@@ -255,9 +255,6 @@ function populateEditModal(item) {
     document.getElementById('editCategory').value = item.category_id || '356';
     document.getElementById('editPromptType').value = item.prompt_type || 'essential_items';
     displayKeywords(item.keywords || []);
-    
-    // 🔧 수정: 기본값 섹션 제거로 인한 코드 삭제
-    // 모든 상품별 정보는 각 상품의 products_data에서 관리
 }
 
 function displayKeywords(keywords) {
@@ -278,14 +275,20 @@ function displayKeywords(keywords) {
                 <div class="aliexpress-products" id="aliexpress-products-${index}">
                     ${aliexpressLinks.map((url, urlIndex) => {
                         let analysisHtml = '', productUserDetails = null;
-                        if (keyword.products_data && keyword.products_data[urlIndex]) {
-                            const productData = keyword.products_data[urlIndex];
-                            if (productData.analysis_data) {
-                                const analysis = productData.analysis_data;
-                                analysisHtml = `<div class="analysis-result"><div class="product-preview"><img src="${analysis.image_url}" alt="${analysis.title}" onerror="this.style.display='none'"><div class="product-info-detail"><h4>${analysis.title}</h4><p><strong>가격:</strong> ${formatPrice(analysis.price)}</p><p><strong>평점:</strong> ${analysis.rating_display || '평점 정보 없음'}</p><p><strong>판매량:</strong> ${analysis.lastest_volume || '판매량 정보 없음'}</p></div></div></div>`;
+                        
+                        // 🔧 products_data에서 해당 상품의 정보 찾기
+                        if (keyword.products_data && Array.isArray(keyword.products_data)) {
+                            // URL로 매칭하여 해당 상품 데이터 찾기
+                            const productData = keyword.products_data.find(pd => pd.url === url);
+                            if (productData) {
+                                if (productData.analysis_data) {
+                                    const analysis = productData.analysis_data;
+                                    analysisHtml = `<div class="analysis-result"><div class="product-preview"><img src="${analysis.image_url}" alt="${analysis.title}" onerror="this.style.display='none'"><div class="product-info-detail"><h4>${analysis.title}</h4><p><strong>가격:</strong> ${formatPrice(analysis.price)}</p><p><strong>평점:</strong> ${analysis.rating_display || '평점 정보 없음'}</p><p><strong>판매량:</strong> ${analysis.lastest_volume || '판매량 정보 없음'}</p></div></div></div>`;
+                                }
+                                productUserDetails = productData.user_data || productData.user_details || null;
                             }
-                            productUserDetails = productData.user_details || null;
                         }
+                        
                         return `<div class="product-item-edit" data-product-index="${urlIndex}">
                             <div class="product-item-edit-header">
                                 <input type="url" class="product-url-input" value="${url}" placeholder="상품 URL" onchange="updateProductUrl(${index}, 'aliexpress', ${urlIndex}, this.value)">
@@ -316,12 +319,22 @@ function displayKeywords(keywords) {
 }
 
 function generateProductDetailsForm(keywordIndex, platform, productIndex, existingDetails) {
+    // 🔧 더 안전한 기본값 설정
     const details = existingDetails || {};
     const specs = details.specs || {};
     const efficiency = details.efficiency || {};
     const usage = details.usage || {};
     const benefits = details.benefits || {};
-    const advantages = benefits.advantages || [];
+    const advantages = Array.isArray(benefits.advantages) ? benefits.advantages : [];
+    
+    console.log(`🔍 상품 상세 정보 폼 생성 - 키워드: ${keywordIndex}, 플랫폼: ${platform}, 상품: ${productIndex}`, {
+        existingDetails: existingDetails,
+        specs: specs,
+        efficiency: efficiency,
+        usage: usage,
+        benefits: benefits,
+        advantages: advantages
+    });
     
     return `
         <div class="product-detail-field"><label>주요 기능</label><input type="text" id="pd-main-function-${keywordIndex}-${platform}-${productIndex}" value="${specs.main_function || ''}" placeholder="예: 자동 압축, 물 절약"></div>
@@ -354,13 +367,16 @@ function updateProductUrl(keywordIndex, platform, productIndex, newUrl) {
     // URL 배열 업데이트
     currentEditingData.keywords[keywordIndex][platform][productIndex] = newUrl;
     
-    // products_data 배열도 동기화
-    while (currentEditingData.keywords[keywordIndex].products_data.length <= productIndex) {
+    // products_data 배열도 동기화 - URL로 매칭하여 업데이트
+    const existingProductIndex = currentEditingData.keywords[keywordIndex].products_data.findIndex(pd => pd.url === currentEditingData.keywords[keywordIndex][platform][productIndex]);
+    if (existingProductIndex >= 0) {
+        currentEditingData.keywords[keywordIndex].products_data[existingProductIndex].url = newUrl;
+    } else {
+        // 새로운 상품 데이터 추가
         currentEditingData.keywords[keywordIndex].products_data.push({
-            url: '', platform: platform, analysis_data: null, user_details: null, generated_html: null
+            url: newUrl, platform: platform, analysis_data: null, user_details: null, generated_html: null
         });
     }
-    currentEditingData.keywords[keywordIndex].products_data[productIndex].url = newUrl;
 }
 
 function addKeyword() {
@@ -391,13 +407,28 @@ function addProduct(keywordIndex, platform) {
     currentEditingData.keywords[keywordIndex][platform].push(url);
     currentEditingData.keywords[keywordIndex].products_data.push({url: url, platform: platform, analysis_data: null, user_details: null, generated_html: null});
     displayKeywords(currentEditingData.keywords);
+    urlInput.value = '';
+    
+    console.log('🔧 새 상품 추가됨:', {
+        keywordIndex: keywordIndex,
+        platform: platform,
+        url: url,
+        aliexpressUrls: currentEditingData.keywords[keywordIndex][platform],
+        products_data: currentEditingData.keywords[keywordIndex].products_data
+    });
 }
 
 function removeProduct(keywordIndex, platform, urlIndex) {
     if (confirm('이 상품을 삭제하시겠습니까?')) {
+        const removedUrl = currentEditingData.keywords[keywordIndex][platform][urlIndex];
         currentEditingData.keywords[keywordIndex][platform].splice(urlIndex, 1);
+        
+        // products_data에서도 해당 URL의 상품 제거
         if (currentEditingData.keywords[keywordIndex].products_data) {
-            currentEditingData.keywords[keywordIndex].products_data.splice(urlIndex, 1);
+            const productIndex = currentEditingData.keywords[keywordIndex].products_data.findIndex(pd => pd.url === removedUrl);
+            if (productIndex >= 0) {
+                currentEditingData.keywords[keywordIndex].products_data.splice(productIndex, 1);
+            }
         }
         displayKeywords(currentEditingData.keywords);
     }
@@ -436,24 +467,39 @@ async function analyzeProduct(keywordIndex, platform, urlIndex) {
         
         if (result.success && result.data) {
             if (!currentEditingData.keywords[keywordIndex].products_data) currentEditingData.keywords[keywordIndex].products_data = [];
-            while (currentEditingData.keywords[keywordIndex].products_data.length <= urlIndex) {
+            
+            // URL로 매칭하여 해당 상품 데이터 찾거나 생성
+            let productIndex = currentEditingData.keywords[keywordIndex].products_data.findIndex(pd => pd.url === url);
+            if (productIndex < 0) {
+                // 새로운 상품 데이터 추가
                 currentEditingData.keywords[keywordIndex].products_data.push({
-                    url: currentEditingData.keywords[keywordIndex][platform][currentEditingData.keywords[keywordIndex].products_data.length] || '',
-                    platform: platform, analysis_data: null, user_details: null, generated_html: null
+                    url: url, platform: platform, analysis_data: null, user_details: null, generated_html: null
                 });
+                productIndex = currentEditingData.keywords[keywordIndex].products_data.length - 1;
             }
             
             // 🔧 affiliate_editor.php와 동일한 HTML 생성
             const generatedHtml = generateOptimizedMobileHtml(result.data);
             
-            currentEditingData.keywords[keywordIndex].products_data[urlIndex] = {
+            // 기존 user_details 보존
+            const existingUserDetails = currentEditingData.keywords[keywordIndex].products_data[productIndex].user_details || null;
+            
+            currentEditingData.keywords[keywordIndex].products_data[productIndex] = {
                 url: url, 
                 platform: platform, 
                 analysis_data: result.data,
                 generated_html: generatedHtml,  // 🔧 HTML 소스 저장
-                user_details: currentEditingData.keywords[keywordIndex].products_data[urlIndex]?.user_details || null
+                user_details: existingUserDetails
             };
+            
             displayAnalysisResult(keywordIndex, platform, urlIndex, result.data);
+            
+            console.log('🔍 상품 분석 완료:', {
+                url: url,
+                analysisData: result.data,
+                generatedHtml: generatedHtml ? '생성됨' : '생성 실패',
+                productData: currentEditingData.keywords[keywordIndex].products_data[productIndex]
+            });
         } else {
             if (resultDiv) resultDiv.innerHTML = `<div style="color:red;padding:10px;">분석 실패: ${result.message || '알 수 없는 오류'}</div>`;
         }
@@ -595,7 +641,10 @@ function displayAnalysisResult(keywordIndex, platform, urlIndex, data) {
     if (productItemEdit) {
         const toggleBtn = productItemEdit.querySelector('.product-details-toggle');
         if (toggleBtn) {
-            const hasDetails = currentEditingData.keywords[keywordIndex].products_data?.[urlIndex]?.user_details;
+            // URL로 매칭하여 상품 데이터 찾기
+            const url = currentEditingData.keywords[keywordIndex].aliexpress[urlIndex];
+            const productData = currentEditingData.keywords[keywordIndex].products_data.find(pd => pd.url === url);
+            const hasDetails = productData && (productData.user_details || productData.user_data);
             toggleBtn.innerHTML = `📝 상품별 상세 정보 ${hasDetails ? '(입력됨)' : '(미입력)'}`;
         }
     }
@@ -620,6 +669,17 @@ async function saveEditedQueue() {
                 aliexpress: keyword.aliexpress,
                 products_data: keyword.products_data
             });
+            if (keyword.products_data) {
+                keyword.products_data.forEach((product, pIndex) => {
+                    console.log(`  상품 ${pIndex}:`, {
+                        url: product.url,
+                        has_analysis: !!product.analysis_data,
+                        has_html: !!product.generated_html,
+                        has_user_details: !!(product.user_details || product.user_data),
+                        user_details: product.user_details || product.user_data
+                    });
+                });
+            }
         });
         
         if (!updatedData.title || updatedData.title.length < 5) { alert('제목은 5자 이상이어야 합니다.'); return; }
@@ -650,20 +710,32 @@ function collectEditedKeywords() {
                 const url = input.value.trim();
                 if (url) {
                     aliexpressUrls.push(url);
-                    const productDetails = collectProductDetails(keywordIndex, 'aliexpress', productIndex);
                     
-                    // 🔧 더 안전한 기존 데이터 참조
-                    let existingData = {};
-                    if (keywordData && keywordData.products_data && keywordData.products_data[productIndex]) {
-                        existingData = keywordData.products_data[productIndex];
+                    // 🔧 URL로 매칭하여 기존 데이터 찾기
+                    let existingData = null;
+                    if (keywordData && keywordData.products_data && Array.isArray(keywordData.products_data)) {
+                        existingData = keywordData.products_data.find(pd => pd.url === url);
                     }
                     
-                    products_data.push({
+                    // 폼에서 사용자 입력 상세 정보 수집
+                    const productDetails = collectProductDetails(keywordIndex, 'aliexpress', productIndex);
+                    
+                    // 🔧 상품 데이터 구성 - 기존 데이터와 새 입력 데이터 병합
+                    const productData = {
                         url: url, 
                         platform: 'aliexpress',
-                        analysis_data: existingData.analysis_data || null,
-                        generated_html: existingData.generated_html || null,
-                        user_details: Object.keys(productDetails).length > 0 ? productDetails : (existingData.user_details || null)
+                        analysis_data: existingData ? existingData.analysis_data : null,
+                        generated_html: existingData ? existingData.generated_html : null,
+                        user_details: Object.keys(productDetails).length > 0 ? productDetails : (existingData ? (existingData.user_details || existingData.user_data) : null)
+                    };
+                    
+                    products_data.push(productData);
+                    
+                    console.log(`📝 상품 ${productIndex} 데이터 수집:`, {
+                        url: url,
+                        existingData: existingData ? '있음' : '없음',
+                        productDetails: productDetails,
+                        finalUserDetails: productData.user_details
                     });
                 }
             });
@@ -711,8 +783,6 @@ function addIfNotEmptyProduct(obj, key, elementId) {
     const element = document.getElementById(elementId);
     if (element) { const value = element.value.trim(); if (value) obj[key] = value; }
 }
-
-// 🔧 collectEditedUserDetails 및 addIfNotEmpty 함수 제거 - 기본값 섹션 제거로 인해 더 이상 필요 없음
 
 function closeEditModal() {
     document.getElementById('editModal').style.display = 'none';
