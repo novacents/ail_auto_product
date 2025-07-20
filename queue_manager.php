@@ -1,7 +1,7 @@
 <?php
 /**
  * 저장된 정보 관리 페이지 - 최적화된 버전
- * 버전: v2.3 (데이터 로딩 문제 해결)
+ * 버전: v2.4 (캐시 문제 해결)
  */
 require_once($_SERVER['DOCUMENT_ROOT'] . '/wp-config.php');
 if (!current_user_can('manage_options')) { wp_die('접근 권한이 없습니다.'); }
@@ -369,7 +369,7 @@ if (isset($_POST['action'])) {
 <div class="main-container">
     <div class="header-section">
         <h1>📋 저장된 정보 관리</h1>
-        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v2.3 - 데이터 로딩 문제 해결)</p>
+        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v2.4 - 캐시 문제 해결)</p>
         <div class="header-actions">
             <a href="affiliate_editor.php" class="btn btn-primary">📝 새 글 작성</a>
             <button type="button" class="btn btn-secondary" onclick="refreshQueue()">🔄 새로고침</button>
@@ -423,6 +423,6 @@ if (isset($_POST['action'])) {
     </div>
 </div>
 
-<script src="assets/queue_manager.js"></script>
+<script src="assets/queue_manager.js?v=<?php echo time(); ?>"></script>
 </body>
 </html>
