@@ -1,0 +1,171 @@
+/* Affiliate Editor Styles - 압축 최적화 버전 */
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:20px;background-color:#f5f5f5;min-width:1200px;color:#1c1c1c}
+.main-container{width:1800px;margin:0 auto;background:white;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1);overflow:hidden}
+.header-section{padding:30px;border-bottom:1px solid #e0e0e0;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white}
+.header-section h1{margin:0 0 10px 0;font-size:28px}
+.header-section .subtitle{margin:0 0 20px 0;opacity:0.9}
+.header-form{display:grid;grid-template-columns:1fr 250px 250px;gap:15px;margin-top:20px}
+.title-section{position:relative}
+.title-input-row{display:flex;gap:10px;align-items:flex-end}
+.title-input-row input{flex:1;padding:12px;border:1px solid rgba(255,255,255,0.3);border-radius:6px;background:rgba(255,255,255,0.1);color:white;font-size:16px}
+.title-input-row input::placeholder{color:rgba(255,255,255,0.7)}
+.category-section select,.prompt-section select{width:100%;padding:12px;border:1px solid rgba(255,255,255,0.3);border-radius:6px;background:rgba(255,255,255,0.1);color:white;font-size:16px}
+.category-section select option,.prompt-section select option{background:#333;color:white}
+
+/* 상단 네비게이션 */
+.nav-links{display:flex;gap:10px;margin-top:15px}
+.nav-link{background:rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:4px;text-decoration:none;font-size:14px;transition:all 0.3s}
+.nav-link:hover{background:rgba(255,255,255,0.3);color:white}
+
+.main-content{display:flex;min-height:600px}
+.products-sidebar{width:600px;border-right:1px solid #e0e0e0;background:#fafafa;display:flex;flex-direction:column}
+.sidebar-header{padding:20px;border-bottom:1px solid #e0e0e0;background:white}
+.progress-info{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px}
+.progress-text{font-weight:bold;color:#333}
+.progress-bar{flex:1;height:8px;background:#e0e0e0;border-radius:4px;margin:0 15px;overflow:hidden}
+.progress-fill{height:100%;background:linear-gradient(90deg,#4CAF50,#45a049);width:0%;transition:width 0.3s ease}
+.products-list{flex:1;overflow-y:auto;padding:0}
+.keyword-group{border-bottom:1px solid #e0e0e0}
+.keyword-header{padding:15px 20px;background:white;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;cursor:pointer}
+.keyword-header:hover{background:#f8f9fa}
+.keyword-info{display:flex;align-items:center;gap:10px}
+.keyword-name{font-weight:600;color:#333}
+.product-count{background:#007bff;color:white;padding:2px 8px;border-radius:12px;font-size:12px}
+.keyword-actions{display:flex;gap:8px}
+.product-item{padding:12px 40px;border-bottom:1px solid #f5f5f5;display:flex;align-items:center;gap:10px;cursor:pointer;transition:background 0.2s}
+.product-item:hover{background:#f0f8ff}
+.product-item.active{background:#e3f2fd;border-left:4px solid #2196F3}
+.product-status{font-size:18px;width:20px}
+.product-name{flex:1;font-size:14px;color:#555}
+.product-actions{display:flex;gap:5px;margin-left:auto}
+.sidebar-actions{padding:15px 20px;border-bottom:1px solid #e0e0e0;background:white}
+.keyword-input-section{margin-top:10px;padding:15px;background:#f8f9fa;border-radius:6px;border:1px solid #e9ecef;display:none}
+.keyword-input-section.show{display:block}
+.keyword-input-row-inline{display:flex;gap:10px;align-items:center}
+.keyword-input-row-inline input{flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:4px;font-size:14px}
+.keyword-input-row-inline button{padding:8px 16px;border:none;border-radius:4px;cursor:pointer;font-size:14px;font-weight:600}
+.detail-panel{flex:1;width:1100px;padding:30px;overflow-y:auto}
+.detail-header{margin-bottom:20px;padding-bottom:20px;border-bottom:2px solid #f0f0f0}
+
+/* 상단 네비게이션 버튼 */
+.top-navigation{margin-bottom:30px;padding:20px;background:#f8f9fa;border-radius:8px;border:1px solid #e9ecef}
+.nav-buttons{display:flex;align-items:center;gap:10px}
+.nav-buttons-left{display:flex;gap:10px}
+.nav-divider{width:2px;height:40px;background:#ddd;margin:0 20px}
+.nav-buttons-right{display:flex;gap:15px}
+.btn-orange{background:#ff9900;color:white;border:none;padding:12px 20px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;transition:all 0.3s;text-decoration:none;display:inline-block}
+.btn-orange:hover{background:#e68a00;transform:translateY(-1px)}
+.btn-orange:disabled{background:#ccc;cursor:not-allowed;transform:none}
+
+/* 로딩 오버레이 */
+.loading-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10000;display:none;align-items:center;justify-content:center}
+.loading-content{background:white;border-radius:10px;padding:40px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.3)}
+.loading-spinner{display:inline-block;width:40px;height:40px;border:4px solid #f3f3f3;border-top:4px solid #ff9900;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:20px}
+.loading-text{font-size:18px;color:#333;font-weight:600}
+
+/* 상단으로 이동 버튼 */
+.scroll-to-top{position:fixed;bottom:30px;right:30px;width:50px;height:50px;background:#667eea;color:white;border:none;border-radius:50%;cursor:pointer;font-size:20px;display:none;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,0.2);transition:all 0.3s;z-index:1000}
+.scroll-to-top:hover{background:#764ba2;transform:translateY(-3px);box-shadow:0 6px 20px rgba(0,0,0,0.3)}
+.scroll-to-top.show{display:flex}
+
+/* 중앙 정렬 팝업 모달 */
+.success-modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10001;display:none;align-items:center;justify-content:center}
+.success-modal-content{background:white;border-radius:12px;padding:40px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.3);min-width:400px;max-width:500px}
+.success-modal-icon{font-size:60px;margin-bottom:20px}
+.success-modal-title{font-size:24px;font-weight:bold;color:#28a745;margin-bottom:15px}
+.success-modal-message{font-size:16px;color:#666;margin-bottom:30px;line-height:1.5}
+.success-modal-button{background:#28a745;color:white;border:none;padding:12px 30px;border-radius:6px;cursor:pointer;font-size:16px;font-weight:600;transition:all 0.3s}
+.success-modal-button:hover{background:#1e7e34}
+
+.product-url-section{margin-bottom:30px;padding:20px;background:#f8f9fa;border-radius:8px;border:1px solid #e9ecef}
+.url-input-group{display:flex;gap:10px;margin-bottom:15px}
+.url-input-group input{flex:1;padding:12px;border:1px solid #ddd;border-radius:6px;font-size:16px}
+.analysis-result{margin-top:15px;padding:20px;background:white;border-radius:8px;border:1px solid #ddd;display:none}
+.analysis-result.show{display:block}
+.product-card{background:#fff;border-radius:12px;padding:25px;box-shadow:0 2px 12px rgba(0,0,0,0.08);border:1px solid #f0f0f0;margin-bottom:20px}
+.product-content-split{display:grid;grid-template-columns:400px 1fr;gap:30px;align-items:start;margin-bottom:25px}
+.product-image-large{width:100%}
+.product-image-large img{width:100%;max-width:400px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,0.15)}
+.product-info-all{display:flex;flex-direction:column;gap:20px}
+.aliexpress-logo-right{margin-bottom:15px}
+.aliexpress-logo-right img{width:250px;height:60px;object-fit:contain}
+.product-title-right{color:#1c1c1c;font-size:21px;font-weight:600;line-height:1.4;margin:0 0 20px 0;word-break:keep-all;overflow-wrap:break-word}
+.product-price-right{background:linear-gradient(135deg,#e62e04 0%,#ff9900 100%);color:white;padding:14px 30px;border-radius:10px;font-size:40px;font-weight:700;text-align:center;margin-bottom:20px;box-shadow:0 4px 15px rgba(230,46,4,0.3)}
+.product-rating-right{color:#1c1c1c;font-size:20px;display:flex;align-items:center;gap:10px;margin-bottom:15px}
+.rating-stars{color:#ff9900}
+.product-sales-right{color:#1c1c1c;font-size:18px;margin-bottom:15px}
+.product-extra-info-right{background:#f8f9fa;border-radius:8px;padding:20px;margin-top:15px}
+.info-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #eee;font-size:16px}
+.info-row:last-child{border-bottom:none}
+.info-label{color:#666;font-weight:500}
+.info-value{color:#1c1c1c;font-weight:600}
+.purchase-button-full{text-align:center;margin-top:30px;width:100%}
+.purchase-button-full img{max-width:100%;height:auto;cursor:pointer;transition:transform 0.2s ease}
+.purchase-button-full img:hover{transform:scale(1.02)}
+.html-source-section{margin-top:30px;padding:20px;background:#f1f8ff;border-radius:8px;border:1px solid #b3d9ff}
+.html-source-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px}
+.html-source-header h4{margin:0;color:#0066cc;font-size:18px}
+.copy-btn{padding:8px 16px;background:#007bff;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;transition:all 0.3s}
+.copy-btn:hover{background:#0056b3}
+.copy-btn.copied{background:#28a745}
+.html-preview{background:white;border:1px solid #ddd;border-radius:8px;padding:20px;margin-bottom:15px}
+.html-code{background:#f8f9fa;border:1px solid #e9ecef;border-radius:6px;padding:15px;font-family:'Courier New',monospace;font-size:12px;line-height:1.4;overflow-x:auto;white-space:pre;color:#333;max-height:300px;overflow-y:auto}
+.preview-product-card{display:flex;justify-content:center;margin:25px 0}
+.preview-card-content{border:2px solid #eee;padding:30px;border-radius:15px;background:#f9f9f9;box-shadow:0 4px 8px rgba(0,0,0,0.1);max-width:1000px;width:100%}
+.preview-content-split{display:grid;grid-template-columns:400px 1fr;gap:30px;align-items:start;margin-bottom:25px}
+.preview-image-large{width:100%;max-width:400px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,0.15)}
+.preview-info-all{display:flex;flex-direction:column;gap:20px}
+.preview-aliexpress-logo{margin-bottom:15px}
+.preview-aliexpress-logo img{width:250px;height:60px;object-fit:contain}
+.preview-card-title{color:#1c1c1c;margin:0 0 20px 0;font-size:21px;font-weight:600;line-height:1.4;word-break:keep-all;overflow-wrap:break-word}
+.preview-price-main{background:linear-gradient(135deg,#e62e04 0%,#ff9900 100%);color:white;padding:14px 30px;border-radius:10px;font-size:40px;font-weight:700;text-align:center;margin:0 0 20px 0;box-shadow:0 4px 15px rgba(230,46,4,0.3)}
+.preview-rating{color:#1c1c1c;font-size:20px;display:flex;align-items:center;gap:10px;margin:0 0 15px 0}
+.preview-rating .rating-stars{color:#ff9900}
+.preview-sales{color:#1c1c1c;font-size:18px;margin:0 0 15px 0}
+.preview-button-container{text-align:center;margin-top:30px}
+.preview-button-container img{max-width:100%;height:auto;cursor:pointer}
+.user-input-section{margin-top:30px}
+.input-group{margin-bottom:30px;padding:20px;background:white;border:1px solid #e0e0e0;border-radius:8px}
+.input-group h3{margin:0 0 20px 0;padding-bottom:10px;border-bottom:2px solid #f0f0f0;color:#333;font-size:18px}
+.form-row{display:grid;gap:15px;margin-bottom:15px}
+.form-row.two-col{grid-template-columns:1fr 1fr}
+.form-row.three-col{grid-template-columns:1fr 1fr 1fr}
+.form-field label{display:block;margin-bottom:5px;font-weight:600;color:#333;font-size:14px}
+.form-field input,.form-field textarea{width:100%;padding:10px;border:1px solid #ddd;border-radius:4px;font-size:14px;box-sizing:border-box}
+.form-field textarea{min-height:60px;resize:vertical}
+.advantages-list{list-style:none;padding:0;margin:0}
+.advantages-list li{margin-bottom:10px}
+.advantages-list input{width:100%;padding:8px;border:1px solid #ddd;border-radius:4px}
+.btn{padding:12px 20px;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;transition:all 0.3s;text-decoration:none;display:inline-block;margin:0 5px}
+.btn-primary{background-color:#007bff;color:white}
+.btn-primary:hover{background-color:#0056b3}
+.btn-secondary{background-color:#6c757d;color:white}
+.btn-secondary:hover{background-color:#545b62}
+.btn-success{background-color:#28a745;color:white}
+.btn-success:hover{background-color:#1e7e34}
+.btn-danger{background-color:#dc3545;color:white}
+.btn-danger:hover{background-color:#c82333}
+.btn-small{padding:6px 12px;font-size:12px}
+.btn-large{padding:15px 30px;font-size:16px}
+.keyword-generator{margin-top:15px;padding:15px;background-color:rgba(255,255,255,0.1);border-radius:6px;display:none}
+.keyword-input-row{display:flex;gap:10px;margin-bottom:15px}
+.keyword-input-row input{flex:1;padding:10px;border:1px solid rgba(255,255,255,0.3);border-radius:4px;background:rgba(255,255,255,0.1);color:white}
+.generated-titles{margin-top:15px}
+.title-options{display:grid;gap:8px}
+.title-option{padding:12px 15px;background-color:rgba(255,255,255,0.1);border:2px solid rgba(255,255,255,0.3);border-radius:6px;cursor:pointer;transition:all 0.2s;text-align:left;color:white}
+.title-option:hover{background-color:rgba(255,255,255,0.2);border-color:rgba(255,255,255,0.6)}
+.loading{display:none;text-align:center;color:rgba(255,255,255,0.8);margin-top:10px}
+.spinner{display:inline-block;width:20px;height:20px;border:3px solid rgba(255,255,255,0.3);border-top:3px solid white;border-radius:50%;animation:spin 1s linear infinite;margin-right:10px}
+@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+.alert{padding:15px;border-radius:6px;margin-bottom:20px}
+.alert-success{background-color:#d4edda;color:#155724;border:1px solid #c3e6cb}
+.alert-error{background-color:#f8d7da;color:#721c24;border:1px solid #f5c6cb}
+.empty-state{text-align:center;padding:40px 20px;color:#666}
+.empty-state h3{margin:0 0 10px 0;color:#999}
+
+/* 썸네일 이미지 URL 필드 전용 스타일 */
+.thumbnail-url-field{margin-bottom:15px}
+.thumbnail-url-field label{display:block;margin-bottom:5px;font-weight:600;color:#333;font-size:14px}
+.thumbnail-url-field input[type="url"]{width:100%;padding:10px;border:1px solid #ddd;border-radius:4px;font-size:14px;box-sizing:border-box}
+.thumbnail-preview{display:none;margin-top:10px;max-width:200px;max-height:200px;border:1px solid #ddd;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
+.thumbnail-preview.show{display:block}
