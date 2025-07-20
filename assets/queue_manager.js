@@ -268,6 +268,9 @@ async function editQueue(queueId) {
             console.log('📊 제목:', currentEditingData.title);
             console.log('📊 키워드 수:', currentEditingData.keywords ? currentEditingData.keywords.length : 0);
             
+            // 🔧 전체 데이터 구조 분석
+            console.log('🔍 전체 currentEditingData 구조:', currentEditingData);
+            
             populateEditModal(result.item);
             document.getElementById('editModal').style.display = 'flex';
         } else { 
@@ -300,10 +303,15 @@ function displayKeywords(keywords) {
     
     keywords.forEach((keyword, index) => {
         console.log(`🔍 키워드 ${index} "${keyword.name}" 처리 중...`);
+        console.log(`🔍 키워드 ${index} 전체 구조:`, keyword);
         
         const aliexpressLinks = keyword.aliexpress || [];
         console.log(`  - aliexpress URLs: ${aliexpressLinks.length}개`);
         console.log(`  - products_data: ${keyword.products_data ? keyword.products_data.length : 0}개`);
+        
+        if (keyword.products_data && Array.isArray(keyword.products_data)) {
+            console.log(`  - products_data 상세:`, keyword.products_data);
+        }
         
         html += `<div class="keyword-item" data-keyword-index="${index}">
             <div class="keyword-item-header">
@@ -316,9 +324,9 @@ function displayKeywords(keywords) {
                 <h5>알리익스프레스 상품 (${aliexpressLinks.length}개)</h5>
                 <div class="aliexpress-products" id="aliexpress-products-${index}">`;
         
-        // 🔧 각 상품별 HTML 생성 및 즉시 폼 필드 값 설정 준비
+        // 각 상품별 HTML 생성
         aliexpressLinks.forEach((url, urlIndex) => {
-            console.log(`    상품 ${urlIndex} URL: ${url}`);
+            console.log(`    🔍 상품 ${urlIndex} URL: ${url}`);
             
             let analysisHtml = '';
             let productUserData = null;
@@ -327,16 +335,25 @@ function displayKeywords(keywords) {
             if (keyword.products_data && Array.isArray(keyword.products_data)) {
                 const productData = keyword.products_data.find(pd => pd.url === url);
                 
+                console.log(`    🔍 상품 ${urlIndex} 데이터 검색 결과:`, {
+                    url: url,
+                    found: !!productData,
+                    productData: productData
+                });
+                
                 if (productData) {
                     console.log(`      ✅ 상품 데이터 찾음:`, {
                         hasAnalysis: !!productData.analysis_data,
                         hasUserData: !!productData.user_data,
-                        userDataStructure: productData.user_data ? Object.keys(productData.user_data) : []
+                        analysisData: productData.analysis_data,
+                        userData: productData.user_data
                     });
                     
                     // 분석 데이터 HTML 생성
                     if (productData.analysis_data) {
                         const analysis = productData.analysis_data;
+                        console.log(`      📊 분석 데이터:`, analysis);
+                        
                         analysisHtml = `<div class="analysis-result">
                             <div class="product-preview">
                                 <img src="${analysis.image_url || ''}" alt="${analysis.title || '상품명 없음'}" onerror="this.style.display='none'">
@@ -348,14 +365,24 @@ function displayKeywords(keywords) {
                                 </div>
                             </div>
                         </div>`;
+                        console.log(`      📋 분석 HTML 생성 완료`);
+                    } else {
+                        console.log(`      ⚠️ 분석 데이터가 없음`);
                     }
                     
                     // 사용자 데이터 가져오기
                     productUserData = productData.user_data || null;
                     if (productUserData) {
-                        console.log(`      📝 사용자 데이터 구조:`, productUserData);
+                        console.log(`      📝 사용자 데이터:`, productUserData);
+                    } else {
+                        console.log(`      ⚠️ 사용자 데이터가 없음`);
                     }
+                } else {
+                    console.log(`      ❌ URL ${url}에 대한 상품 데이터를 찾을 수 없음`);
+                    console.log(`      🔍 사용 가능한 products_data URLs:`, keyword.products_data.map(pd => pd.url));
                 }
+            } else {
+                console.log(`      ⚠️ 키워드 ${index}에 products_data가 없음`);
             }
             
             html += `<div class="product-item-edit" data-product-index="${urlIndex}">
@@ -388,7 +415,7 @@ function displayKeywords(keywords) {
     keywordList.innerHTML = html;
     console.log('✅ 키워드 HTML 생성 완료');
     
-    // 🔧 DOM 업데이트 후 폼 필드 값 재설정 (중요!)
+    // DOM 업데이트 후 폼 필드 값 재설정
     setTimeout(() => {
         console.log('🔧 폼 필드 값 재설정 시작...');
         keywords.forEach((keyword, kIndex) => {
@@ -397,9 +424,13 @@ function displayKeywords(keywords) {
                     if (product.user_data) {
                         const urlIndex = keyword.aliexpress.indexOf(product.url);
                         if (urlIndex >= 0) {
-                            console.log(`🔧 상품 ${kIndex}-${urlIndex} 폼 필드 값 설정 중...`);
+                            console.log(`🔧 상품 ${kIndex}-${urlIndex} 폼 필드 값 설정 중...`, product.user_data);
                             setProductFormValues(kIndex, 'aliexpress', urlIndex, product.user_data);
+                        } else {
+                            console.log(`❌ URL ${product.url}을 aliexpress 배열에서 찾을 수 없음`);
                         }
+                    } else {
+                        console.log(`⚠️ 상품 ${product.url}에 user_data가 없음`);
                     }
                 });
             }
@@ -408,9 +439,12 @@ function displayKeywords(keywords) {
     }, 100);
 }
 
-// 🔧 새로운 함수: 폼 필드에 실제 값 설정
+// 폼 필드에 실제 값 설정
 function setProductFormValues(keywordIndex, platform, productIndex, userData) {
-    if (!userData || typeof userData !== 'object') return;
+    if (!userData || typeof userData !== 'object') {
+        console.log(`❌ setProductFormValues: userData가 유효하지 않음`, userData);
+        return;
+    }
     
     console.log(`🔧 폼 필드 값 설정: ${keywordIndex}-${platform}-${productIndex}`, userData);
     
@@ -427,6 +461,8 @@ function setProductFormValues(keywordIndex, platform, productIndex, userData) {
             console.log(`  ✅ ${fieldId}: ${value}`);
         } else if (!element) {
             console.log(`  ❌ 필드 없음: ${fieldId}`);
+        } else {
+            console.log(`  ⚠️ 값 없음: ${fieldId}`);
         }
     };
     
@@ -458,10 +494,11 @@ function setProductFormValues(keywordIndex, platform, productIndex, userData) {
 function generateProductDetailsForm(keywordIndex, platform, productIndex, existingDetails) {
     console.log(`🔧 상품 상세 정보 폼 생성:`, {
         keywordIndex, platform, productIndex, 
-        hasExistingDetails: !!existingDetails
+        hasExistingDetails: !!existingDetails,
+        existingDetails: existingDetails
     });
     
-    // 🔧 빈 폼 생성 (값은 별도로 설정)
+    // 빈 폼 생성 (값은 별도로 설정)
     return `
         <div class="product-detail-field"><label>주요 기능</label><input type="text" id="pd-main-function-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 자동 압축, 물 절약"></div>
         <div class="product-detail-field"><label>크기/용량</label><input type="text" id="pd-size-capacity-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 30cm × 20cm"></div>
