@@ -379,7 +379,9 @@ function displayKeywords(keywords) {
                     }
                 } else {
                     console.log(`      ❌ URL ${url}에 대한 상품 데이터를 찾을 수 없음`);
-                    console.log(`      🔍 사용 가능한 products_data URLs:`, keyword.products_data.map(pd => pd.url));
+                    if (keyword.products_data && keyword.products_data.length > 0) {
+                        console.log(`      🔍 사용 가능한 products_data URLs:`, keyword.products_data.map(pd => pd.url));
+                    }
                 }
             } else {
                 console.log(`      ⚠️ 키워드 ${index}에 products_data가 없음`);
@@ -415,31 +417,29 @@ function displayKeywords(keywords) {
     keywordList.innerHTML = html;
     console.log('✅ 키워드 HTML 생성 완료');
     
-    // DOM 업데이트 후 폼 필드 값 재설정
-    setTimeout(() => {
-        console.log('🔧 폼 필드 값 재설정 시작...');
-        keywords.forEach((keyword, kIndex) => {
-            if (keyword.products_data && Array.isArray(keyword.products_data)) {
-                keyword.products_data.forEach(product => {
-                    if (product.user_data) {
-                        const urlIndex = keyword.aliexpress.indexOf(product.url);
-                        if (urlIndex >= 0) {
-                            console.log(`🔧 상품 ${kIndex}-${urlIndex} 폼 필드 값 설정 중...`, product.user_data);
-                            setProductFormValues(kIndex, 'aliexpress', urlIndex, product.user_data);
-                        } else {
-                            console.log(`❌ URL ${product.url}을 aliexpress 배열에서 찾을 수 없음`);
-                        }
+    // DOM 업데이트 후 폼 필드 값 즉시 설정
+    console.log('🔧 DOM 업데이트 후 폼 필드 값 설정 시작...');
+    keywords.forEach((keyword, kIndex) => {
+        if (keyword.products_data && Array.isArray(keyword.products_data)) {
+            keyword.products_data.forEach(product => {
+                if (product.user_data && Object.keys(product.user_data).length > 0) {
+                    const urlIndex = keyword.aliexpress.indexOf(product.url);
+                    if (urlIndex >= 0) {
+                        console.log(`🔧 상품 ${kIndex}-${urlIndex} 폼 필드 값 설정 중...`, product.user_data);
+                        setProductFormValues(kIndex, 'aliexpress', urlIndex, product.user_data);
                     } else {
-                        console.log(`⚠️ 상품 ${product.url}에 user_data가 없음`);
+                        console.log(`❌ URL ${product.url}을 aliexpress 배열에서 찾을 수 없음`);
                     }
-                });
-            }
-        });
-        console.log('✅ 모든 폼 필드 값 설정 완료');
-    }, 100);
+                } else {
+                    console.log(`⚠️ 상품 ${product.url}에 user_data가 없거나 비어있음`);
+                }
+            });
+        }
+    });
+    console.log('✅ 모든 폼 필드 값 설정 완료');
 }
 
-// 폼 필드에 실제 값 설정
+// 폼 필드에 실제 값 설정 - 개선된 버전
 function setProductFormValues(keywordIndex, platform, productIndex, userData) {
     if (!userData || typeof userData !== 'object') {
         console.log(`❌ setProductFormValues: userData가 유효하지 않음`, userData);
@@ -456,39 +456,64 @@ function setProductFormValues(keywordIndex, platform, productIndex, userData) {
     
     const setFieldValue = (fieldId, value) => {
         const element = document.getElementById(fieldId);
-        if (element && value) {
+        if (element && value !== undefined && value !== null && value !== '') {
             element.value = value;
             console.log(`  ✅ ${fieldId}: ${value}`);
+            return true;
         } else if (!element) {
             console.log(`  ❌ 필드 없음: ${fieldId}`);
+            return false;
         } else {
-            console.log(`  ⚠️ 값 없음: ${fieldId}`);
+            console.log(`  ⚠️ 값 없음: ${fieldId} (값: ${value})`);
+            return false;
         }
     };
     
-    // Specs 섹션
-    setFieldValue(`pd-main-function-${keywordIndex}-${platform}-${productIndex}`, specs.main_function);
-    setFieldValue(`pd-size-capacity-${keywordIndex}-${platform}-${productIndex}`, specs.size_capacity);
-    setFieldValue(`pd-color-${keywordIndex}-${platform}-${productIndex}`, specs.color);
-    setFieldValue(`pd-material-${keywordIndex}-${platform}-${productIndex}`, specs.material);
-    setFieldValue(`pd-power-battery-${keywordIndex}-${platform}-${productIndex}`, specs.power_battery);
+    // 모든 필드들을 체계적으로 설정
+    const fieldMappings = [
+        // Specs 섹션
+        [`pd-main-function-${keywordIndex}-${platform}-${productIndex}`, specs.main_function],
+        [`pd-size-capacity-${keywordIndex}-${platform}-${productIndex}`, specs.size_capacity],
+        [`pd-color-${keywordIndex}-${platform}-${productIndex}`, specs.color],
+        [`pd-material-${keywordIndex}-${platform}-${productIndex}`, specs.material],
+        [`pd-power-battery-${keywordIndex}-${platform}-${productIndex}`, specs.power_battery],
+        
+        // Efficiency 섹션
+        [`pd-problem-solving-${keywordIndex}-${platform}-${productIndex}`, efficiency.problem_solving],
+        [`pd-time-saving-${keywordIndex}-${platform}-${productIndex}`, efficiency.time_saving],
+        [`pd-space-efficiency-${keywordIndex}-${platform}-${productIndex}`, efficiency.space_efficiency],
+        [`pd-cost-saving-${keywordIndex}-${platform}-${productIndex}`, efficiency.cost_saving],
+        
+        // Usage 섹션
+        [`pd-usage-location-${keywordIndex}-${platform}-${productIndex}`, usage.usage_location],
+        [`pd-usage-frequency-${keywordIndex}-${platform}-${productIndex}`, usage.usage_frequency],
+        [`pd-target-users-${keywordIndex}-${platform}-${productIndex}`, usage.target_users],
+        
+        // Benefits 섹션 
+        [`pd-advantage1-${keywordIndex}-${platform}-${productIndex}`, advantages[0]],
+        [`pd-advantage2-${keywordIndex}-${platform}-${productIndex}`, advantages[1]], 
+        [`pd-advantage3-${keywordIndex}-${platform}-${productIndex}`, advantages[2]],
+        [`pd-precautions-${keywordIndex}-${platform}-${productIndex}`, benefits.precautions]
+    ];
     
-    // Efficiency 섹션
-    setFieldValue(`pd-problem-solving-${keywordIndex}-${platform}-${productIndex}`, efficiency.problem_solving);
-    setFieldValue(`pd-time-saving-${keywordIndex}-${platform}-${productIndex}`, efficiency.time_saving);
-    setFieldValue(`pd-space-efficiency-${keywordIndex}-${platform}-${productIndex}`, efficiency.space_efficiency);
-    setFieldValue(`pd-cost-saving-${keywordIndex}-${platform}-${productIndex}`, efficiency.cost_saving);
+    let successCount = 0;
+    let totalFields = fieldMappings.length;
     
-    // Usage 섹션
-    setFieldValue(`pd-usage-location-${keywordIndex}-${platform}-${productIndex}`, usage.usage_location);
-    setFieldValue(`pd-usage-frequency-${keywordIndex}-${platform}-${productIndex}`, usage.usage_frequency);
-    setFieldValue(`pd-target-users-${keywordIndex}-${platform}-${productIndex}`, usage.target_users);
+    fieldMappings.forEach(([fieldId, value]) => {
+        if (setFieldValue(fieldId, value)) {
+            successCount++;
+        }
+    });
     
-    // Benefits 섹션
-    setFieldValue(`pd-advantage1-${keywordIndex}-${platform}-${productIndex}`, advantages[0]);
-    setFieldValue(`pd-advantage2-${keywordIndex}-${platform}-${productIndex}`, advantages[1]);
-    setFieldValue(`pd-advantage3-${keywordIndex}-${platform}-${productIndex}`, advantages[2]);
-    setFieldValue(`pd-precautions-${keywordIndex}-${platform}-${productIndex}`, benefits.precautions);
+    console.log(`🔧 필드 설정 완료: ${successCount}/${totalFields}개 성공`);
+    
+    // 설정 완료 후 상태 업데이트
+    const toggleBtn = document.querySelector(`[onclick="toggleProductDetails(${keywordIndex}, '${platform}', ${productIndex})"]`);
+    if (toggleBtn) {
+        const hasData = successCount > 0;
+        toggleBtn.innerHTML = `📝 상품별 상세 정보 ${hasData ? '(입력됨)' : '(미입력)'}`;
+        console.log(`🔧 토글 버튼 상태 업데이트: ${hasData ? '입력됨' : '미입력'}`);
+    }
 }
 
 function generateProductDetailsForm(keywordIndex, platform, productIndex, existingDetails) {
@@ -498,24 +523,31 @@ function generateProductDetailsForm(keywordIndex, platform, productIndex, existi
         existingDetails: existingDetails
     });
     
-    // 빈 폼 생성 (값은 별도로 설정)
+    // 기본값들 추출
+    const specs = existingDetails?.specs || {};
+    const efficiency = existingDetails?.efficiency || {};
+    const usage = existingDetails?.usage || {};
+    const benefits = existingDetails?.benefits || {};
+    const advantages = benefits.advantages || [];
+    
+    // 값이 있으면 value 속성에 직접 설정
     return `
-        <div class="product-detail-field"><label>주요 기능</label><input type="text" id="pd-main-function-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 자동 압축, 물 절약"></div>
-        <div class="product-detail-field"><label>크기/용량</label><input type="text" id="pd-size-capacity-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 30cm × 20cm"></div>
-        <div class="product-detail-field"><label>색상</label><input type="text" id="pd-color-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 화이트, 블랙"></div>
-        <div class="product-detail-field"><label>재질/소재</label><input type="text" id="pd-material-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 스테인리스 스틸"></div>
-        <div class="product-detail-field"><label>전원/배터리</label><input type="text" id="pd-power-battery-${keywordIndex}-${platform}-${productIndex}" placeholder="예: USB 충전"></div>
-        <div class="product-detail-field"><label>해결하는 문제</label><input type="text" id="pd-problem-solving-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 설거지 시간 오래 걸림"></div>
-        <div class="product-detail-field"><label>시간 절약 효과</label><input type="text" id="pd-time-saving-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 10분 → 3분"></div>
-        <div class="product-detail-field"><label>공간 활용</label><input type="text" id="pd-space-efficiency-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 50% 공간 절약"></div>
-        <div class="product-detail-field"><label>비용 절감</label><input type="text" id="pd-cost-saving-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 월 전기료 30% 절약"></div>
-        <div class="product-detail-field"><label>주요 사용 장소</label><input type="text" id="pd-usage-location-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 주방, 욕실"></div>
-        <div class="product-detail-field"><label>사용 빈도</label><input type="text" id="pd-usage-frequency-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 매일"></div>
-        <div class="product-detail-field"><label>적합한 사용자</label><input type="text" id="pd-target-users-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 1인 가구"></div>
-        <div class="product-detail-field"><label>핵심 장점 1</label><input type="text" id="pd-advantage1-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 설치 간편함"></div>
-        <div class="product-detail-field"><label>핵심 장점 2</label><input type="text" id="pd-advantage2-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 유지비 저렴함"></div>
-        <div class="product-detail-field"><label>핵심 장점 3</label><input type="text" id="pd-advantage3-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 내구성 뛰어남"></div>
-        <div class="product-detail-field"><label>주의사항</label><input type="text" id="pd-precautions-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 물기 주의"></div>`;
+        <div class="product-detail-field"><label>주요 기능</label><input type="text" id="pd-main-function-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 자동 압축, 물 절약" value="${specs.main_function || ''}"></div>
+        <div class="product-detail-field"><label>크기/용량</label><input type="text" id="pd-size-capacity-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 30cm × 20cm" value="${specs.size_capacity || ''}"></div>
+        <div class="product-detail-field"><label>색상</label><input type="text" id="pd-color-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 화이트, 블랙" value="${specs.color || ''}"></div>
+        <div class="product-detail-field"><label>재질/소재</label><input type="text" id="pd-material-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 스테인리스 스틸" value="${specs.material || ''}"></div>
+        <div class="product-detail-field"><label>전원/배터리</label><input type="text" id="pd-power-battery-${keywordIndex}-${platform}-${productIndex}" placeholder="예: USB 충전" value="${specs.power_battery || ''}"></div>
+        <div class="product-detail-field"><label>해결하는 문제</label><input type="text" id="pd-problem-solving-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 설거지 시간 오래 걸림" value="${efficiency.problem_solving || ''}"></div>
+        <div class="product-detail-field"><label>시간 절약 효과</label><input type="text" id="pd-time-saving-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 10분 → 3분" value="${efficiency.time_saving || ''}"></div>
+        <div class="product-detail-field"><label>공간 활용</label><input type="text" id="pd-space-efficiency-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 50% 공간 절약" value="${efficiency.space_efficiency || ''}"></div>
+        <div class="product-detail-field"><label>비용 절감</label><input type="text" id="pd-cost-saving-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 월 전기료 30% 절약" value="${efficiency.cost_saving || ''}"></div>
+        <div class="product-detail-field"><label>주요 사용 장소</label><input type="text" id="pd-usage-location-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 주방, 욕실" value="${usage.usage_location || ''}"></div>
+        <div class="product-detail-field"><label>사용 빈도</label><input type="text" id="pd-usage-frequency-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 매일" value="${usage.usage_frequency || ''}"></div>
+        <div class="product-detail-field"><label>적합한 사용자</label><input type="text" id="pd-target-users-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 1인 가구" value="${usage.target_users || ''}"></div>
+        <div class="product-detail-field"><label>핵심 장점 1</label><input type="text" id="pd-advantage1-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 설치 간편함" value="${advantages[0] || ''}"></div>
+        <div class="product-detail-field"><label>핵심 장점 2</label><input type="text" id="pd-advantage2-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 유지비 저렴함" value="${advantages[1] || ''}"></div>
+        <div class="product-detail-field"><label>핵심 장점 3</label><input type="text" id="pd-advantage3-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 내구성 뛰어남" value="${advantages[2] || ''}"></div>
+        <div class="product-detail-field"><label>주의사항</label><input type="text" id="pd-precautions-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 물기 주의" value="${benefits.precautions || ''}"></div>`;
 }
 
 function toggleProductDetails(keywordIndex, platform, productIndex) {
