@@ -417,26 +417,28 @@ function displayKeywords(keywords) {
     keywordList.innerHTML = html;
     console.log('✅ 키워드 HTML 생성 완료');
     
-    // DOM 업데이트 후 폼 필드 값 즉시 설정
-    console.log('🔧 DOM 업데이트 후 폼 필드 값 설정 시작...');
-    keywords.forEach((keyword, kIndex) => {
-        if (keyword.products_data && Array.isArray(keyword.products_data)) {
-            keyword.products_data.forEach(product => {
-                if (product.user_data && Object.keys(product.user_data).length > 0) {
-                    const urlIndex = keyword.aliexpress.indexOf(product.url);
-                    if (urlIndex >= 0) {
-                        console.log(`🔧 상품 ${kIndex}-${urlIndex} 폼 필드 값 설정 중...`, product.user_data);
-                        setProductFormValues(kIndex, 'aliexpress', urlIndex, product.user_data);
+    // DOM 업데이트 후 비동기적으로 폼 필드 값 설정
+    setTimeout(() => {
+        console.log('🔧 비동기적으로 폼 필드 값 설정 시작...');
+        keywords.forEach((keyword, kIndex) => {
+            if (keyword.products_data && Array.isArray(keyword.products_data)) {
+                keyword.products_data.forEach(product => {
+                    if (product.user_data && Object.keys(product.user_data).length > 0) {
+                        const urlIndex = keyword.aliexpress.indexOf(product.url);
+                        if (urlIndex >= 0) {
+                            console.log(`🔧 상품 ${kIndex}-${urlIndex} 폼 필드 값 설정 중...`, product.user_data);
+                            setProductFormValues(kIndex, 'aliexpress', urlIndex, product.user_data);
+                        } else {
+                            console.log(`❌ URL ${product.url}을 aliexpress 배열에서 찾을 수 없음`);
+                        }
                     } else {
-                        console.log(`❌ URL ${product.url}을 aliexpress 배열에서 찾을 수 없음`);
+                        console.log(`⚠️ 상품 ${product.url}에 user_data가 없거나 비어있음`);
                     }
-                } else {
-                    console.log(`⚠️ 상품 ${product.url}에 user_data가 없거나 비어있음`);
-                }
-            });
-        }
-    });
-    console.log('✅ 모든 폼 필드 값 설정 완료');
+                });
+            }
+        });
+        console.log('✅ 모든 폼 필드 값 설정 완료');
+    }, 100); // 100ms 지연으로 DOM 생성 완료 후 실행
 }
 
 // 폼 필드에 실제 값 설정 - 개선된 버전
