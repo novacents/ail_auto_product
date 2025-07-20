@@ -296,6 +296,16 @@ function populateEditModal(item) {
     displayKeywords(item.keywords || []);
 }
 
+// URL 정규화 함수 추가
+function normalizeUrl(url) {
+    return url.replace(/&amp;/g, '&').trim();
+}
+
+// URL 매칭 함수 추가
+function urlsMatch(url1, url2) {
+    return normalizeUrl(url1) === normalizeUrl(url2);
+}
+
 function displayKeywords(keywords) {
     console.log('🔍 키워드 표시 시작:', keywords.length, '개');
     const keywordList = document.getElementById('keywordList');
@@ -331,9 +341,9 @@ function displayKeywords(keywords) {
             let analysisHtml = '';
             let productUserData = null;
             
-            // products_data에서 해당 URL의 상품 데이터 찾기
+            // products_data에서 해당 URL의 상품 데이터 찾기 (URL 정규화 사용)
             if (keyword.products_data && Array.isArray(keyword.products_data)) {
-                const productData = keyword.products_data.find(pd => pd.url === url);
+                const productData = keyword.products_data.find(pd => urlsMatch(pd.url, url));
                 
                 console.log(`    🔍 상품 ${urlIndex} 데이터 검색 결과:`, {
                     url: url,
@@ -381,6 +391,29 @@ function displayKeywords(keywords) {
                     console.log(`      ❌ URL ${url}에 대한 상품 데이터를 찾을 수 없음`);
                     if (keyword.products_data && keyword.products_data.length > 0) {
                         console.log(`      🔍 사용 가능한 products_data URLs:`, keyword.products_data.map(pd => pd.url));
+                        
+                        // 정규화된 URL로 다시 검색 시도
+                        const normalizedUrl = normalizeUrl(url);
+                        const retryProductData = keyword.products_data.find(pd => normalizeUrl(pd.url) === normalizedUrl);
+                        if (retryProductData) {
+                            console.log(`      ✅ 정규화 후 상품 데이터 찾음:`, retryProductData);
+                            productUserData = retryProductData.user_data || null;
+                            
+                            if (retryProductData.analysis_data) {
+                                const analysis = retryProductData.analysis_data;
+                                analysisHtml = `<div class="analysis-result">
+                                    <div class="product-preview">
+                                        <img src="${analysis.image_url || ''}" alt="${analysis.title || '상품명 없음'}" onerror="this.style.display='none'">
+                                        <div class="product-info-detail">
+                                            <h4>${analysis.title || '상품명 없음'}</h4>
+                                            <p><strong>가격:</strong> ${formatPrice(analysis.price)}</p>
+                                            <p><strong>평점:</strong> ${analysis.rating_display || '평점 정보 없음'}</p>
+                                            <p><strong>판매량:</strong> ${analysis.lastest_volume || '판매량 정보 없음'}</p>
+                                        </div>
+                                    </div>
+                                </div>`;
+                            }
+                        }
                     }
                 }
             } else {
@@ -424,7 +457,8 @@ function displayKeywords(keywords) {
             if (keyword.products_data && Array.isArray(keyword.products_data)) {
                 keyword.products_data.forEach(product => {
                     if (product.user_data && Object.keys(product.user_data).length > 0) {
-                        const urlIndex = keyword.aliexpress.indexOf(product.url);
+                        // URL 정규화를 사용한 매칭
+                        const urlIndex = keyword.aliexpress.findIndex(url => urlsMatch(url, product.url));
                         if (urlIndex >= 0) {
                             console.log(`🔧 상품 ${kIndex}-${urlIndex} 폼 필드 값 설정 중...`, product.user_data);
                             setProductFormValues(kIndex, 'aliexpress', urlIndex, product.user_data);
@@ -569,9 +603,9 @@ function updateProductUrl(keywordIndex, platform, productIndex, newUrl) {
     // URL 배열 업데이트
     currentEditingData.keywords[keywordIndex][platform][productIndex] = newUrl;
     
-    // products_data 배열도 동기화
+    // products_data 배열도 동기화 (URL 정규화 사용)
     if (oldUrl) {
-        const existingProductIndex = currentEditingData.keywords[keywordIndex].products_data.findIndex(pd => pd.url === oldUrl);
+        const existingProductIndex = currentEditingData.keywords[keywordIndex].products_data.findIndex(pd => urlsMatch(pd.url, oldUrl));
         if (existingProductIndex >= 0) {
             currentEditingData.keywords[keywordIndex].products_data[existingProductIndex].url = newUrl;
             console.log(`✅ 기존 상품 데이터 URL 업데이트: ${oldUrl} -> ${newUrl}`);
@@ -610,8 +644,8 @@ function addProduct(keywordIndex, platform) {
     if (!currentEditingData.keywords[keywordIndex][platform]) currentEditingData.keywords[keywordIndex][platform] = [];
     if (!currentEditingData.keywords[keywordIndex].products_data) currentEditingData.keywords[keywordIndex].products_data = [];
     
-    // 중복 URL 체크
-    if (currentEditingData.keywords[keywordIndex][platform].includes(url)) {
+    // 중복 URL 체크 (URL 정규화 사용)
+    if (currentEditingData.keywords[keywordIndex][platform].some(existingUrl => urlsMatch(existingUrl, url))) {
         alert('이미 추가된 상품 URL입니다.');
         return;
     }
@@ -640,9 +674,9 @@ function removeProduct(keywordIndex, platform, urlIndex) {
         const removedUrl = currentEditingData.keywords[keywordIndex][platform][urlIndex];
         currentEditingData.keywords[keywordIndex][platform].splice(urlIndex, 1);
         
-        // products_data에서도 해당 URL의 상품 제거
+        // products_data에서도 해당 URL의 상품 제거 (URL 정규화 사용)
         if (currentEditingData.keywords[keywordIndex].products_data) {
-            const productIndex = currentEditingData.keywords[keywordIndex].products_data.findIndex(pd => pd.url === removedUrl);
+            const productIndex = currentEditingData.keywords[keywordIndex].products_data.findIndex(pd => urlsMatch(pd.url, removedUrl));
             if (productIndex >= 0) {
                 currentEditingData.keywords[keywordIndex].products_data.splice(productIndex, 1);
                 console.log(`🗑️ 상품 데이터 삭제됨: ${removedUrl}`);
@@ -687,8 +721,8 @@ async function analyzeProduct(keywordIndex, platform, urlIndex) {
         if (result.success && result.data) {
             if (!currentEditingData.keywords[keywordIndex].products_data) currentEditingData.keywords[keywordIndex].products_data = [];
             
-            // URL로 매칭하여 해당 상품 데이터 찾거나 생성
-            let productIndex = currentEditingData.keywords[keywordIndex].products_data.findIndex(pd => pd.url === url);
+            // URL로 매칭하여 해당 상품 데이터 찾거나 생성 (URL 정규화 사용)
+            let productIndex = currentEditingData.keywords[keywordIndex].products_data.findIndex(pd => urlsMatch(pd.url, url));
             if (productIndex < 0) {
                 currentEditingData.keywords[keywordIndex].products_data.push({
                     url: url, platform: platform, analysis_data: null, user_data: null, generated_html: null
@@ -855,7 +889,7 @@ function displayAnalysisResult(keywordIndex, platform, urlIndex, data) {
         const toggleBtn = productItemEdit.querySelector('.product-details-toggle');
         if (toggleBtn) {
             const url = currentEditingData.keywords[keywordIndex].aliexpress[urlIndex];
-            const productData = currentEditingData.keywords[keywordIndex].products_data.find(pd => pd.url === url);
+            const productData = currentEditingData.keywords[keywordIndex].products_data.find(pd => urlsMatch(pd.url, url));
             const hasDetails = productData && productData.user_data;
             toggleBtn.innerHTML = `📝 상품별 상세 정보 ${hasDetails ? '(입력됨)' : '(미입력)'}`;
         }
@@ -914,7 +948,7 @@ function collectAllUserDetailsToCurrentData() {
                 const productDetails = collectProductDetails(keywordIndex, 'aliexpress', urlIndex);
                 
                 if (keyword.products_data && Array.isArray(keyword.products_data)) {
-                    const productData = keyword.products_data.find(pd => pd.url === url);
+                    const productData = keyword.products_data.find(pd => urlsMatch(pd.url, url));
                     if (productData) {
                         if (Object.keys(productDetails).length > 0) {
                             productData.user_data = productDetails;
@@ -946,7 +980,7 @@ function collectEditedKeywords() {
                     
                     let existingData = null;
                     if (keywordData && keywordData.products_data && Array.isArray(keywordData.products_data)) {
-                        existingData = keywordData.products_data.find(pd => pd.url === url);
+                        existingData = keywordData.products_data.find(pd => urlsMatch(pd.url, url));
                     }
                     
                     const productData = {
