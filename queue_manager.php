@@ -1,7 +1,7 @@
 <?php
 /**
  * 저장된 정보 관리 페이지 - 최적화된 버전
- * 버전: v2.2 (코드 최적화 및 파일 분리)
+ * 버전: v2.3 (데이터 로딩 문제 해결)
  */
 require_once($_SERVER['DOCUMENT_ROOT'] . '/wp-config.php');
 if (!current_user_can('manage_options')) { wp_die('접근 권한이 없습니다.'); }
@@ -90,12 +90,47 @@ if (isset($_POST['action'])) {
         case 'get_queue_item':
             $queue_id = $_POST['queue_id'] ?? '';
             $queue = load_queue();
+            
+            // 🔧 디버깅을 위한 로그
+            error_log("큐 항목 검색 시작: " . $queue_id);
+            error_log("전체 큐 항목 수: " . count($queue));
+            
             foreach ($queue as $item) {
                 if ($item['queue_id'] === $queue_id) {
-                    echo json_encode(['success' => true, 'item' => $item]);
+                    // 🔧 데이터 무결성 확인 및 로그
+                    error_log("큐 항목 찾음: " . $queue_id);
+                    error_log("키워드 수: " . (isset($item['keywords']) ? count($item['keywords']) : 0));
+                    
+                    if (isset($item['keywords']) && is_array($item['keywords'])) {
+                        foreach ($item['keywords'] as $kIndex => $keyword) {
+                            $productsCount = isset($keyword['products_data']) ? count($keyword['products_data']) : 0;
+                            $aliexpressCount = isset($keyword['aliexpress']) ? count($keyword['aliexpress']) : 0;
+                            error_log("키워드 {$kIndex} '{$keyword['name']}': products_data={$productsCount}, aliexpress={$aliexpressCount}");
+                            
+                            // 🔧 products_data 구조 확인
+                            if (isset($keyword['products_data']) && is_array($keyword['products_data'])) {
+                                foreach ($keyword['products_data'] as $pIndex => $product) {
+                                    $hasAnalysis = isset($product['analysis_data']) ? 'Y' : 'N';
+                                    $hasUserData = isset($product['user_data']) ? 'Y' : 'N';
+                                    error_log("  상품 {$pIndex}: URL={$product['url']}, analysis={$hasAnalysis}, user_data={$hasUserData}");
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 🔧 원본 데이터를 그대로 전달 (JSON 인코딩/디코딩으로 인한 데이터 손실 방지)
+                    $response = [
+                        'success' => true, 
+                        'item' => $item
+                    ];
+                    
+                    error_log("응답 데이터 크기: " . strlen(json_encode($response)));
+                    echo json_encode($response, JSON_UNESCAPED_UNICODE);
                     exit;
                 }
             }
+            
+            error_log("큐 항목을 찾을 수 없음: " . $queue_id);
             echo json_encode(['success' => false, 'message' => '항목을 찾을 수 없습니다.']);
             exit;
             
@@ -107,19 +142,43 @@ if (isset($_POST['action'])) {
             
             foreach ($queue as $index => $item) {
                 if ($item['queue_id'] === $queue_id) {
+                    // 🔧 기본 정보 업데이트
                     $queue[$index]['title'] = $updated_data['title'] ?? $item['title'];
                     $queue[$index]['category_id'] = $updated_data['category_id'] ?? $item['category_id'];
                     $queue[$index]['category_name'] = get_category_name($updated_data['category_id'] ?? $item['category_id']);
                     $queue[$index]['prompt_type'] = $updated_data['prompt_type'] ?? $item['prompt_type'];
                     $queue[$index]['prompt_type_name'] = get_prompt_type_name($updated_data['prompt_type'] ?? $item['prompt_type']);
-                    $queue[$index]['keywords'] = $updated_data['keywords'] ?? $item['keywords'];
-                    $queue[$index]['user_details'] = $updated_data['user_details'] ?? $item['user_details'];
+                    
+                    // 🔧 키워드 데이터 완전 교체 (전체 구조 보존)
+                    if (isset($updated_data['keywords']) && is_array($updated_data['keywords'])) {
+                        $queue[$index]['keywords'] = $updated_data['keywords'];
+                        error_log("키워드 데이터 업데이트 완료: " . count($updated_data['keywords']) . "개");
+                    }
+                    
+                    // 🔧 사용자 세부사항 업데이트
+                    $queue[$index]['user_details'] = $updated_data['user_details'] ?? $item['user_details'] ?? [];
                     $queue[$index]['has_user_details'] = !empty($updated_data['user_details']);
+                    
+                    // 🔧 상품 데이터 존재 여부 확인
+                    $has_product_data = false;
+                    if (isset($queue[$index]['keywords']) && is_array($queue[$index]['keywords'])) {
+                        foreach ($queue[$index]['keywords'] as $keyword) {
+                            if (isset($keyword['products_data']) && is_array($keyword['products_data']) && count($keyword['products_data']) > 0) {
+                                $has_product_data = true;
+                                break;
+                            }
+                        }
+                    }
+                    $queue[$index]['has_product_data'] = $has_product_data;
+                    
                     $queue[$index]['updated_at'] = date('Y-m-d H:i:s');
                     $found = true;
+                    
+                    error_log("큐 항목 업데이트 완료: " . $queue_id);
                     break;
                 }
             }
+            
             echo json_encode($found && save_queue($queue) ? 
                 ['success' => true, 'message' => '항목이 업데이트되었습니다.'] : 
                 ['success' => false, 'message' => '업데이트에 실패했습니다.']
@@ -310,7 +369,7 @@ if (isset($_POST['action'])) {
 <div class="main-container">
     <div class="header-section">
         <h1>📋 저장된 정보 관리</h1>
-        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v2.2 - 최적화 버전)</p>
+        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v2.3 - 데이터 로딩 문제 해결)</p>
         <div class="header-actions">
             <a href="affiliate_editor.php" class="btn btn-primary">📝 새 글 작성</a>
             <button type="button" class="btn btn-secondary" onclick="refreshQueue()">🔄 새로고침</button>
