@@ -48,7 +48,7 @@ function get_products_summary($keywords) {
                             'image_url' => $analysis['image_url'] ?? '',
                             'price' => $analysis['price'] ?? '가격 정보 없음',
                             'url' => $product_data['url'] ?? '',
-                            'thumbnail_url' => $product_data['thumbnail_url'] ?? ''  // 썸네일 URL 추가
+                            'thumbnail_url' => $product_data['thumbnail_url'] ?? '' // 썸네일 URL 추가
                         ];
                     }
                 }
@@ -92,13 +92,47 @@ if (isset($_POST['action'])) {
             $queue_id = $_POST['queue_id'] ?? '';
             $queue = load_queue();
             
+            // 🔧 디버깅을 위한 로그
+            error_log("큐 항목 검색 시작: " . $queue_id);
+            error_log("전체 큐 항목 수: " . count($queue));
+            
             foreach ($queue as $item) {
                 if ($item['queue_id'] === $queue_id) {
-                    echo json_encode(['success' => true, 'item' => $item], JSON_UNESCAPED_UNICODE);
+                    // 🔧 데이터 무결성 확인 및 로그
+                    error_log("큐 항목 찾음: " . $queue_id);
+                    error_log("키워드 수: " . (isset($item['keywords']) ? count($item['keywords']) : 0));
+                    
+                    if (isset($item['keywords']) && is_array($item['keywords'])) {
+                        foreach ($item['keywords'] as $kIndex => $keyword) {
+                            $productsCount = isset($keyword['products_data']) ? count($keyword['products_data']) : 0;
+                            $aliexpressCount = isset($keyword['aliexpress']) ? count($keyword['aliexpress']) : 0;
+                            error_log("키워드 {$kIndex} '{$keyword['name']}': products_data={$productsCount}, aliexpress={$aliexpressCount}");
+                            
+                            // 🔧 products_data 구조 확인
+                            if (isset($keyword['products_data']) && is_array($keyword['products_data'])) {
+                                foreach ($keyword['products_data'] as $pIndex => $product) {
+                                    $hasAnalysis = isset($product['analysis_data']) ? 'Y' : 'N';
+                                    $hasUserData = isset($product['user_data']) ? 'Y' : 'N';
+                                    $hasThumbnail = isset($product['thumbnail_url']) ? 'Y' : 'N';
+                                    error_log("  상품 {$pIndex}: URL={$product['url']}, analysis={$hasAnalysis}, user_data={$hasUserData}, thumbnail={$hasThumbnail}");
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 🔧 원본 데이터를 그대로 전달 (JSON 인코딩/디코딩으로 인한 데이터 손실 방지)
+                    $response = [
+                        'success' => true, 
+                        'item' => $item
+                    ];
+                    
+                    error_log("응답 데이터 크기: " . strlen(json_encode($response)));
+                    echo json_encode($response, JSON_UNESCAPED_UNICODE);
                     exit;
                 }
             }
             
+            error_log("큐 항목을 찾을 수 없음: " . $queue_id);
             echo json_encode(['success' => false, 'message' => '항목을 찾을 수 없습니다.']);
             exit;
             
@@ -110,23 +144,27 @@ if (isset($_POST['action'])) {
             
             foreach ($queue as $index => $item) {
                 if ($item['queue_id'] === $queue_id) {
-                    // 기본 정보 업데이트
+                    // 🔧 기본 정보 업데이트
                     $queue[$index]['title'] = $updated_data['title'] ?? $item['title'];
                     $queue[$index]['category_id'] = $updated_data['category_id'] ?? $item['category_id'];
                     $queue[$index]['category_name'] = get_category_name($updated_data['category_id'] ?? $item['category_id']);
                     $queue[$index]['prompt_type'] = $updated_data['prompt_type'] ?? $item['prompt_type'];
                     $queue[$index]['prompt_type_name'] = get_prompt_type_name($updated_data['prompt_type'] ?? $item['prompt_type']);
                     
-                    // 키워드 데이터 완전 교체 (전체 구조 보존)
+                    // 🔧 썸네일 URL 업데이트
+                    $queue[$index]['thumbnail_url'] = $updated_data['thumbnail_url'] ?? $item['thumbnail_url'] ?? '';
+                    
+                    // 🔧 키워드 데이터 완전 교체 (전체 구조 보존)
                     if (isset($updated_data['keywords']) && is_array($updated_data['keywords'])) {
                         $queue[$index]['keywords'] = $updated_data['keywords'];
+                        error_log("키워드 데이터 업데이트 완료: " . count($updated_data['keywords']) . "개");
                     }
                     
-                    // 사용자 세부사항 업데이트
+                    // 🔧 사용자 세부사항 업데이트
                     $queue[$index]['user_details'] = $updated_data['user_details'] ?? $item['user_details'] ?? [];
                     $queue[$index]['has_user_details'] = !empty($updated_data['user_details']);
                     
-                    // 상품 데이터 존재 여부 확인
+                    // 🔧 상품 데이터 존재 여부 확인
                     $has_product_data = false;
                     if (isset($queue[$index]['keywords']) && is_array($queue[$index]['keywords'])) {
                         foreach ($queue[$index]['keywords'] as $keyword) {
@@ -140,6 +178,8 @@ if (isset($_POST['action'])) {
                     
                     $queue[$index]['updated_at'] = date('Y-m-d H:i:s');
                     $found = true;
+                    
+                    error_log("큐 항목 업데이트 완료: " . $queue_id);
                     break;
                 }
             }
@@ -195,6 +235,7 @@ if (isset($_POST['action'])) {
                 'prompt_type' => $selected_item['prompt_type'],
                 'keywords' => json_encode($selected_item['keywords']),
                 'user_details' => json_encode($selected_item['user_details']),
+                'thumbnail_url' => $selected_item['thumbnail_url'] ?? '', // 썸네일 URL 추가
                 'publish_mode' => 'immediate'
             ];
             
@@ -261,7 +302,7 @@ if (isset($_POST['action'])) {
 <title>저장된 정보 관리 - 노바센트</title>
 <link rel="stylesheet" href="assets/queue_manager.css">
 <style>
-/* 썸네일 URL 관련 추가 스타일 */
+/* 썸네일 URL 필드 전용 스타일 */
 .thumbnail-url-field {
     margin-bottom: 15px;
 }
@@ -297,8 +338,36 @@ if (isset($_POST['action'])) {
     display: block;
 }
 
-.product-detail-field.thumbnail-field {
-    grid-column: 1 / -1; /* 전체 너비 사용 */
+.thumbnail-display {
+    max-width: 60px;
+    max-height: 60px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+}
+
+.thumbnail-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+.thumbnail-info img {
+    flex-shrink: 0;
+}
+
+.thumbnail-info .text {
+    flex: 1;
+    min-width: 0;
+}
+
+.thumbnail-info .url {
+    font-size: 12px;
+    color: #666;
+    word-break: break-all;
 }
 </style>
 </head>
@@ -344,6 +413,15 @@ if (isset($_POST['action'])) {
                         </select>
                     </div>
                 </div>
+                
+                <!-- 썸네일 URL 섹션 추가 -->
+                <div class="form-row">
+                    <div class="form-field thumbnail-url-field">
+                        <label for="editThumbnailUrl">🖼️ 썸네일 이미지 URL <small style="color: #666;">(선택사항)</small></label>
+                        <input type="url" id="editThumbnailUrl" placeholder="예: https://example.com/image.jpg" oninput="updateEditThumbnailPreview()">
+                        <img id="editThumbnailPreview" class="thumbnail-preview" alt="썸네일 미리보기">
+                    </div>
+                </div>
             </div>
 
             <div class="form-section">
@@ -377,7 +455,7 @@ if (isset($_POST['action'])) {
         <h1>📋 저장된 정보 관리</h1>
         <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v2.5 - 썸네일 URL 지원)</p>
         <div class="header-actions">
-            <a href="affiliate_editor_optimized.php" class="btn btn-primary">📝 새 글 작성</a>
+            <a href="affiliate_editor.php" class="btn btn-primary">📝 새 글 작성</a>
             <button type="button" class="btn btn-secondary" onclick="refreshQueue()">🔄 새로고침</button>
         </div>
     </div>
@@ -423,63 +501,62 @@ if (isset($_POST['action'])) {
             <div class="empty-state">
                 <h3>📦 저장된 정보가 없습니다</h3>
                 <p>아직 저장된 큐 항목이 없습니다.</p>
-                <a href="affiliate_editor_optimized.php" class="btn btn-primary">첫 번째 글 작성하기</a>
+                <a href="affiliate_editor.php" class="btn btn-primary">첫 번째 글 작성하기</a>
             </div>
         </div>
     </div>
 </div>
 
+<script src="assets/queue_manager.js?v=<?php echo time(); ?>"></script>
 <script>
-// 썸네일 URL 미리보기 업데이트 함수 추가
-function updateThumbnailPreview(keywordIndex, platform, productIndex) {
-    const thumbnailInput = document.getElementById(`pd-thumbnail-url-${keywordIndex}-${platform}-${productIndex}`);
-    const thumbnailPreview = document.getElementById(`pd-thumbnail-preview-${keywordIndex}-${platform}-${productIndex}`);
+// 썸네일 미리보기 업데이트 함수
+function updateEditThumbnailPreview() {
+    const urlInput = document.getElementById('editThumbnailUrl');
+    const preview = document.getElementById('editThumbnailPreview');
     
-    if (thumbnailInput && thumbnailPreview) {
-        const url = thumbnailInput.value.trim();
-        if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
-            thumbnailPreview.src = url;
-            thumbnailPreview.classList.add('show');
-        } else {
-            thumbnailPreview.src = '';
-            thumbnailPreview.classList.remove('show');
-        }
+    if (urlInput.value.trim() && isValidImageUrl(urlInput.value)) {
+        preview.src = urlInput.value.trim();
+        preview.classList.add('show');
+        
+        preview.onerror = function() {
+            this.classList.remove('show');
+        };
+    } else {
+        preview.classList.remove('show');
     }
 }
 
-// 기존 generateProductDetailsForm 함수를 오버라이드하여 썸네일 URL 필드 추가
-function generateProductDetailsFormWithThumbnail(keywordIndex, platform, productIndex, existingDetails) {
-    const specs = existingDetails?.specs || {};
-    const efficiency = existingDetails?.efficiency || {};
-    const usage = existingDetails?.usage || {};
-    const benefits = existingDetails?.benefits || {};
-    const advantages = benefits.advantages || [];
-    const thumbnailUrl = existingDetails?.thumbnailUrl || '';
-    
-    return `
-        <div class="product-detail-field thumbnail-field">
-            <label>썸네일 이미지 URL</label>
-            <input type="url" id="pd-thumbnail-url-${keywordIndex}-${platform}-${productIndex}" placeholder="예: https://example.com/image.jpg" value="${thumbnailUrl}" oninput="updateThumbnailPreview(${keywordIndex}, '${platform}', ${productIndex})">
-            <img id="pd-thumbnail-preview-${keywordIndex}-${platform}-${productIndex}" class="thumbnail-preview" alt="썸네일 미리보기" style="display: none;">
-        </div>
-        <div class="product-detail-field"><label>주요 기능</label><input type="text" id="pd-main-function-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 자동 압축, 물 절약" value="${specs.main_function || ''}"></div>
-        <div class="product-detail-field"><label>크기/용량</label><input type="text" id="pd-size-capacity-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 30cm × 20cm" value="${specs.size_capacity || ''}"></div>
-        <div class="product-detail-field"><label>색상</label><input type="text" id="pd-color-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 화이트, 블랙" value="${specs.color || ''}"></div>
-        <div class="product-detail-field"><label>재질/소재</label><input type="text" id="pd-material-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 스테인리스 스틸" value="${specs.material || ''}"></div>
-        <div class="product-detail-field"><label>전원/배터리</label><input type="text" id="pd-power-battery-${keywordIndex}-${platform}-${productIndex}" placeholder="예: USB 충전" value="${specs.power_battery || ''}"></div>
-        <div class="product-detail-field"><label>해결하는 문제</label><input type="text" id="pd-problem-solving-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 설거지 시간 오래 걸림" value="${efficiency.problem_solving || ''}"></div>
-        <div class="product-detail-field"><label>시간 절약 효과</label><input type="text" id="pd-time-saving-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 10분 → 3분" value="${efficiency.time_saving || ''}"></div>
-        <div class="product-detail-field"><label>공간 활용</label><input type="text" id="pd-space-efficiency-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 50% 공간 절약" value="${efficiency.space_efficiency || ''}"></div>
-        <div class="product-detail-field"><label>비용 절감</label><input type="text" id="pd-cost-saving-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 월 전기료 30% 절약" value="${efficiency.cost_saving || ''}"></div>
-        <div class="product-detail-field"><label>주요 사용 장소</label><input type="text" id="pd-usage-location-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 주방, 욕실" value="${usage.usage_location || ''}"></div>
-        <div class="product-detail-field"><label>사용 빈도</label><input type="text" id="pd-usage-frequency-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 매일" value="${usage.usage_frequency || ''}"></div>
-        <div class="product-detail-field"><label>적합한 사용자</label><input type="text" id="pd-target-users-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 1인 가구" value="${usage.target_users || ''}"></div>
-        <div class="product-detail-field"><label>핵심 장점 1</label><input type="text" id="pd-advantage1-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 설치 간편함" value="${advantages[0] || ''}"></div>
-        <div class="product-detail-field"><label>핵심 장점 2</label><input type="text" id="pd-advantage2-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 유지비 저렴함" value="${advantages[1] || ''}"></div>
-        <div class="product-detail-field"><label>핵심 장점 3</label><input type="text" id="pd-advantage3-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 내구성 뛰어남" value="${advantages[2] || ''}"></div>
-        <div class="product-detail-field"><label>주의사항</label><input type="text" id="pd-precautions-${keywordIndex}-${platform}-${productIndex}" placeholder="예: 물기 주의" value="${benefits.precautions || ''}"></div>`;
+function isValidImageUrl(url) {
+    return /\.(jpg|jpeg|png|gif|bmp|webp)(\?.*)?$/i.test(url);
 }
+
+// 기존 queue_manager.js의 함수들을 확장
+const originalOpenEditModal = window.openEditModal;
+window.openEditModal = function(queueId) {
+    if (originalOpenEditModal) {
+        originalOpenEditModal(queueId);
+    }
+    
+    // 썸네일 URL 로드
+    const queue = JSON.parse(localStorage.getItem('currentEditItem') || '{}');
+    if (queue.thumbnail_url) {
+        document.getElementById('editThumbnailUrl').value = queue.thumbnail_url;
+        updateEditThumbnailPreview();
+    }
+};
+
+const originalSaveEditedQueue = window.saveEditedQueue;
+window.saveEditedQueue = function() {
+    // 썸네일 URL 저장
+    const thumbnailUrl = document.getElementById('editThumbnailUrl').value.trim();
+    const currentEditItem = JSON.parse(localStorage.getItem('currentEditItem') || '{}');
+    currentEditItem.thumbnail_url = thumbnailUrl;
+    localStorage.setItem('currentEditItem', JSON.stringify(currentEditItem));
+    
+    if (originalSaveEditedQueue) {
+        originalSaveEditedQueue();
+    }
+};
 </script>
-<script src="assets/queue_manager.js?v=<?php echo time(); ?>"></script>
 </body>
 </html>
