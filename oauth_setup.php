@@ -6,9 +6,9 @@
 
 session_start();
 
-// OAuth 클라이언트 정보
-$client_id = "558249385120-e23fac20819dq4t3abahm06rdh4narjh.apps.googleusercontent.com";
-$client_secret = "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";
+// 새로운 웹 애플리케이션 OAuth 클라이언트 정보
+$client_id = "558249385120-ohflnjvcjm3uelsmibhq8ud1j3folgb5.apps.googleusercontent.com";
+$client_secret = "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";
 $redirect_uri = "https://novacents.com/tools/oauth_setup.php";
 $token_file = "/var/www/novacents/tools/google_token.json";
 
@@ -214,6 +214,7 @@ if (isset($_GET['code'])) {
                         <h3>📁 토큰 파일 정보</h3>
                         <p>경로: <?php echo $token_file; ?></p>
                         <p>권한: 600 (소유자만 읽기/쓰기)</p>
+                        <p>클라이언트 ID: <?php echo substr($client_id, 0, 20) . '...'; ?></p>
                     </div>
                 </div>
             </body>
@@ -227,6 +228,7 @@ if (isset($_GET['code'])) {
     } else {
         echo "<h1>❌ 오류</h1>";
         echo "<p>토큰 교환에 실패했습니다.</p>";
+        echo "<p>HTTP 코드: " . $http_code . "</p>";
         echo "<pre>" . htmlspecialchars($response) . "</pre>";
     }
 }
