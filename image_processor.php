@@ -9,6 +9,10 @@
 // 설정 파일 포함
 require_once 'gdrive_config.php';
 
+// 에러 로깅 활성화
+ini_set('log_errors', 1);
+ini_set('error_log', '/tmp/image_processor_error.log');
+
 // CORS 헤더 설정 (AJAX 요청 허용)
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
@@ -35,6 +39,9 @@ try {
     
     $action = $input['action'];
     
+    // 디버그 로그
+    error_log("Image Processor - Action: " . $action);
+    
     // Google Drive API 인스턴스 생성
     $gdrive = new GoogleDriveAPI();
     
@@ -57,7 +64,8 @@ try {
     
 } catch (Exception $e) {
     error_log('Image Processor Error: ' . $e->getMessage());
-    send_error_response($e->getMessage());
+    error_log('Stack trace: ' . $e->getTraceAsString());
+    send_error_response('처리 중 오류가 발생했습니다: ' . $e->getMessage());
 }
 
 /**
@@ -127,16 +135,21 @@ function handleProcessImage($gdrive, $input) {
         $quality = 85;
     }
     
+    error_log("Processing image - File ID: {$file_id}, Quality: {$quality}");
+    
     // 임시 디렉토리 생성
     $temp_dir = '/tmp/gdrive_image_process_' . uniqid();
     if (!mkdir($temp_dir, 0755, true)) {
         send_error_response('임시 디렉토리 생성 실패');
     }
     
+    error_log("Created temp directory: {$temp_dir}");
+    
     try {
         // 1단계: 원본 이미지 다운로드
         $original_path = $temp_dir . '/original_image';
         
+        error_log("Step 1: Downloading file to {$original_path}");
         $download_result = $gdrive->downloadFile($file_id, $original_path);
         
         if (!$download_result['success']) {
@@ -147,21 +160,32 @@ function handleProcessImage($gdrive, $input) {
             throw new Exception('다운로드된 파일을 찾을 수 없습니다');
         }
         
+        error_log("Step 1 완료: 파일 다운로드 성공 (크기: " . filesize($original_path) . " bytes)");
+        
         // 2단계: 파일 정보 확인
+        error_log("Step 2: 파일 정보 확인");
         $file_info = getimagesize($original_path);
         if ($file_info === false) {
             throw new Exception('유효하지 않은 이미지 파일입니다');
         }
         
+        error_log("Step 2 완료: 이미지 정보 - {$file_info[0]}x{$file_info[1]}, MIME: {$file_info['mime']}");
+        
         // 원본 파일명 가져오기 (API 호출)
+        error_log("Step 3: 원본 파일명 가져오기");
         $original_filename = getOriginalFileName($gdrive, $file_id);
+        error_log("Step 3 완료: 원본 파일명 - {$original_filename}");
         
         // 3단계: WebP 변환 및 업로드
+        error_log("Step 4: WebP 변환 및 업로드 시작");
         $convert_result = $gdrive->convertAndUpload($original_path, $original_filename, $quality);
         
         if (!$convert_result['success']) {
+            error_log("Step 4 실패: " . $convert_result['error']);
             throw new Exception('이미지 변환 및 업로드 실패: ' . $convert_result['error']);
         }
+        
+        error_log("Step 4 완료: 변환 및 업로드 성공");
         
         // 성공 응답
         send_success_response([
@@ -184,6 +208,8 @@ function handleProcessImage($gdrive, $input) {
         ]);
         
     } catch (Exception $e) {
+        error_log("이미지 처리 실패: " . $e->getMessage());
+        error_log("Stack trace: " . $e->getTraceAsString());
         throw $e;
     } finally {
         // 임시 파일 및 디렉토리 정리
