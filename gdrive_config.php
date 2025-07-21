@@ -37,10 +37,10 @@ function load_env_vars() {
 
 // Google Drive API 클래스
 class GoogleDriveAPI {
-    private $service_account_file;
     private $original_folder_id;
     private $converted_folder_id;
     private $python_path;
+    private $token_file;
     
     public function __construct() {
         // 환경변수 로드
@@ -48,7 +48,6 @@ class GoogleDriveAPI {
         
         // 필수 환경변수 확인
         $required_vars = [
-            'GOOGLE_DRIVE_SERVICE_ACCOUNT_FILE',
             'GOOGLE_DRIVE_ORIGINAL_FOLDER_ID',
             'GOOGLE_DRIVE_CONVERTED_FOLDER_ID'
         ];
@@ -59,14 +58,14 @@ class GoogleDriveAPI {
             }
         }
         
-        $this->service_account_file = $env_vars['GOOGLE_DRIVE_SERVICE_ACCOUNT_FILE'];
         $this->original_folder_id = $env_vars['GOOGLE_DRIVE_ORIGINAL_FOLDER_ID'];
         $this->converted_folder_id = $env_vars['GOOGLE_DRIVE_CONVERTED_FOLDER_ID'];
         $this->python_path = '/usr/bin/python3';
+        $this->token_file = '/var/www/novacents/tools/google_token.json';
         
-        // 서비스 계정 파일 존재 확인
-        if (!file_exists($this->service_account_file)) {
-            throw new Exception("서비스 계정 파일을 찾을 수 없습니다: {$this->service_account_file}");
+        // OAuth 토큰 파일 존재 확인
+        if (!file_exists($this->token_file)) {
+            throw new Exception("OAuth 토큰 파일을 찾을 수 없습니다. setup_oauth.py를 먼저 실행하세요: {$this->token_file}");
         }
     }
     
@@ -131,18 +130,31 @@ class GoogleDriveAPI {
         $script = <<<PYTHON
 import json
 import sys
-from google.oauth2 import service_account
+import os
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
 try:
-    # 서비스 계정 인증
-    credentials = service_account.Credentials.from_service_account_file(
-        '{$this->service_account_file}',
-        scopes=['https://www.googleapis.com/auth/drive']
-    )
+    # OAuth 토큰 로드
+    creds = None
+    token_file = '{$this->token_file}'
+    
+    if os.path.exists(token_file):
+        creds = Credentials.from_authorized_user_file(token_file, ['https://www.googleapis.com/auth/drive'])
+    
+    if not creds:
+        raise Exception("OAuth 토큰을 찾을 수 없습니다. setup_oauth.py를 실행하세요.")
+    
+    # 토큰 갱신 필요 시 자동 갱신
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+        # 갱신된 토큰 저장
+        with open(token_file, 'w') as token:
+            token.write(creds.to_json())
     
     # Drive API 서비스 생성
-    service = build('drive', 'v3', credentials=credentials)
+    service = build('drive', 'v3', credentials=creds)
     
     # 이미지 파일 목록 조회
     query = "'{$this->original_folder_id}' in parents and mimeType contains 'image/'"
@@ -179,21 +191,34 @@ PYTHON;
         $script = <<<PYTHON
 import json
 import sys
+import os
 import io
 import traceback
-from google.oauth2 import service_account
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
 try:
-    # 서비스 계정 인증
-    credentials = service_account.Credentials.from_service_account_file(
-        '{$this->service_account_file}',
-        scopes=['https://www.googleapis.com/auth/drive']
-    )
+    # OAuth 토큰 로드
+    creds = None
+    token_file = '{$this->token_file}'
+    
+    if os.path.exists(token_file):
+        creds = Credentials.from_authorized_user_file(token_file, ['https://www.googleapis.com/auth/drive'])
+    
+    if not creds:
+        raise Exception("OAuth 토큰을 찾을 수 없습니다. setup_oauth.py를 실행하세요.")
+    
+    # 토큰 갱신 필요 시 자동 갱신
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+        # 갱신된 토큰 저장
+        with open(token_file, 'w') as token:
+            token.write(creds.to_json())
     
     # Drive API 서비스 생성
-    service = build('drive', 'v3', credentials=credentials)
+    service = build('drive', 'v3', credentials=creds)
     
     # 파일 다운로드
     request = service.files().get_media(fileId='{$file_id}')
@@ -235,7 +260,8 @@ import sys
 import os
 import traceback
 from PIL import Image
-from google.oauth2 import service_account
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
@@ -321,22 +347,37 @@ try:
         debug_log("ERROR: " + error_msg)
         raise Exception(error_msg)
     
-    # 6. 서비스 계정 인증
+    # 6. OAuth 토큰 로드
     checkpoint = "Google Drive 인증"
     debug_log("체크포인트: " + checkpoint)
-    debug_log("서비스 계정 파일: {$this->service_account_file}")
     
-    credentials = service_account.Credentials.from_service_account_file(
-        '{$this->service_account_file}',
-        scopes=['https://www.googleapis.com/auth/drive']
-    )
-    debug_log("Google Drive 인증 완료")
+    creds = None
+    token_file = '{$this->token_file}'
+    debug_log("토큰 파일: " + token_file)
+    
+    if os.path.exists(token_file):
+        creds = Credentials.from_authorized_user_file(token_file, ['https://www.googleapis.com/auth/drive'])
+        debug_log("OAuth 토큰 로드 완료")
+    
+    if not creds:
+        error_msg = "OAuth 토큰을 찾을 수 없습니다. setup_oauth.py를 실행하세요."
+        debug_log("ERROR: " + error_msg)
+        raise Exception(error_msg)
+    
+    # 토큰 갱신 필요 시 자동 갱신
+    if creds.expired and creds.refresh_token:
+        debug_log("토큰 만료됨. 자동 갱신 중...")
+        creds.refresh(Request())
+        # 갱신된 토큰 저장
+        with open(token_file, 'w') as token:
+            token.write(creds.to_json())
+        debug_log("토큰 갱신 완료")
     
     # 7. Drive API 서비스 생성
     checkpoint = "Drive API 서비스 생성"
     debug_log("체크포인트: " + checkpoint)
     
-    service = build('drive', 'v3', credentials=credentials)
+    service = build('drive', 'v3', credentials=creds)
     debug_log("Drive API 서비스 생성 완료")
     
     # 8. 파일 메타데이터 준비
