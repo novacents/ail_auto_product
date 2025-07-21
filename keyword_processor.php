@@ -5,7 +5,7 @@
  * 워드프레스 환경에 전혀 종속되지 않으며, 순수 PHP로만 작동합니다.
  *
  * 파일 위치: /var/www/novacents/tools/keyword_processor.php
- * 버전: v4.4 (상품 분석 데이터 저장 기능 추가)
+ * 버전: v4.5 (썸네일 URL 저장 기능 추가)
  */
 
 // 1. 초기 에러 리포팅 설정 (스크립트 시작 시점부터 에러를 잡기 위함)
@@ -38,7 +38,7 @@ function debug_log($message) {
 }
 
 // 스크립트 시작 시 즉시 디버그 로그 기록
-debug_log("=== keyword_processor.php 시작 (상품 분석 데이터 저장 지원 버전) ===");
+debug_log("=== keyword_processor.php 시작 (썸네일 URL 저장 지원 버전) ===");
 debug_log("PHP Version: " . phpversion());
 debug_log("Request Method: " . ($_SERVER['REQUEST_METHOD'] ?? 'N/A'));
 debug_log("POST Data Empty: " . (empty($_POST) ? 'YES' : 'NO'));
@@ -611,6 +611,19 @@ function validate_input_data($data) {
         debug_log("validate_input_data: No user details provided.");
     }
     
+    // 썸네일 URL 검증 (선택사항)
+    if (!empty($data['thumbnail_url'])) {
+        $thumbnail_url = trim($data['thumbnail_url']);
+        if (!filter_var($thumbnail_url, FILTER_VALIDATE_URL)) {
+            $errors[] = '썸네일 이미지 URL 형식이 올바르지 않습니다.';
+            debug_log("validate_input_data: Thumbnail URL validation failed. URL: " . $thumbnail_url);
+        } else {
+            debug_log("validate_input_data: Thumbnail URL validated successfully: " . $thumbnail_url);
+        }
+    } else {
+        debug_log("validate_input_data: No thumbnail URL provided.");
+    }
+    
     debug_log("validate_input_data: Validation finished with " . safe_count($errors) . " errors.");
     if (!empty($errors)) {
         debug_log("validate_input_data: Validation errors: " . implode(' | ', $errors));
@@ -908,9 +921,9 @@ function format_products_data_summary($keywords) {
 }
 
 
-// 18. 메인 처리 로직 (4가지 프롬프트 템플릿 시스템 + 즉시 발행 지원 + count() 오류 수정 + 강화된 디버깅 + 상품 분석 데이터 저장)
+// 18. 메인 처리 로직 (4가지 프롬프트 템플릿 시스템 + 즉시 발행 지원 + count() 오류 수정 + 강화된 디버깅 + 상품 분석 데이터 저장 + 썸네일 URL 저장)
 function main_process() {
-    debug_log("main_process: Main processing started with product analysis data support.");
+    debug_log("main_process: Main processing started with thumbnail URL support.");
 
     try {
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -918,14 +931,15 @@ function main_process() {
             redirect_to_editor(false, ['error' => '잘못된 요청 방식입니다. POST 메서드만 허용됩니다.']);
         }
 
-        // Input data collection (즉시 발행 모드 + 프롬프트 타입 + 사용자 상세 정보 포함)
+        // Input data collection (즉시 발행 모드 + 프롬프트 타입 + 사용자 상세 정보 + 썸네일 URL 포함)
         $input_data = [
             'title' => clean_input($_POST['title'] ?? ''),
             'category' => clean_input($_POST['category'] ?? ''),
             'prompt_type' => clean_input($_POST['prompt_type'] ?? 'essential_items'),
             'keywords' => $_POST['keywords'] ?? [],
             'user_details' => $_POST['user_details'] ?? null,
-            'publish_mode' => clean_input($_POST['publish_mode'] ?? 'queue') // 🚀 즉시 발행 모드
+            'publish_mode' => clean_input($_POST['publish_mode'] ?? 'queue'),
+            'thumbnail_url' => clean_input($_POST['thumbnail_url'] ?? '') // 🔧 썸네일 URL 추가
         ];
         
         debug_log("main_process: Input data collected successfully");
@@ -936,6 +950,7 @@ function main_process() {
         debug_log("main_process: Keywords raw count: " . safe_count($input_data['keywords']));
         debug_log("main_process: User details: " . (empty($input_data['user_details']) ? 'No' : 'Yes'));
         debug_log("main_process: Publish mode: " . $input_data['publish_mode']);
+        debug_log("main_process: Thumbnail URL: " . (empty($input_data['thumbnail_url']) ? 'No' : 'Yes - ' . $input_data['thumbnail_url']));
         
         // 🔧 키워드 데이터 JSON 디코딩 처리
         if (is_string($input_data['keywords'])) {
@@ -950,13 +965,13 @@ function main_process() {
             }
         }
         
-        main_log("Input data received: Title='" . $input_data['title'] . "', Category=" . $input_data['category'] . ", Prompt Type=" . $input_data['prompt_type'] . ", Keywords=" . safe_count($input_data['keywords']) . ", User Details=" . (empty($input_data['user_details']) ? 'No' : 'Yes') . ", Publish Mode=" . $input_data['publish_mode'] . ".");
+        main_log("Input data received: Title='" . $input_data['title'] . "', Category=" . $input_data['category'] . ", Prompt Type=" . $input_data['prompt_type'] . ", Keywords=" . safe_count($input_data['keywords']) . ", User Details=" . (empty($input_data['user_details']) ? 'No' : 'Yes') . ", Publish Mode=" . $input_data['publish_mode'] . ", Thumbnail URL=" . (empty($input_data['thumbnail_url']) ? 'No' : 'Yes') . ".");
 
         // Data validation
         $validation_errors = validate_input_data($input_data);
         if (!empty($validation_errors)) {
             debug_log("main_process: Validation failed. Errors: " . implode(' | ', $validation_errors));
-            $telegram_msg = "❌ 데이터 검증 실패:\n\n" . implode("\n• ", $validation_errors) . "\n\n입력된 데이터:\n제목: " . $input_data['title'] . "\n카테고리: " . get_category_name($input_data['category']) . "\n프롬프트: " . get_prompt_type_name($input_data['prompt_type']) . "\n키워드 수: " . safe_count($input_data['keywords']) . "개";
+            $telegram_msg = "❌ 데이터 검증 실패:\n\n" . implode("\n• ", $validation_errors) . "\n\n입력된 데이터:\n제목: " . $input_data['title'] . "\n카테고리: " . get_category_name($input_data['category']) . "\n프롬프트: " . get_prompt_type_name($input_data['prompt_type']) . "\n키워드 수: " . safe_count($input_data['keywords']) . "개" . (empty($input_data['thumbnail_url']) ? '' : "\n썸네일 URL: 제공됨");
             send_telegram_notification($telegram_msg, true);
             main_log("Data validation failed: " . implode(', ', $validation_errors));
             
@@ -1011,7 +1026,7 @@ function main_process() {
             $user_details_data = null;
         }
 
-        // Create queue data structure (프롬프트 타입 + 사용자 상세 정보 + 상품 분석 데이터 포함)
+        // Create queue data structure (프롬프트 타입 + 사용자 상세 정보 + 상품 분석 데이터 + 썸네일 URL 포함)
         $queue_data = [
             'queue_id' => date('YmdHis') . '_' . random_int(10000, 99999), // Unique ID
             'title' => $input_data['title'],
@@ -1021,6 +1036,7 @@ function main_process() {
             'prompt_type_name' => get_prompt_type_name($input_data['prompt_type']),
             'keywords' => $cleaned_keywords, // 🔧 이제 products_data 포함
             'user_details' => $user_details_data,
+            'thumbnail_url' => !empty($input_data['thumbnail_url']) ? $input_data['thumbnail_url'] : null, // 🔧 썸네일 URL 추가
             'processing_mode' => ($input_data['publish_mode'] === 'immediate') ? 'immediate_publish' : 'link_based_with_details_and_prompt_template_and_product_data',
             'link_conversion_required' => true, // 링크 변환 필요 여부
             'conversion_status' => [
@@ -1035,7 +1051,8 @@ function main_process() {
             'attempts' => 0,
             'last_error' => null,
             'has_user_details' => ($user_details_data !== null), // 사용자 상세 정보 존재 여부
-            'has_product_data' => false // 🔧 상품 분석 데이터 존재 여부
+            'has_product_data' => false, // 🔧 상품 분석 데이터 존재 여부
+            'has_thumbnail_url' => !empty($input_data['thumbnail_url']) // 🔧 썸네일 URL 존재 여부
         ];
         
         // 링크 카운트 및 상품 데이터 통계 계산 (안전한 count 사용)
@@ -1059,6 +1076,7 @@ function main_process() {
         debug_log("main_process: Product data entries: {$total_product_data}");
         debug_log("main_process: User details included: " . ($queue_data['has_user_details'] ? 'Yes' : 'No'));
         debug_log("main_process: Product data included: " . ($queue_data['has_product_data'] ? 'Yes' : 'No'));
+        debug_log("main_process: Thumbnail URL included: " . ($queue_data['has_thumbnail_url'] ? 'Yes (' . $queue_data['thumbnail_url'] . ')' : 'No'));
         debug_log("main_process: Publish mode: " . $input_data['publish_mode']);
 
         // 🚀 즉시 발행 vs 큐 저장 분기 처리
@@ -1108,6 +1126,13 @@ function main_process() {
                 $telegram_success_msg .= "• 사용자 상세 정보: 제공되지 않음\n";
             }
             
+            // 🔧 썸네일 URL 알림 추가
+            if ($queue_data['has_thumbnail_url']) {
+                $telegram_success_msg .= "• 썸네일 URL: 제공됨 (" . substr($queue_data['thumbnail_url'], 0, 50) . "...)\n";
+            } else {
+                $telegram_success_msg .= "• 썸네일 URL: 제공되지 않음\n";
+            }
+            
             $telegram_success_msg .= "• 큐 ID: " . $queue_data['queue_id'] . "\n";
             $telegram_success_msg .= "• 등록 시간: " . $queue_data['created_at'] . "\n\n";
             $telegram_success_msg .= "📊 <b>현재 큐 상태</b>\n";
@@ -1119,7 +1144,7 @@ function main_process() {
             }
             $telegram_success_msg .= "\n🚀 4가지 프롬프트 템플릿 + 상품 분석 데이터 자동화 시스템이 순차적으로 처리할 예정입니다.";
             send_telegram_notification($telegram_success_msg);
-            main_log("Item successfully added to queue with prompt type '{$input_data['prompt_type']}', user details, and product data. Queue stats: " . json_encode($stats));
+            main_log("Item successfully added to queue with prompt type '{$input_data['prompt_type']}', user details, product data, and thumbnail URL. Queue stats: " . json_encode($stats));
 
             // Redirect to editor with success message
             redirect_to_editor(true, ['success' => '1']);
