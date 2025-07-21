@@ -226,6 +226,9 @@ PYTHON;
      * WebP 변환 및 업로드
      */
     public function convertAndUpload($source_path, $file_name, $quality = 85) {
+        // 상세 로그 파일 생성
+        $log_file = '/var/www/novacents/tools/gdrive_debug_' . date('Ymd_His') . '.log';
+        
         $script = <<<PYTHON
 import json
 import sys
@@ -236,80 +239,143 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
+# 로그 파일에 디버그 정보 기록
+def debug_log(message):
+    with open('{$log_file}', 'a', encoding='utf-8') as f:
+        f.write(f"{message}\\n")
+
 try:
+    debug_log("=== WebP 변환 및 업로드 시작 ===")
+    
     # 단계별 체크포인트
     checkpoint = "시작"
+    debug_log(f"체크포인트: {checkpoint}")
     
     # 1. 파일 존재 확인
     checkpoint = "파일 존재 확인"
+    debug_log(f"체크포인트: {checkpoint}")
+    debug_log(f"소스 파일 경로: {'{$source_path}'}")
+    
     if not os.path.exists('{$source_path}'):
-        raise Exception(f"소스 파일이 존재하지 않습니다: {$source_path}")
+        error_msg = f"소스 파일이 존재하지 않습니다: {'{$source_path}'}"
+        debug_log(f"ERROR: {error_msg}")
+        raise Exception(error_msg)
     
     file_size = os.path.getsize('{$source_path}')
+    debug_log(f"소스 파일 크기: {file_size} bytes")
+    
     if file_size == 0:
-        raise Exception(f"소스 파일이 비어있습니다: {$source_path}")
+        error_msg = f"소스 파일이 비어있습니다: {'{$source_path}'}"
+        debug_log(f"ERROR: {error_msg}")
+        raise Exception(error_msg)
     
     # 2. 이미지 열기
     checkpoint = "이미지 열기"
+    debug_log(f"체크포인트: {checkpoint}")
+    
     img = Image.open('{$source_path}')
     img_info = f"크기: {img.size}, 모드: {img.mode}"
+    debug_log(f"이미지 정보: {img_info}")
     
     # 3. 이미지 모드 변환
     checkpoint = "이미지 모드 변환"
+    debug_log(f"체크포인트: {checkpoint}")
+    debug_log(f"원본 이미지 모드: {img.mode}")
+    
     if img.mode in ('RGBA', 'LA'):
+        debug_log("RGBA/LA 모드 -> RGB 변환 중")
         background = Image.new('RGB', img.size, (255, 255, 255))
         background.paste(img, mask=img.split()[-1])
         img = background
     elif img.mode not in ('RGB', 'L'):
+        debug_log(f"{img.mode} 모드 -> RGB 변환 중")
         img = img.convert('RGB')
+    
+    debug_log(f"변환 후 이미지 모드: {img.mode}")
     
     # 4. WebP 경로 생성
     checkpoint = "WebP 경로 생성"
+    debug_log(f"체크포인트: {checkpoint}")
+    
     webp_path = '/tmp/' + os.path.splitext('{$file_name}')[0] + '.webp'
+    debug_log(f"WebP 파일 경로: {webp_path}")
     
     # 5. WebP 변환
     checkpoint = "WebP 변환"
+    debug_log(f"체크포인트: {checkpoint}")
+    debug_log(f"WebP 변환 품질: {'{$quality}', method=6}")
+    
     img.save(webp_path, 'WEBP', quality={$quality}, method=6)
+    debug_log("WebP 변환 완료")
     
     if not os.path.exists(webp_path):
-        raise Exception("WebP 변환된 파일이 생성되지 않았습니다")
+        error_msg = "WebP 변환된 파일이 생성되지 않았습니다"
+        debug_log(f"ERROR: {error_msg}")
+        raise Exception(error_msg)
     
     webp_size = os.path.getsize(webp_path)
+    debug_log(f"WebP 파일 크기: {webp_size} bytes")
+    
     if webp_size == 0:
-        raise Exception("WebP 변환된 파일이 비어있습니다")
+        error_msg = "WebP 변환된 파일이 비어있습니다"
+        debug_log(f"ERROR: {error_msg}")
+        raise Exception(error_msg)
     
     # 6. 서비스 계정 인증
     checkpoint = "Google Drive 인증"
+    debug_log(f"체크포인트: {checkpoint}")
+    debug_log(f"서비스 계정 파일: {'{$this->service_account_file}'}")
+    
     credentials = service_account.Credentials.from_service_account_file(
         '{$this->service_account_file}',
         scopes=['https://www.googleapis.com/auth/drive']
     )
+    debug_log("Google Drive 인증 완료")
     
     # 7. Drive API 서비스 생성
     checkpoint = "Drive API 서비스 생성"
+    debug_log(f"체크포인트: {checkpoint}")
+    
     service = build('drive', 'v3', credentials=credentials)
+    debug_log("Drive API 서비스 생성 완료")
     
     # 8. 파일 메타데이터 준비
     checkpoint = "파일 메타데이터 준비"
+    debug_log(f"체크포인트: {checkpoint}")
+    debug_log(f"업로드할 폴더 ID: {'{$this->converted_folder_id}'}")
+    
     file_metadata = {
         'name': os.path.basename(webp_path),
         'parents': ['{$this->converted_folder_id}']
     }
+    debug_log(f"파일 메타데이터: {file_metadata}")
     
     # 9. 파일 업로드
     checkpoint = "파일 업로드"
+    debug_log(f"체크포인트: {checkpoint}")
+    
     media = MediaFileUpload(webp_path, mimetype='image/webp')
+    debug_log("MediaFileUpload 객체 생성 완료")
+    
+    debug_log("Google Drive에 파일 업로드 시작...")
     file = service.files().create(
         body=file_metadata,
         media_body=media,
         fields='id, name, webViewLink'
     ).execute()
+    debug_log("Google Drive 파일 업로드 완료")
+    debug_log(f"업로드된 파일 정보: {file}")
     
     if not file or 'id' not in file:
-        raise Exception("파일 업로드는 성공했으나 파일 ID를 받지 못했습니다")
+        error_msg = "파일 업로드는 성공했으나 파일 ID를 받지 못했습니다"
+        debug_log(f"ERROR: {error_msg}")
+        raise Exception(error_msg)
     
     # 10. 파일 공개 권한 설정
     checkpoint = "공개 권한 설정"
+    debug_log(f"체크포인트: {checkpoint}")
+    debug_log(f"파일 ID {file['id']}에 공개 권한 설정 중...")
+    
     permission = {
         'type': 'anyone',
         'role': 'reader'
@@ -318,17 +384,24 @@ try:
         fileId=file['id'],
         body=permission
     ).execute()
+    debug_log("공개 권한 설정 완료")
     
     # 11. 임시 파일 삭제
     checkpoint = "임시 파일 삭제"
+    debug_log(f"체크포인트: {checkpoint}")
+    
     os.remove(webp_path)
+    debug_log(f"임시 파일 삭제 완료: {webp_path}")
     
     # 12. 공개 URL 생성
     checkpoint = "공개 URL 생성"
+    debug_log(f"체크포인트: {checkpoint}")
+    
     public_url = f"https://lh3.googleusercontent.com/d/{file['id']}"
+    debug_log(f"생성된 공개 URL: {public_url}")
     
     # 성공 응답
-    print(json.dumps({
+    success_data = {
         'success': True,
         'file_id': file['id'],
         'file_name': file['name'],
@@ -339,7 +412,12 @@ try:
             'webp_size': webp_size,
             'image_info': img_info
         }
-    }))
+    }
+    
+    debug_log(f"최종 성공 응답: {success_data}")
+    debug_log("=== WebP 변환 및 업로드 성공 ===")
+    
+    print(json.dumps(success_data))
     
 except Exception as e:
     # 임시 파일 정리 (오류 시)
@@ -347,16 +425,22 @@ except Exception as e:
         webp_path = '/tmp/' + os.path.splitext('{$file_name}')[0] + '.webp'
         if os.path.exists(webp_path):
             os.remove(webp_path)
+            debug_log(f"오류 시 임시 파일 삭제: {webp_path}")
     except:
+        debug_log("임시 파일 삭제 중 추가 오류 발생")
         pass
     
     error_detail = f"단계: {checkpoint}, 오류: {str(e)}"
+    debug_log(f"ERROR: {error_detail}")
+    debug_log(f"TRACEBACK: {traceback.format_exc()}")
+    debug_log("=== WebP 변환 및 업로드 실패 ===")
     
     print(json.dumps({
         'success': False,
         'error': error_detail,
         'checkpoint': checkpoint,
-        'traceback': traceback.format_exc()
+        'traceback': traceback.format_exc(),
+        'log_file': '{$log_file}'
     }))
 PYTHON;
 
