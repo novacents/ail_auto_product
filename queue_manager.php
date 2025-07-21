@@ -1,7 +1,7 @@
 <?php
 /**
  * 저장된 정보 관리 페이지 - 최적화된 버전
- * 버전: v2.4 (캐시 문제 해결)
+ * 버전: v2.5 (썸네일 URL 표시 기능 추가)
  */
 require_once($_SERVER['DOCUMENT_ROOT'] . '/wp-config.php');
 if (!current_user_can('manage_options')) { wp_die('접근 권한이 없습니다.'); }
@@ -149,6 +149,10 @@ if (isset($_POST['action'])) {
                     $queue[$index]['prompt_type'] = $updated_data['prompt_type'] ?? $item['prompt_type'];
                     $queue[$index]['prompt_type_name'] = get_prompt_type_name($updated_data['prompt_type'] ?? $item['prompt_type']);
                     
+                    // 🔧 썸네일 URL 업데이트
+                    $queue[$index]['thumbnail_url'] = $updated_data['thumbnail_url'] ?? $item['thumbnail_url'] ?? null;
+                    $queue[$index]['has_thumbnail_url'] = !empty($updated_data['thumbnail_url']);
+                    
                     // 🔧 키워드 데이터 완전 교체 (전체 구조 보존)
                     if (isset($updated_data['keywords']) && is_array($updated_data['keywords'])) {
                         $queue[$index]['keywords'] = $updated_data['keywords'];
@@ -230,6 +234,7 @@ if (isset($_POST['action'])) {
                 'prompt_type' => $selected_item['prompt_type'],
                 'keywords' => json_encode($selected_item['keywords']),
                 'user_details' => json_encode($selected_item['user_details']),
+                'thumbnail_url' => $selected_item['thumbnail_url'] ?? '', // 🔧 썸네일 URL 추가
                 'publish_mode' => 'immediate'
             ];
             
@@ -314,11 +319,13 @@ if (isset($_POST['action'])) {
         <div class="modal-body">
             <div class="form-section">
                 <h3>기본 정보</h3>
-                <div class="form-row three-col">
+                <div class="form-row">
                     <div class="form-field">
                         <label for="editTitle">글 제목</label>
                         <input type="text" id="editTitle" placeholder="글 제목을 입력하세요">
                     </div>
+                </div>
+                <div class="form-row three-col">
                     <div class="form-field">
                         <label for="editCategory">카테고리</label>
                         <select id="editCategory">
@@ -336,6 +343,10 @@ if (isset($_POST['action'])) {
                             <option value="professional_analysis">전문 분석형</option>
                             <option value="amazing_discovery">놀라움 발견형</option>
                         </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="editThumbnailUrl">썸네일 이미지 URL</label>
+                        <input type="url" id="editThumbnailUrl" placeholder="썸네일 이미지 URL을 입력하세요">
                     </div>
                 </div>
             </div>
@@ -369,7 +380,7 @@ if (isset($_POST['action'])) {
 <div class="main-container">
     <div class="header-section">
         <h1>📋 저장된 정보 관리</h1>
-        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v2.4 - 캐시 문제 해결)</p>
+        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v2.5 - 썸네일 URL 표시 기능 추가)</p>
         <div class="header-actions">
             <a href="affiliate_editor.php" class="btn btn-primary">📝 새 글 작성</a>
             <button type="button" class="btn btn-secondary" onclick="refreshQueue()">🔄 새로고침</button>
