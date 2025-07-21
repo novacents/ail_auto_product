@@ -180,6 +180,7 @@ PYTHON;
 import json
 import sys
 import io
+import traceback
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
@@ -213,7 +214,8 @@ try:
 except Exception as e:
     print(json.dumps({
         'success': False,
-        'error': str(e)
+        'error': str(e),
+        'traceback': traceback.format_exc()
     }))
 PYTHON;
 
@@ -228,20 +230,32 @@ PYTHON;
 import json
 import sys
 import os
+import traceback
 from PIL import Image
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 try:
-    # 파일 존재 확인
+    # 단계별 체크포인트
+    checkpoint = "시작"
+    
+    # 1. 파일 존재 확인
+    checkpoint = "파일 존재 확인"
     if not os.path.exists('{$source_path}'):
-        raise Exception("소스 파일이 존재하지 않습니다: {$source_path}")
+        raise Exception(f"소스 파일이 존재하지 않습니다: {$source_path}")
     
-    # 이미지 열기
+    file_size = os.path.getsize('{$source_path}')
+    if file_size == 0:
+        raise Exception(f"소스 파일이 비어있습니다: {$source_path}")
+    
+    # 2. 이미지 열기
+    checkpoint = "이미지 열기"
     img = Image.open('{$source_path}')
+    img_info = f"크기: {img.size}, 모드: {img.mode}"
     
-    # RGBA 모드인 경우 RGB로 변환 (WebP 호환성)
+    # 3. 이미지 모드 변환
+    checkpoint = "이미지 모드 변환"
     if img.mode in ('RGBA', 'LA'):
         background = Image.new('RGB', img.size, (255, 255, 255))
         background.paste(img, mask=img.split()[-1])
@@ -249,26 +263,41 @@ try:
     elif img.mode not in ('RGB', 'L'):
         img = img.convert('RGB')
     
-    # WebP로 저장
+    # 4. WebP 경로 생성
+    checkpoint = "WebP 경로 생성"
     webp_path = '/tmp/' + os.path.splitext('{$file_name}')[0] + '.webp'
+    
+    # 5. WebP 변환
+    checkpoint = "WebP 변환"
     img.save(webp_path, 'WEBP', quality={$quality}, method=6)
     
-    # 서비스 계정 인증
+    if not os.path.exists(webp_path):
+        raise Exception("WebP 변환된 파일이 생성되지 않았습니다")
+    
+    webp_size = os.path.getsize(webp_path)
+    if webp_size == 0:
+        raise Exception("WebP 변환된 파일이 비어있습니다")
+    
+    # 6. 서비스 계정 인증
+    checkpoint = "Google Drive 인증"
     credentials = service_account.Credentials.from_service_account_file(
         '{$this->service_account_file}',
         scopes=['https://www.googleapis.com/auth/drive']
     )
     
-    # Drive API 서비스 생성
+    # 7. Drive API 서비스 생성
+    checkpoint = "Drive API 서비스 생성"
     service = build('drive', 'v3', credentials=credentials)
     
-    # 파일 메타데이터
+    # 8. 파일 메타데이터 준비
+    checkpoint = "파일 메타데이터 준비"
     file_metadata = {
         'name': os.path.basename(webp_path),
         'parents': ['{$this->converted_folder_id}']
     }
     
-    # 파일 업로드
+    # 9. 파일 업로드
+    checkpoint = "파일 업로드"
     media = MediaFileUpload(webp_path, mimetype='image/webp')
     file = service.files().create(
         body=file_metadata,
@@ -276,7 +305,11 @@ try:
         fields='id, name, webViewLink'
     ).execute()
     
-    # 파일 공개 권한 설정
+    if not file or 'id' not in file:
+        raise Exception("파일 업로드는 성공했으나 파일 ID를 받지 못했습니다")
+    
+    # 10. 파일 공개 권한 설정
+    checkpoint = "공개 권한 설정"
     permission = {
         'type': 'anyone',
         'role': 'reader'
@@ -286,18 +319,26 @@ try:
         body=permission
     ).execute()
     
-    # 임시 파일 삭제
+    # 11. 임시 파일 삭제
+    checkpoint = "임시 파일 삭제"
     os.remove(webp_path)
     
-    # 공개 URL 생성
+    # 12. 공개 URL 생성
+    checkpoint = "공개 URL 생성"
     public_url = f"https://lh3.googleusercontent.com/d/{file['id']}"
     
+    # 성공 응답
     print(json.dumps({
         'success': True,
         'file_id': file['id'],
         'file_name': file['name'],
         'public_url': public_url,
-        'web_view_link': file['webViewLink']
+        'web_view_link': file['webViewLink'],
+        'debug_info': {
+            'original_size': file_size,
+            'webp_size': webp_size,
+            'image_info': img_info
+        }
     }))
     
 except Exception as e:
@@ -309,9 +350,13 @@ except Exception as e:
     except:
         pass
     
+    error_detail = f"단계: {checkpoint}, 오류: {str(e)}"
+    
     print(json.dumps({
         'success': False,
-        'error': str(e)
+        'error': error_detail,
+        'checkpoint': checkpoint,
+        'traceback': traceback.format_exc()
     }))
 PYTHON;
 
