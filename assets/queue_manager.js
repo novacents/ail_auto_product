@@ -58,6 +58,11 @@ function displayQueue() {
         const statusText = getStatusText(item.status);
         const productsSummary = getProductsSummary(item.keywords);
         
+        // 🔧 썸네일 URL 표시 추가
+        const thumbnailDisplay = item.thumbnail_url ? 
+            `<div class="thumbnail-preview"><img src="${item.thumbnail_url}" alt="썸네일" style="max-width: 100px; max-height: 60px; border-radius: 4px; object-fit: cover;" onerror="this.style.display='none'"><span class="thumbnail-text">썸네일 있음</span></div>` :
+            `<div class="thumbnail-preview"><span class="thumbnail-text">썸네일 없음</span></div>`;
+        
         html += `<div class="queue-item" data-queue-id="${item.queue_id}" draggable="${dragEnabled}">
             <div class="queue-header">
                 <div>
@@ -78,9 +83,11 @@ function displayQueue() {
                     <div class="info-item"><div class="info-value">${item.priority || 1}</div><div class="info-label">우선순위</div></div>
                     <div class="info-item"><div class="info-value">${item.has_user_details ? 'O' : 'X'}</div><div class="info-label">상세정보</div></div>
                     <div class="info-item"><div class="info-value">${item.has_product_data ? 'O' : 'X'}</div><div class="info-label">상품데이터</div></div>
+                    <div class="info-item"><div class="info-value">${item.has_thumbnail_url ? 'O' : 'X'}</div><div class="info-label">썸네일</div></div>
                 </div>
                 ${item.keywords && item.keywords.length > 0 ? `<div class="keywords-preview"><h4>키워드:</h4><div class="keyword-tags">${item.keywords.map(k => `<span class="keyword-tag">${k.name}</span>`).join('')}</div></div>` : ''}
                 ${generateProductsPreview(productsSummary)}
+                ${thumbnailDisplay}
             </div>
         </div>`;
     });
@@ -267,6 +274,7 @@ async function editQueue(queueId) {
             console.log('✅ 편집할 큐 데이터 로드 성공:');
             console.log('📊 제목:', currentEditingData.title);
             console.log('📊 키워드 수:', currentEditingData.keywords ? currentEditingData.keywords.length : 0);
+            console.log('📊 썸네일 URL:', currentEditingData.thumbnail_url || '없음'); // 🔧 썸네일 URL 로그 추가
             
             // 🔧 전체 데이터 구조 분석
             console.log('🔍 전체 currentEditingData 구조:', currentEditingData);
@@ -291,6 +299,7 @@ function populateEditModal(item) {
     document.getElementById('editTitle').value = item.title || '';
     document.getElementById('editCategory').value = item.category_id || '356';
     document.getElementById('editPromptType').value = item.prompt_type || 'essential_items';
+    document.getElementById('editThumbnailUrl').value = item.thumbnail_url || ''; // 🔧 썸네일 URL 추가
     
     console.log('🔧 기본 정보 설정 완료. 키워드 표시 시작...');
     displayKeywords(item.keywords || []);
@@ -907,6 +916,7 @@ async function saveEditedQueue() {
             title: document.getElementById('editTitle').value.trim(),
             category_id: parseInt(document.getElementById('editCategory').value),
             prompt_type: document.getElementById('editPromptType').value,
+            thumbnail_url: document.getElementById('editThumbnailUrl').value.trim(), // 🔧 썸네일 URL 추가
             keywords: collectedKeywords,
             user_details: {}
         };
