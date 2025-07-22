@@ -65,14 +65,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .progress-bar{flex:1;height:8px;background:#e0e0e0;border-radius:4px;margin:0 15px;overflow:hidden}
 .progress-fill{height:100%;background:linear-gradient(90deg,#4CAF50,#45a049);width:0%;transition:width 0.3s ease}
 .products-list{flex:1;overflow-y:auto;padding:0}
-.keyword-group{border-bottom:1px solid #e0e0e0}
-.keyword-header{padding:15px 20px;background:white;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;cursor:pointer}
+.keyword-group{border-bottom:1px solid #e0e0e0;position:relative}
+.keyword-group.draggable{cursor:move}
+.keyword-group.dragging{opacity:0.5;transform:rotate(2deg);box-shadow:0 8px 16px rgba(0,0,0,0.2)}
+.keyword-group.drag-over{border:2px dashed #007bff;background:#f0f8ff}
+.keyword-group:before{content:'⋮⋮';position:absolute;left:5px;top:50%;transform:translateY(-50%);color:#ccc;font-size:14px;opacity:0;transition:opacity 0.2s}
+.keyword-group:hover:before{opacity:1}
+.keyword-header{padding:15px 20px;background:white;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;position:relative}
 .keyword-header:hover{background:#f8f9fa}
 .keyword-info{display:flex;align-items:center;gap:10px}
 .keyword-name{font-weight:600;color:#333}
 .product-count{background:#007bff;color:white;padding:2px 8px;border-radius:12px;font-size:12px}
 .keyword-actions{display:flex;gap:8px}
-.product-item{padding:12px 40px;border-bottom:1px solid #f5f5f5;display:flex;align-items:center;gap:10px;cursor:pointer;transition:background 0.2s}
+.product-item{padding:12px 40px;border-bottom:1px solid #f5f5f5;display:flex;align-items:center;gap:10px;cursor:pointer;transition:background 0.2s;position:relative}
+.product-item.draggable{cursor:move}
+.product-item.dragging{opacity:0.5;transform:rotate(1deg);box-shadow:0 4px 8px rgba(0,0,0,0.2);background:#e3f2fd}
+.product-item.drag-over{border:2px dashed #28a745;background:#f0fff0}
+.product-item:before{content:'⋮⋮';position:absolute;left:20px;top:50%;transform:translateY(-50%);color:#ccc;font-size:12px;opacity:0;transition:opacity 0.2s}
+.product-item:hover:before{opacity:1}
 .product-item:hover{background:#f0f8ff}
 .product-item.active{background:#e3f2fd;border-left:4px solid #2196F3}
 .product-status{font-size:18px;width:20px}
@@ -175,6 +185,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .alert-error{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb}
 .empty-state{text-align:center;padding:40px 20px;color:#666}
 .empty-state h3{margin:0 0 10px 0;color:#999}
+.drag-placeholder{border:2px dashed #ccc;background:#f9f9f9;margin:5px 0;height:40px;display:flex;align-items:center;justify-content:center;color:#999;font-size:14px;border-radius:4px}
+.drop-zone{border:2px dashed #007bff;background:rgba(0,123,255,0.1);border-radius:4px}
+.drag-helper{position:fixed;pointer-events:none;z-index:9999;opacity:0.8;background:white;padding:10px;border-radius:4px;box-shadow:0 4px 8px rgba(0,0,0,0.2);transform:rotate(3deg)}
 </style>
 </head>
 <body>
@@ -440,6 +453,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 </div>
 <script>
 let kw=[],cKI=-1,cPI=-1,cPD=null;
+let draggedElement=null,draggedType=null,draggedIndex=null,draggedKeywordIndex=null;
 document.addEventListener('DOMContentLoaded',function(){updateUI();handleScrollToTop();checkForNewImageUrl();});
 function showSuccessModal(t,m,i='✅'){document.getElementById('successIcon').textContent=i;document.getElementById('successTitle').textContent=t;document.getElementById('successMessage').textContent=m;document.getElementById('successModal').style.display='flex';setTimeout(()=>{closeSuccessModal();},2000);}
 function closeSuccessModal(){document.getElementById('successModal').style.display='none';}
@@ -475,7 +489,7 @@ function generateOptimizedMobileHtml(d){if(!d)return null;const rd=d.rating_disp
 async function copyHtmlSource(){const hc=document.getElementById('htmlCode').textContent,cb=document.querySelector('.copy-btn');try{await navigator.clipboard.writeText(hc);const ot=cb.textContent;cb.textContent='✅ 복사됨!';cb.classList.add('copied');setTimeout(()=>{cb.textContent=ot;cb.classList.remove('copied');},2000);}catch(e){const ce=document.getElementById('htmlCode'),r=document.createRange();r.selectNodeContents(ce);const s=window.getSelection();s.removeAllRanges();s.addRange(r);showDetailedError('복사 알림','HTML 소스가 선택되었습니다. Ctrl+C로 복사하세요.');}}
 function hideAnalysisResult(){document.getElementById('analysisResult').classList.remove('show');document.getElementById('htmlSourceSection').style.display='none';}
 function updateUI(){updateProductsList();updateProgress();}
-function updateProductsList(){const l=document.getElementById('productsList');if(kw.length===0){l.innerHTML='<div class="empty-state"><h3>📦 상품이 없습니다</h3><p>위의 "키워드 추가" 버튼을 클릭하여<br>첫 번째 키워드를 추가해보세요!</p></div>';return;}let h='';kw.forEach((k,ki)=>{h+=`<div class="keyword-group"><div class="keyword-header"><div class="keyword-info"><span class="keyword-name">📁 ${k.name}</span><span class="product-count">${k.products.length}개</span></div><div class="keyword-actions"><button type="button" class="btn btn-success btn-small" onclick="addProduct(${ki})">+상품</button><button type="button" class="btn btn-danger btn-small" onclick="deleteKeyword(${ki})">🗑️</button></div></div>`;k.products.forEach((p,pi)=>{const si=getStatusIcon(p.status,p.isSaved);h+=`<div class="product-item" data-keyword="${ki}" data-product="${pi}" onclick="selectProduct(${ki},${pi})"><span class="product-status">${si}</span><span class="product-name">${p.name}</span><div class="product-actions"><button type="button" class="btn btn-danger btn-small" onclick="event.stopPropagation();deleteProduct(${ki},${pi})">🗑️</button></div></div>`;});h+='</div>';});l.innerHTML=h;}
+function updateProductsList(){const l=document.getElementById('productsList');if(kw.length===0){l.innerHTML='<div class="empty-state"><h3>📦 상품이 없습니다</h3><p>위의 "키워드 추가" 버튼을 클릭하여<br>첫 번째 키워드를 추가해보세요!</p></div>';return;}let h='';kw.forEach((k,ki)=>{h+=`<div class="keyword-group draggable" draggable="true" data-keyword-index="${ki}"><div class="keyword-header"><div class="keyword-info"><span class="keyword-name">📁 ${k.name}</span><span class="product-count">${k.products.length}개</span></div><div class="keyword-actions"><button type="button" class="btn btn-success btn-small" onclick="addProduct(${ki})">+상품</button><button type="button" class="btn btn-danger btn-small" onclick="deleteKeyword(${ki})">🗑️</button></div></div>`;k.products.forEach((p,pi)=>{const si=getStatusIcon(p.status,p.isSaved);h+=`<div class="product-item draggable" draggable="true" data-keyword="${ki}" data-product="${pi}" onclick="selectProduct(${ki},${pi})"><span class="product-status">${si}</span><span class="product-name">${p.name}</span><div class="product-actions"><button type="button" class="btn btn-danger btn-small" onclick="event.stopPropagation();deleteProduct(${ki},${pi})">🗑️</button></div></div>`;});h+='</div>';});l.innerHTML=h;setupDragAndDrop();}
 function getStatusIcon(s,is=false){switch(s){case'completed':return is?'✅':'🔍';case'analyzing':return'🔄';case'error':return'⚠️';default:return'❌';}}
 function updateProgress(){const tp=kw.reduce((s,k)=>s+k.products.length,0),cp=kw.reduce((s,k)=>s+k.products.filter(p=>p.isSaved).length,0),pe=tp>0?(cp/tp)*100:0;document.getElementById('progressFill').style.width=pe+'%';document.getElementById('progressText').textContent=`${cp}/${tp} 완성`;}
 function collectUserInputDetails(){const d={},sp={},ef={},us={},be={},av=[];addIfNotEmpty(sp,'main_function','main_function');addIfNotEmpty(sp,'size_capacity','size_capacity');addIfNotEmpty(sp,'color','color');addIfNotEmpty(sp,'material','material');addIfNotEmpty(sp,'power_battery','power_battery');if(Object.keys(sp).length>0)d.specs=sp;addIfNotEmpty(ef,'problem_solving','problem_solving');addIfNotEmpty(ef,'time_saving','time_saving');addIfNotEmpty(ef,'space_efficiency','space_efficiency');addIfNotEmpty(ef,'cost_saving','cost_saving');if(Object.keys(ef).length>0)d.efficiency=ef;addIfNotEmpty(us,'usage_location','usage_location');addIfNotEmpty(us,'usage_frequency','usage_frequency');addIfNotEmpty(us,'target_users','target_users');addIfNotEmpty(us,'usage_method','usage_method');if(Object.keys(us).length>0)d.usage=us;['advantage1','advantage2','advantage3'].forEach(id=>{const v=document.getElementById(id)?.value.trim();if(v)av.push(v);});if(av.length>0)be.advantages=av;addIfNotEmpty(be,'precautions','precautions');if(Object.keys(be).length>0)d.benefits=be;return d;}
@@ -487,6 +501,13 @@ function saveCurrentProduct(){if(cKI===-1||cPI===-1){showDetailedError('선택 �
 function completeProduct(){const kd=collectKeywordsData(),ud=collectUserInputDetails(),fd={title:document.getElementById('title').value.trim(),category:document.getElementById('category').value,prompt_type:document.getElementById('prompt_type').value,keywords:kd,user_details:ud,thumbnail_url:document.getElementById('thumbnail_url').value.trim()};if(validateAndSubmitData(fd))console.log('대기열 저장 요청이 전송되었습니다.');}
 function previousProduct(){if(cKI===-1||cPI===-1)return;const ck=kw[cKI];if(cPI>0)selectProduct(cKI,cPI-1);else if(cKI>0){const pk=kw[cKI-1];selectProduct(cKI-1,pk.products.length-1);}}
 function nextProduct(){if(cKI===-1||cPI===-1)return;const ck=kw[cKI];if(cPI<ck.products.length-1)selectProduct(cKI,cPI+1);else if(cKI<kw.length-1)selectProduct(cKI+1,0);}
+function setupDragAndDrop(){const keywordGroups=document.querySelectorAll('.keyword-group');const productItems=document.querySelectorAll('.product-item');keywordGroups.forEach((group,index)=>{group.addEventListener('dragstart',handleKeywordDragStart);group.addEventListener('dragend',handleDragEnd);group.addEventListener('dragover',handleDragOver);group.addEventListener('drop',handleKeywordDrop);});productItems.forEach((item,index)=>{item.addEventListener('dragstart',handleProductDragStart);item.addEventListener('dragend',handleDragEnd);item.addEventListener('dragover',handleDragOver);item.addEventListener('drop',handleProductDrop);});}
+function handleKeywordDragStart(e){if(!e.target.classList.contains('keyword-group'))return;e.stopPropagation();draggedElement=e.target;draggedType='keyword';draggedIndex=parseInt(e.target.dataset.keywordIndex);e.target.classList.add('dragging');e.dataTransfer.effectAllowed='move';}
+function handleProductDragStart(e){if(!e.target.classList.contains('product-item'))return;e.stopPropagation();draggedElement=e.target;draggedType='product';draggedKeywordIndex=parseInt(e.target.dataset.keyword);draggedIndex=parseInt(e.target.dataset.product);e.target.classList.add('dragging');e.dataTransfer.effectAllowed='move';}
+function handleDragEnd(e){e.target.classList.remove('dragging');document.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over'));draggedElement=null;draggedType=null;draggedIndex=null;draggedKeywordIndex=null;}
+function handleDragOver(e){e.preventDefault();e.dataTransfer.dropEffect='move';}
+function handleKeywordDrop(e){e.preventDefault();e.stopPropagation();if(draggedType!=='keyword'||!e.target.closest('.keyword-group'))return;const targetGroup=e.target.closest('.keyword-group');if(!targetGroup||targetGroup===draggedElement)return;const targetIndex=parseInt(targetGroup.dataset.keywordIndex);if(draggedIndex!==targetIndex){const draggedKeyword=kw.splice(draggedIndex,1)[0];kw.splice(targetIndex,0,draggedKeyword);if(cKI===draggedIndex)cKI=targetIndex;else if(cKI===targetIndex)cKI=draggedIndex<targetIndex?cKI+1:cKI-1;else if(cKI>Math.min(draggedIndex,targetIndex)&&cKI<=Math.max(draggedIndex,targetIndex))cKI+=draggedIndex<targetIndex?-1:1;updateUI();showSuccessModal('키워드 순서 변경','키워드 순서가 성공적으로 변경되었습니다.','🔄');}}
+function handleProductDrop(e){e.preventDefault();e.stopPropagation();if(draggedType!=='product'||!e.target.closest('.product-item'))return;const targetItem=e.target.closest('.product-item');if(!targetItem||targetItem===draggedElement)return;const targetKeywordIndex=parseInt(targetItem.dataset.keyword);const targetProductIndex=parseInt(targetItem.dataset.product);if(draggedKeywordIndex===targetKeywordIndex&&draggedIndex===targetProductIndex)return;const draggedProduct=kw[draggedKeywordIndex].products.splice(draggedIndex,1)[0];kw[targetKeywordIndex].products.splice(targetProductIndex,0,draggedProduct);if(cKI===draggedKeywordIndex&&cPI===draggedIndex){cKI=targetKeywordIndex;cPI=targetProductIndex;}else if(cKI===targetKeywordIndex){if(cPI>=targetProductIndex)cPI++;}updateUI();showSuccessModal('상품 순서 변경','상품 순서가 성공적으로 변경되었습니다.','🔄');}
 document.getElementById('titleKeyword').addEventListener('keypress',function(e){if(e.key==='Enter'){e.preventDefault();generateTitles();}});
 </script>
 </body>
