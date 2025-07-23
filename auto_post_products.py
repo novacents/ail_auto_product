@@ -6,8 +6,8 @@
 키워드 입력 → 알리익스프레스 API → AI 콘텐츠 생성 → 워드프레스 자동 발행
 
 작성자: Claude AI
-날짜: 2025-07-22
-버전: v5.0 (FIFU, YoastSEO, 태그 기능 추가)
+날짜: 2025-07-23
+버전: v5.1 (한글 슬러그 + generated_html 활용)
 """
 
 import os
@@ -417,7 +417,7 @@ class AliExpressPostingSystem:
         return processed_products
     
     def generate_content_with_gemini(self, job_data, products):
-        """🚀 Gemini API로 4가지 프롬프트 템플릿 기반 블로그 콘텐츠 생성"""
+        """🚀 Gemini API로 4가지 프롬프트 템플릿 기반 블로그 콘텐츠 생성 (큐 데이터 활용 개선)"""
         try:
             # 프롬프트 타입 추출 (기본값: essential_items)
             prompt_type = job_data.get('prompt_type', 'essential_items')
@@ -430,10 +430,21 @@ class AliExpressPostingSystem:
             user_details = job_data.get('user_details', {})
             has_user_details = job_data.get('has_user_details', False)
             
+            # 🎯 큐의 products_data에서 generated_html 정보 추출
+            products_data = job_data.get('products_data', [])
+            queue_html_content = ""
+            if products_data:
+                queue_html_content = "\n**큐에 저장된 상품 HTML 정보:**\n"
+                for i, product in enumerate(products_data[:3]):  # 최대 3개만 참고
+                    queue_html_content += f"상품 {i+1}: {product.get('title', 'N/A')}\n"
+                    if product.get('generated_html'):
+                        queue_html_content += f"HTML: {product['generated_html'][:200]}...\n"
+            
             mode_text = "즉시 발행" if self.immediate_mode else "큐 처리"
             print(f"[🤖] Gemini AI로 '{title}' 콘텐츠를 생성합니다... ({mode_text})")
             print(f"[🎯] 프롬프트 타입: {prompt_type}")
             print(f"[📝] 사용자 상세 정보: {'포함' if has_user_details else '없음'}")
+            print(f"[🔗] 큐 상품 데이터: {len(products_data)}개")
             
             # 상품 정보 추가 (프롬프트에 포함할 상품 요약)
             product_summaries = []
@@ -444,6 +455,7 @@ class AliExpressPostingSystem:
             # 상품 정보를 포함한 상세 정보 구성
             enhanced_user_details = user_details.copy() if user_details else {}
             enhanced_user_details['product_summaries'] = product_summaries
+            enhanced_user_details['queue_products_count'] = len(products_data)
             
             # 🚀 4가지 프롬프트 템플릿 시스템 활용
             prompt = PromptTemplates.get_prompt_by_type(
@@ -456,6 +468,10 @@ class AliExpressPostingSystem:
             # 상품 정보를 프롬프트에 추가
             if product_summaries:
                 prompt += f"\n\n**알리익스프레스 상품 정보:**\n{chr(10).join(product_summaries)}\n\n"
+            
+            # 큐 HTML 정보 추가
+            if queue_html_content:
+                prompt += f"\n{queue_html_content}\n"
             
             # 프롬프트 마지막에 공통 요구사항 추가
             prompt += """
@@ -472,6 +488,10 @@ class AliExpressPostingSystem:
 - 키워드 밀도 2-3% 유지
 - 제목 태그와 소제목 활용
 - 구조화된 정보 제공
+
+**큐 데이터 활용:**
+- 위에 제공된 큐의 상품 HTML 정보를 참고하여 내용 작성
+- 상품 카드는 별도로 삽입되므로 본문에서는 자연스러운 언급만
 
 **절대 금지사항:**
 - 상품 링크나 버튼 HTML 코드 포함 금지 (별도 삽입)
@@ -495,8 +515,8 @@ class AliExpressPostingSystem:
             # 본문 글자 크기 18px 적용
             base_content = f'<div style="font-size: 18px; line-height: 1.6;">{base_content}</div>'
             
-            # 상품 카드 삽입
-            final_content = self.insert_product_cards(base_content, products)
+            # 상품 카드 삽입 (큐 데이터 우선 활용)
+            final_content = self.insert_product_cards(base_content, products, job_data)
             
             print(f"[✅] Gemini AI가 {len(base_content)}자의 {prompt_type} 스타일 콘텐츠를 생성했습니다.")
             return final_content
@@ -505,15 +525,28 @@ class AliExpressPostingSystem:
             print(f"[❌] Gemini 콘텐츠 생성 중 오류: {e}")
             return None
     
-    def insert_product_cards(self, content, products):
-        """상품 카드를 콘텐츠에 삽입"""
+    def insert_product_cards(self, content, products, job_data):
+        """상품 카드를 콘텐츠에 삽입 (큐의 generated_html 우선 활용)"""
         final_content = content
+        
+        # 큐에서 products_data 정보 추출
+        products_data = job_data.get('products_data', [])
+        
+        print(f"[🔗] 상품 카드 삽입 시작: API 상품 {len(products)}개, 큐 상품 {len(products_data)}개")
         
         # 각 상품에 대해 카드 생성 및 삽입
         for i, product in enumerate(products):
-            # 상품 카드 HTML 생성
-            card_html = self.generate_product_card_html(product)
             keyword = product.get('keyword', '')
+            
+            # 🎯 큐의 generated_html 우선 사용
+            card_html = ""
+            if i < len(products_data) and products_data[i].get('generated_html'):
+                card_html = products_data[i]['generated_html']
+                print(f"[✅] 큐의 generated_html 사용: 상품 {i+1}")
+            else:
+                # 폴백: 기존 방식으로 카드 생성
+                card_html = self.generate_product_card_html(product)
+                print(f"[⚠️] API 데이터로 카드 생성: 상품 {i+1}")
             
             # 키워드가 포함된 섹션 뒤에 카드 삽입
             if keyword:
@@ -549,7 +582,7 @@ class AliExpressPostingSystem:
         return final_content
     
     def generate_product_card_html(self, product):
-        """개별 상품 카드 HTML 생성"""
+        """개별 상품 카드 HTML 생성 (폴백용)"""
         # 상품 이미지 처리
         image_html = ""
         if product.get('image_url') and product['image_url'].startswith('http'):
@@ -599,34 +632,14 @@ class AliExpressPostingSystem:
         return focus_keyphrase
     
     def generate_slug(self, title):
-        """URL 슬러그 생성 (한글을 영문으로 변환)"""
+        """🎯 URL 슬러그 생성 (한글 유지 방식 - auto_post_overseas.py와 동일)"""
         print(f"[🤖] URL 슬러그를 생성합니다...")
         
-        # 한글을 간단한 영문으로 변환하는 매핑
-        korean_to_english = {
-            "추천": "recommendation",
-            "가이드": "guide",
-            "리뷰": "review",
-            "제품": "product",
-            "상품": "item",
-            "베스트": "best",
-            "인기": "popular",
-            "필수": "essential",
-            "여행": "travel",
-            "용품": "goods",
-            "아이템": "items"
-        }
+        # 한글을 그대로 유지하고 공백만 하이픈으로 변환
+        slug = title.replace(" ", "-")
         
-        # 제목을 소문자로 변환
-        slug = title.lower()
-        
-        # 한글 키워드를 영문으로 변환
-        for korean, english in korean_to_english.items():
-            slug = slug.replace(korean, english)
-        
-        # 특수문자 제거 및 공백을 하이픈으로 변환
-        slug = re.sub(r'[^a-zA-Z0-9가-힣\s-]', '', slug)
-        slug = re.sub(r'\s+', '-', slug.strip())
+        # 특수문자 제거 (한글과 영문, 숫자, 하이픈만 유지)
+        slug = re.sub(r'[^a-zA-Z0-9가-힣\-]', '', slug)
         
         # 연속된 하이픈 제거
         slug = re.sub(r'-+', '-', slug)
@@ -638,7 +651,7 @@ class AliExpressPostingSystem:
         if not slug or len(slug) > 50:
             slug = f"aliexpress-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         
-        print(f"[✅] URL 슬러그 생성 완료: {slug}")
+        print(f"[✅] URL 슬러그 생성 완료 (한글 유지): {slug}")
         return slug
     
     def generate_tags(self, title, keywords):
@@ -766,7 +779,7 @@ class AliExpressPostingSystem:
                 "status": "publish",
                 "categories": [job_data["category_id"]],
                 "tags": tag_ids,  # 태그 추가
-                "slug": slug  # 슬러그 추가
+                "slug": slug  # 한글 슬러그 추가
             }
             
             # 1단계: 게시물 생성
