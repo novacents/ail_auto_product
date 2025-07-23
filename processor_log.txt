@@ -33,3 +33,5 @@
 [2025-07-19 14:19:30] INFO: Item successfully added to queue with prompt type 'essential_items', user details, and product data. Queue stats: {"total":1,"pending":1,"processing":0,"completed":0,"failed":0}
 [2025-07-19 18:07:43] INFO: Input data received: Title='물놀이 필수템 추천', Category=356, Prompt Type=essential_items, Keywords=2, User Details=Yes, Publish Mode=queue.
 [2025-07-19 18:07:44] INFO: Item successfully added to queue with prompt type 'essential_items', user details, and product data. Queue stats: {"total":1,"pending":1,"processing":0,"completed":0,"failed":0}
+[2025-07-23 20:49:13] INFO: Input data received: Title='놓치면 후회! 2025년 여름휴가 피서 &amp; 물놀이 필수템 총정리', Category=356, Prompt Type=essential_items, Keywords=2, User Details=Yes, Publish Mode=queue, Thumbnail URL=Yes.
+[2025-07-23 20:49:14] INFO: Item successfully added to queue with prompt type 'essential_items', user details, product data, and thumbnail URL. Queue stats: {"total":1,"pending":1,"processing":0,"completed":0,"failed":0}
