@@ -1,3 +1,15 @@
 client_credentials.json
 google_token.json
 gdrive_debug_*.log
+
+# General logs and temp files
+*.log
+debug_processor.txt
+processor_log.txt
+published_log.txt
+
+# Python cache
+__pycache__/
+
+# Temporary directory
+temp/
