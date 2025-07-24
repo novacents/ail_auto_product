@@ -4,7 +4,7 @@
  * 대용량 product_queue.json 성능 문제 해결을 위한 파일 분할 시스템
  * 
  * @author Claude AI
- * @version 1.0
+ * @version 1.1
  * @date 2025-07-24
  */
 
@@ -182,7 +182,8 @@ function add_queue_split($queue_data) {
         'updated_at' => $queue_data['updated_at'],
         'attempts' => $queue_data['attempts'],
         'category_name' => $queue_data['category_name'] ?? '',
-        'prompt_type_name' => $queue_data['prompt_type_name'] ?? ''
+        'prompt_type_name' => $queue_data['prompt_type_name'] ?? '',
+        'priority' => $queue_data['priority'] ?? 1
     ];
     
     if (!update_queue_index($queue_id, $index_info)) {
@@ -225,6 +226,80 @@ function get_pending_queues_split($limit = null) {
     // 실제 큐 데이터 로드
     $queues = [];
     foreach ($pending_queues as $queue_info) {
+        $queue_data = load_queue_split($queue_info['queue_id']);
+        if ($queue_data !== null) {
+            $queues[] = $queue_data;
+        }
+    }
+    
+    return $queues;
+}
+
+/**
+ * 🆕 전체 큐 목록 조회 (모든 상태)
+ */
+function get_all_queues_split($limit = null, $sort_by = 'created_at', $sort_order = 'DESC') {
+    $index = load_queue_index();
+    $all_queues = array_values($index);
+    
+    // 정렬
+    usort($all_queues, function($a, $b) use ($sort_by, $sort_order) {
+        $val_a = $a[$sort_by] ?? '';
+        $val_b = $b[$sort_by] ?? '';
+        
+        if ($sort_by === 'created_at' || $sort_by === 'updated_at') {
+            $val_a = strtotime($val_a);
+            $val_b = strtotime($val_b);
+        }
+        
+        $result = $val_a <=> $val_b;
+        return $sort_order === 'DESC' ? -$result : $result;
+    });
+    
+    // 제한 적용
+    if ($limit !== null && $limit > 0) {
+        $all_queues = array_slice($all_queues, 0, $limit);
+    }
+    
+    // 실제 큐 데이터 로드 (queue_manager.php용으로 전체 데이터 필요)
+    $queues = [];
+    foreach ($all_queues as $queue_info) {
+        $queue_data = load_queue_split($queue_info['queue_id']);
+        if ($queue_data !== null) {
+            $queues[] = $queue_data;
+        }
+    }
+    
+    return $queues;
+}
+
+/**
+ * 🆕 상태별 큐 조회
+ */
+function get_queues_by_status_split($status, $limit = null) {
+    $index = load_queue_index();
+    $filtered_queues = [];
+    
+    // 해당 상태만 필터링
+    foreach ($index as $queue_id => $queue_info) {
+        if ($queue_info['status'] === $status) {
+            $filtered_queues[] = $queue_info;
+        }
+    }
+    
+    // 생성 시간순 정렬 (최신순)
+    usort($filtered_queues, function($a, $b) {
+        return strtotime($b['created_at']) - strtotime($a['created_at']);
+    });
+    
+    // 제한 적용
+    if ($limit !== null && $limit > 0) {
+        $filtered_queues = array_slice($filtered_queues, 0, $limit);
+    }
+    
+    // 실제 큐 데이터 로드
+    $queues = [];
+    foreach ($filtered_queues as $queue_info) {
         $queue_data = load_queue_split($queue_info['queue_id']);
         if ($queue_data !== null) {
             $queues[] = $queue_data;
@@ -330,7 +405,8 @@ function update_queue_status_split($queue_id, $new_status, $error_message = null
         'updated_at' => $queue_data['updated_at'],
         'attempts' => $queue_data['attempts'] ?? 0,
         'category_name' => $queue_data['category_name'] ?? '',
-        'prompt_type_name' => $queue_data['prompt_type_name'] ?? ''
+        'prompt_type_name' => $queue_data['prompt_type_name'] ?? '',
+        'priority' => $queue_data['priority'] ?? 1
     ];
     
     if (!update_queue_index($queue_id, $index_info)) {
@@ -342,6 +418,123 @@ function update_queue_status_split($queue_id, $new_status, $error_message = null
     update_legacy_queue_file();
     
     return true;
+}
+
+/**
+ * 🆕 큐 데이터 전체 업데이트 (queue_manager.php 용)
+ */
+function update_queue_data_split($queue_id, $updated_data) {
+    $queue_data = load_queue_split($queue_id);
+    if ($queue_data === null) {
+        error_log("Queue not found for data update: {$queue_id}");
+        return false;
+    }
+    
+    $old_status = $queue_data['status'];
+    $old_filename = $queue_data['filename'];
+    
+    // 기존 메타 정보 보존하면서 데이터 업데이트
+    $preserved_fields = ['queue_id', 'filename', 'created_at', 'attempts'];
+    foreach ($preserved_fields as $field) {
+        if (isset($queue_data[$field])) {
+            $updated_data[$field] = $queue_data[$field];
+        }
+    }
+    
+    // updated_at는 항상 현재 시간으로
+    $updated_data['updated_at'] = date('Y-m-d H:i:s');
+    
+    // 상태가 변경된 경우 파일 이동
+    $new_status = $updated_data['status'] ?? $old_status;
+    $old_dir = get_queue_directory_by_status($old_status);
+    $new_dir = get_queue_directory_by_status($new_status);
+    
+    $old_path = $old_dir . '/' . $old_filename;
+    $new_path = $new_dir . '/' . $old_filename;
+    
+    // 새 데이터로 파일 저장
+    $json_content = json_encode($updated_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    if ($json_content === false) {
+        error_log("Failed to encode updated queue data for queue_id: {$queue_id}");
+        return false;
+    }
+    
+    if (!file_put_contents($new_path, $json_content, LOCK_EX)) {
+        error_log("Failed to save updated queue file: {$new_path}");
+        return false;
+    }
+    
+    // 기존 파일 삭제 (다른 디렉토리인 경우)
+    if ($old_path !== $new_path && file_exists($old_path)) {
+        unlink($old_path);
+    }
+    
+    // 인덱스 업데이트
+    $index_info = [
+        'queue_id' => $queue_id,
+        'filename' => $old_filename,
+        'status' => $new_status,
+        'title' => $updated_data['title'] ?? '',
+        'created_at' => $updated_data['created_at'] ?? date('Y-m-d H:i:s'),
+        'updated_at' => $updated_data['updated_at'],
+        'attempts' => $updated_data['attempts'] ?? 0,
+        'category_name' => $updated_data['category_name'] ?? '',
+        'prompt_type_name' => $updated_data['prompt_type_name'] ?? '',
+        'priority' => $updated_data['priority'] ?? 1
+    ];
+    
+    if (!update_queue_index($queue_id, $index_info)) {
+        error_log("Failed to update queue index for data update: {$queue_id}");
+        return false;
+    }
+    
+    // 호환성을 위한 레거시 파일 업데이트
+    update_legacy_queue_file();
+    
+    return true;
+}
+
+/**
+ * 🆕 큐 순서 변경 (queue_manager.php 용)
+ */
+function reorder_queues_split($queue_ids_array) {
+    $index = load_queue_index();
+    $reordered_count = 0;
+    
+    // 우선순위를 배열 순서에 따라 설정
+    foreach ($queue_ids_array as $order_index => $queue_id) {
+        if (isset($index[$queue_id])) {
+            // 큐 데이터 로드
+            $queue_data = load_queue_split($queue_id);
+            if ($queue_data !== null) {
+                // 우선순위 업데이트 (낮은 숫자가 높은 우선순위)
+                $queue_data['priority'] = $order_index + 1;
+                $queue_data['updated_at'] = date('Y-m-d H:i:s');
+                
+                // 파일 업데이트
+                $status = $queue_data['status'];
+                $filename = $queue_data['filename'];
+                $dir = get_queue_directory_by_status($status);
+                $filepath = $dir . '/' . $filename;
+                
+                $json_content = json_encode($queue_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+                if ($json_content !== false && file_put_contents($filepath, $json_content, LOCK_EX)) {
+                    // 인덱스 업데이트
+                    $index[$queue_id]['priority'] = $queue_data['priority'];
+                    $index[$queue_id]['updated_at'] = $queue_data['updated_at'];
+                    $reordered_count++;
+                }
+            }
+        }
+    }
+    
+    // 인덱스 저장
+    if ($reordered_count > 0) {
+        save_queue_index($index);
+        update_legacy_queue_file();
+    }
+    
+    return $reordered_count;
 }
 
 /**
@@ -399,6 +592,47 @@ function get_queue_stats_split() {
     }
     
     return $stats;
+}
+
+/**
+ * 🆕 큐 검색 (queue_manager.php 용)
+ */
+function search_queues_split($search_term, $status = null, $limit = 50) {
+    $index = load_queue_index();
+    $matched_queues = [];
+    
+    foreach ($index as $queue_id => $queue_info) {
+        // 상태 필터링
+        if ($status !== null && $queue_info['status'] !== $status) {
+            continue;
+        }
+        
+        // 검색어 매칭 (제목, 카테고리, 프롬프트 타입에서 검색)
+        $searchable_text = strtolower(
+            $queue_info['title'] . ' ' . 
+            $queue_info['category_name'] . ' ' . 
+            $queue_info['prompt_type_name']
+        );
+        
+        if (strpos($searchable_text, strtolower($search_term)) !== false) {
+            $queue_data = load_queue_split($queue_id);
+            if ($queue_data !== null) {
+                $matched_queues[] = $queue_data;
+            }
+        }
+    }
+    
+    // 최신순 정렬
+    usort($matched_queues, function($a, $b) {
+        return strtotime($b['created_at']) - strtotime($a['created_at']);
+    });
+    
+    // 제한 적용
+    if ($limit > 0) {
+        $matched_queues = array_slice($matched_queues, 0, $limit);
+    }
+    
+    return $matched_queues;
 }
 
 /**
