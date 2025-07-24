@@ -7,7 +7,7 @@
 
 작성자: Claude AI
 날짜: 2025-07-24
-버전: v5.2 (SEO 최적화 완전 구현 + FIFU 썸네일 + Yoast SEO 연동)
+버전: v5.3 (메모리 최적화 + SEO 완전 구현)
 """
 
 import os
@@ -18,6 +18,7 @@ import requests
 import traceback
 import argparse
 import re
+import gc  # 가비지 컬렉션 추가
 import google.generativeai as genai
 from datetime import datetime
 from dotenv import load_dotenv
@@ -131,8 +132,14 @@ class AliExpressPostingSystem:
                 print(f"[📱] 텔레그램 알림 전송 성공: {message[:50]}...")
             else:
                 print(f"[❌] 텔레그램 알림 전송 실패: {response.status_code}")
+            # 응답 객체 명시적 삭제
+            del response
         except Exception as e:
             print(f"[❌] 텔레그램 알림 전송 중 오류: {e}")
+        finally:
+            # 메모리 정리
+            if 'data' in locals():
+                del data
             
     def log_message(self, message):
         """로그 메시지 저장"""
@@ -161,6 +168,11 @@ class AliExpressPostingSystem:
             pending_jobs = [job for job in queue_data if job.get("status") == "pending"]
             
             print(f"[📋] 큐에서 {len(pending_jobs)}개의 대기 중인 작업을 발견했습니다.")
+            
+            # 전체 큐 데이터는 메모리에서 제거
+            del queue_data
+            gc.collect()  # 가비지 컬렉션 강제 실행
+            
             return pending_jobs
             
         except Exception as e:
@@ -193,6 +205,10 @@ class AliExpressPostingSystem:
                     
             self.save_queue(queue_data)
             
+            # 메모리 정리
+            del queue_data
+            gc.collect()
+            
         except Exception as e:
             print(f"[❌] 작업 상태 업데이트 중 오류: {e}")
     
@@ -207,6 +223,10 @@ class AliExpressPostingSystem:
             
             self.save_queue(queue_data)
             print(f"[🗑️] 작업 ID {job_id}를 큐에서 제거했습니다.")
+            
+            # 메모리 정리
+            del queue_data
+            gc.collect()
             
         except Exception as e:
             print(f"[❌] 큐에서 작업 제거 중 오류: {e}")
@@ -235,6 +255,10 @@ class AliExpressPostingSystem:
                 return None
                 
             print(f"[✅] 즉시 발행 작업 로드 성공: {job_data.get('title', 'N/A')}")
+            
+            # temp_data는 더 이상 필요 없으므로 삭제
+            del temp_data
+            
             return job_data
             
         except Exception as e:
@@ -293,6 +317,11 @@ class AliExpressPostingSystem:
                 if promotion_links:
                     affiliate_link = promotion_links[0]['promotion_link']
                     print(f"[✅] 알리익스프레스 링크 변환 성공")
+                    
+                    # 응답 데이터 정리
+                    del response
+                    del result
+                    
                     return affiliate_link
                 else:
                     print(f"[⚠️] 알리익스프레스 링크 변환 응답에 링크가 없음")
@@ -304,9 +333,16 @@ class AliExpressPostingSystem:
         except Exception as e:
             print(f"[❌] 알리익스프레스 링크 변환 중 오류: {e}")
             return None
+        finally:
+            # 메모리 정리
+            if 'request' in locals():
+                del request
+            if 'response' in locals():
+                del response
+            gc.collect()
     
     def get_aliexpress_product_details(self, product_id):
-        """알리익스프레스 상품 상세 정보 조회"""
+        """알리익스프레스 상품 상세 정보 조회 (메모리 최적화)"""
         try:
             # 상품 상세 API 호출
             request = iop.IopRequest('aliexpress.affiliate.productdetail.get', 'GET')
@@ -352,17 +388,25 @@ class AliExpressPostingSystem:
                     except:
                         volume_display = "판매량 정보 없음"
                     
+                    # 🔧 메모리 최적화: original_data 제거
                     formatted_product = {
                         "product_id": product_id,
                         "title": product.get("product_title", "상품명 없음"),
                         "price": f"₩{krw_price:,}",
                         "image_url": product.get("product_main_image_url", ""),
                         "rating_display": rating_display,
-                        "lastest_volume": volume_display,
-                        "original_data": product
+                        "lastest_volume": volume_display
+                        # "original_data": product  # 제거됨 - 메모리 절약
                     }
                     
                     print(f"[✅] 상품 정보 조회 성공: {formatted_product['title']}")
+                    
+                    # 응답 데이터 정리
+                    del product
+                    del products
+                    del result
+                    del response
+                    
                     return formatted_product
             
             print(f"[⚠️] 상품 정보를 찾을 수 없습니다")
@@ -371,9 +415,16 @@ class AliExpressPostingSystem:
         except Exception as e:
             print(f"[❌] 상품 정보 조회 중 오류: {e}")
             return None
+        finally:
+            # 메모리 정리
+            if 'request' in locals():
+                del request
+            if 'response' in locals():
+                del response
+            gc.collect()
     
     def process_aliexpress_products(self, job_data):
-        """알리익스프레스 상품 처리"""
+        """알리익스프레스 상품 처리 (메모리 최적화)"""
         print("[🌏] 알리익스프레스 상품 처리를 시작합니다...")
         
         processed_products = []
@@ -416,12 +467,15 @@ class AliExpressPostingSystem:
                     
                     # API 호출 간 딜레이
                     time.sleep(2)
+                    
+                    # 주기적 메모리 정리
+                    gc.collect()
         
         print(f"[✅] 알리익스프레스 상품 처리 완료: {len(processed_products)}개")
         return processed_products
     
     def generate_content_with_gemini(self, job_data, products):
-        """🚀 Gemini API로 4가지 프롬프트 템플릿 기반 블로그 콘텐츠 생성 (큐 데이터 활용 개선)"""
+        """🚀 Gemini API로 4가지 프롬프트 템플릿 기반 블로그 콘텐츠 생성 (메모리 최적화)"""
         try:
             # 프롬프트 타입 추출 (기본값: essential_items)
             prompt_type = job_data.get('prompt_type', 'essential_items')
@@ -442,6 +496,7 @@ class AliExpressPostingSystem:
                 for i, product in enumerate(products_data[:3]):  # 최대 3개만 참고
                     queue_html_content += f"상품 {i+1}: {product.get('title', 'N/A')}\n"
                     if product.get('generated_html'):
+                        # HTML 미리보기만 추가 (전체 HTML은 너무 큼)
                         queue_html_content += f"HTML: {product['generated_html'][:200]}...\n"
             
             mode_text = "즉시 발행" if self.immediate_mode else "큐 처리"
@@ -509,6 +564,9 @@ class AliExpressPostingSystem:
             response = self.gemini_model.generate_content(prompt)
             base_content = response.text
             
+            # 응답 객체 즉시 삭제
+            del response
+            
             if not base_content or len(base_content.strip()) < 1500:
                 print("[❌] Gemini가 충분한 길이의 콘텐츠를 생성하지 못했습니다.")
                 return None
@@ -522,12 +580,21 @@ class AliExpressPostingSystem:
             # 상품 카드 삽입 (큐 데이터 우선 활용)
             final_content = self.insert_product_cards(base_content, products, job_data)
             
+            # 불필요한 변수 정리
+            del prompt
+            del enhanced_user_details
+            del product_summaries
+            gc.collect()
+            
             print(f"[✅] Gemini AI가 {len(base_content)}자의 {prompt_type} 스타일 콘텐츠를 생성했습니다.")
             return final_content
             
         except Exception as e:
             print(f"[❌] Gemini 콘텐츠 생성 중 오류: {e}")
             return None
+        finally:
+            # 메모리 정리
+            gc.collect()
     
     def insert_product_cards(self, content, products, job_data):
         """상품 카드를 콘텐츠에 삽입 (큐의 generated_html 우선 활용)"""
@@ -617,7 +684,7 @@ class AliExpressPostingSystem:
 </div>'''
     
     def generate_focus_keyphrase_with_gemini(self, title, content, keywords):
-        """🎯 Gemini API로 SEO 최적화된 초점 키프레이즈 생성"""
+        """🎯 Gemini API로 SEO 최적화된 초점 키프레이즈 생성 (메모리 최적화)"""
         print(f"[🤖] Gemini AI로 초점 키프레이즈를 생성합니다...")
         
         # 폴백 키프레이즈
@@ -647,6 +714,10 @@ class AliExpressPostingSystem:
             response = self.gemini_model.generate_content(prompt)
             keyphrase = response.text.strip()
             
+            # 응답 객체 즉시 삭제
+            del response
+            del prompt
+            
             # 유효성 검사
             if not keyphrase or len(keyphrase) > 30 or '\n' in keyphrase:
                 print(f"[⚠️] 생성된 키프레이즈가 유효하지 않음, 폴백 사용: {fallback_keyphrase}")
@@ -658,9 +729,12 @@ class AliExpressPostingSystem:
         except Exception as e:
             print(f"[❌] 초점 키프레이즈 생성 실패: {e}, 폴백 사용: {fallback_keyphrase}")
             return fallback_keyphrase
+        finally:
+            # 메모리 정리
+            gc.collect()
     
     def generate_meta_description_with_gemini(self, title, content, focus_keyphrase):
-        """🎯 Gemini API로 SEO 최적화된 메타 설명 생성"""
+        """🎯 Gemini API로 SEO 최적화된 메타 설명 생성 (메모리 최적화)"""
         print(f"[🤖] Gemini AI로 메타 설명을 생성합니다...")
         
         # 폴백 메타 설명
@@ -689,6 +763,10 @@ class AliExpressPostingSystem:
             response = self.gemini_model.generate_content(prompt)
             description = response.text.strip()
             
+            # 응답 객체 즉시 삭제
+            del response
+            del prompt
+            
             # 유효성 검사
             if not description or len(description) > 160 or len(description) < 100:
                 print(f"[⚠️] 생성된 메타 설명이 유효하지 않음, 폴백 사용: {fallback_description}")
@@ -700,9 +778,12 @@ class AliExpressPostingSystem:
         except Exception as e:
             print(f"[❌] 메타 설명 생성 실패: {e}, 폴백 사용: {fallback_description}")
             return fallback_description
+        finally:
+            # 메모리 정리
+            gc.collect()
     
     def generate_seo_optimized_tags_with_gemini(self, title, content, keywords):
-        """🎯 Gemini API로 SEO 최적화된 태그 생성"""
+        """🎯 Gemini API로 SEO 최적화된 태그 생성 (메모리 최적화)"""
         print(f"[🤖] Gemini AI로 SEO 최적화 태그를 생성합니다...")
         
         # 폴백 태그
@@ -733,6 +814,10 @@ class AliExpressPostingSystem:
             response = self.gemini_model.generate_content(prompt)
             tags_string = response.text.strip()
             
+            # 응답 객체 즉시 삭제
+            del response
+            del prompt
+            
             # 태그 파싱
             if tags_string:
                 tags = [tag.strip() for tag in tags_string.split(',') if tag.strip()]
@@ -748,9 +833,12 @@ class AliExpressPostingSystem:
         except Exception as e:
             print(f"[❌] SEO 태그 생성 실패: {e}, 폴백 사용")
             return fallback_tags
+        finally:
+            # 메모리 정리
+            gc.collect()
     
     def generate_seo_optimized_slug_with_gemini(self, title, content):
-        """🎯 Gemini API로 SEO 최적화된 한글 슬러그 생성"""
+        """🎯 Gemini API로 SEO 최적화된 한글 슬러그 생성 (메모리 최적화)"""
         print(f"[🤖] Gemini AI로 SEO 최적화 한글 슬러그를 생성합니다...")
         
         # 폴백 슬러그 (제목 기반)
@@ -781,6 +869,10 @@ class AliExpressPostingSystem:
             response = self.gemini_model.generate_content(prompt)
             slug = response.text.strip()
             
+            # 응답 객체 즉시 삭제
+            del response
+            del prompt
+            
             # 슬러그 정리 및 유효성 검사
             if slug:
                 # 특수문자 제거 (한글, 영문, 숫자, 하이픈만 유지)
@@ -800,6 +892,9 @@ class AliExpressPostingSystem:
         except Exception as e:
             print(f"[❌] SEO 슬러그 생성 실패: {e}, 폴백 사용: {fallback_slug}")
             return fallback_slug
+        finally:
+            # 메모리 정리
+            gc.collect()
     
     def ensure_tags_on_wordpress(self, tags):
         """워드프레스에 태그 확인 및 등록"""
@@ -847,14 +942,23 @@ class AliExpressPostingSystem:
                     if create_res.status_code == 201:
                         tag_ids.append(create_res.json()['id'])
                 
+                # 응답 객체 삭제
+                del res
+                if 'create_res' in locals():
+                    del create_res
+                
             except requests.exceptions.RequestException as e:
                 print(f"[❌] 태그 API 요청 중 오류 ('{tag_name}'): {e}")
         
         print(f"[✅] {len(tag_ids)}개의 태그 ID를 확보했습니다.")
+        
+        # 메모리 정리
+        gc.collect()
+        
         return tag_ids
     
     def post_to_wordpress(self, job_data, content):
-        """워드프레스에 글 발행 (FIFU, YoastSEO, 태그 포함) - auto_post_overseas.py 방식 적용"""
+        """워드프레스에 글 발행 (FIFU, YoastSEO, 태그 포함) - 메모리 최적화"""
         try:
             mode_text = "즉시 발행" if self.immediate_mode else "큐 처리"
             print(f"[📝] 워드프레스에 '{job_data['title']}' 글을 발행합니다... ({mode_text})")
@@ -915,6 +1019,10 @@ class AliExpressPostingSystem:
                 post_url = post_info.get("link", "")
                 print(f"[✅] 워드프레스 게시물 생성 성공! (ID: {post_id})")
                 
+                # 응답 객체 즉시 삭제
+                del response
+                del post_info
+                
                 # 2단계: FIFU 썸네일 설정 (auto_post_overseas.py 방식)
                 thumbnail_url = job_data.get('thumbnail_url')
                 if thumbnail_url:
@@ -936,6 +1044,10 @@ class AliExpressPostingSystem:
                             print("[✅] FIFU 썸네일 설정 완료.")
                         else:
                             print(f"[⚠️] FIFU 썸네일 설정 실패: {fifu_response.status_code}")
+                        
+                        # 응답 객체 삭제
+                        del fifu_response
+                        
                     except Exception as e:
                         print(f"[⚠️] FIFU 썸네일 설정 중 오류: {e}")
                 else:
@@ -963,7 +1075,10 @@ class AliExpressPostingSystem:
                         print("[✅] Yoast SEO 메타데이터 설정 완료.")
                     else:
                         print(f"[⚠️] Yoast SEO 설정 응답: {yoast_response.status_code}")
-                        
+                    
+                    # 응답 객체 삭제
+                    del yoast_response
+                    
                 except Exception as e:
                     print(f"[⚠️] Yoast SEO 설정 중 오류 (무시하고 계속): {e}")
                 
@@ -972,6 +1087,10 @@ class AliExpressPostingSystem:
                 
                 print(f"[🎉] 모든 작업 완료! 발행된 글 주소: {post_url}")
                 print(f"[📊] SEO 정보 - 슬러그: {seo_slug}, 키프레이즈: {focus_keyphrase}, 태그: {len(seo_tags)}개")
+                
+                # 메모리 정리
+                gc.collect()
+                
                 return post_url
             else:
                 print(f"[❌] 워드프레스 발행 실패: {response.status_code}")
@@ -981,6 +1100,9 @@ class AliExpressPostingSystem:
         except Exception as e:
             print(f"[❌] 워드프레스 발행 중 오류: {e}")
             return None
+        finally:
+            # 메모리 정리
+            gc.collect()
             
     def save_published_log(self, job_data, post_url):
         """발행 로그 저장"""
@@ -997,7 +1119,7 @@ class AliExpressPostingSystem:
             print(f"[❌] 발행 로그 저장 중 오류: {e}")
             
     def process_job(self, job_data):
-        """단일 작업 처리 (4가지 프롬프트 템플릿 시스템 + 즉시 발행 지원)"""
+        """단일 작업 처리 (메모리 최적화)"""
         job_id = job_data["queue_id"]
         title = job_data["title"]
         prompt_type = job_data.get('prompt_type', 'essential_items')
@@ -1065,6 +1187,12 @@ class AliExpressPostingSystem:
                 
                 # 🎉 성공 시 워드프레스 발행 성공 메시지 출력 (keyword_processor.php가 파싱)
                 print(f"워드프레스 발행 성공: {post_url}")
+                
+                # 작업 완료 후 메모리 정리
+                del products
+                del content
+                gc.collect()
+                
                 return True
             else:
                 raise Exception("워드프레스 발행 실패")
@@ -1082,9 +1210,12 @@ class AliExpressPostingSystem:
                 f"오류: {error_msg}"
             )
             return False
+        finally:
+            # 메모리 정리
+            gc.collect()
             
     def run_immediate_mode(self, temp_file):
-        """🚀 즉시 발행 모드 실행"""
+        """🚀 즉시 발행 모드 실행 (메모리 최적화)"""
         print("=" * 60)
         print("🚀 알리익스프레스 즉시 발행 모드 시작")
         print("=" * 60)
@@ -1108,16 +1239,20 @@ class AliExpressPostingSystem:
         # 4. 임시 파일 정리 (선택사항)
         self.cleanup_temp_file(temp_file)
         
-        # 5. 완료 메시지
+        # 5. 메모리 정리
+        del job_data
+        gc.collect()
+        
+        # 6. 완료 메시지
         if success:
-            completion_message = f"[🎉] 즉시 발행 완료! 제목: {job_data.get('title', 'N/A')}"
+            completion_message = f"[🎉] 즉시 발행 완료!"
             self.log_message(completion_message)
             print("=" * 60)
             print("🚀 알리익스프레스 즉시 발행 성공")
             print("=" * 60)
             return True
         else:
-            error_message = f"[❌] 즉시 발행 실패! 제목: {job_data.get('title', 'N/A')}"
+            error_message = f"[❌] 즉시 발행 실패!"
             self.log_message(error_message)
             print("=" * 60)
             print("❌ 알리익스프레스 즉시 발행 실패")
@@ -1125,7 +1260,7 @@ class AliExpressPostingSystem:
             return False
             
     def run(self):
-        """메인 실행 함수 (큐 모드)"""
+        """메인 실행 함수 (큐 모드) - 메모리 최적화"""
         print("=" * 60)
         print("🌏 알리익스프레스 전용 어필리에이트 자동화 시스템 시작 (4가지 프롬프트 템플릿)")
         print("=" * 60)
@@ -1153,6 +1288,10 @@ class AliExpressPostingSystem:
             success = self.process_job(job)
             processed_count += 1
             
+            # 작업 완료 후 메모리 정리
+            del job
+            gc.collect()
+            
             if success and processed_count < len(pending_jobs):
                 print(f"[⏳] {POST_DELAY_SECONDS}초 대기 중...")
                 time.sleep(POST_DELAY_SECONDS)
@@ -1163,6 +1302,10 @@ class AliExpressPostingSystem:
         
         self.log_message(completion_message)
         self.send_telegram_notification(completion_message)
+        
+        # 5. 메모리 정리
+        del pending_jobs
+        gc.collect()
         
         print("=" * 60)
         print("🌏 알리익스프레스 전용 어필리에이트 자동화 시스템 종료")
@@ -1194,6 +1337,10 @@ def main():
         print(f"\n[❌] 예상치 못한 오류가 발생했습니다: {e}")
         print(traceback.format_exc())
         sys.exit(1)
+    finally:
+        # 프로그램 종료 시 최종 메모리 정리
+        gc.collect()
+        print("[🧹] 메모리 정리 완료")
 
 
 if __name__ == "__main__":
