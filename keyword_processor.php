@@ -926,7 +926,7 @@ function main_process() {
     debug_log("main_process: Main processing started with thumbnail URL support.");
 
     try {
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
             debug_log("main_process: Invalid request method. Not a POST request.");
             redirect_to_editor(false, ['error' => '잘못된 요청 방식입니다. POST 메서드만 허용됩니다.']);
         }
