@@ -1,7 +1,7 @@
 <?php
 /**
  * 저장된 정보 관리 페이지 - 최적화된 버전
- * 버전: v2.5 (썸네일 URL 표시 기능 추가)
+ * 버전: v2.6 (즉시 발행 오류 수정)
  */
 require_once($_SERVER['DOCUMENT_ROOT'] . '/wp-config.php');
 if (!current_user_can('manage_options')) { wp_die('접근 권한이 없습니다.'); }
@@ -216,6 +216,8 @@ if (isset($_POST['action'])) {
             $queue_id = $_POST['queue_id'] ?? '';
             $queue = load_queue();
             $selected_item = null;
+            
+            // 큐에서 선택된 항목 찾기
             foreach ($queue as $item) {
                 if ($item['queue_id'] === $queue_id) {
                     $selected_item = $item;
@@ -228,32 +230,110 @@ if (isset($_POST['action'])) {
                 exit;
             }
             
+            // 🔧 디버깅 로그 추가
+            error_log("즉시 발행 시작: " . $selected_item['title']);
+            error_log("카테고리: " . $selected_item['category_id']);
+            error_log("프롬프트 타입: " . $selected_item['prompt_type']);
+            error_log("키워드 수: " . count($selected_item['keywords']));
+            
+            // 발행 데이터 준비
             $publish_data = [
                 'title' => $selected_item['title'],
                 'category' => $selected_item['category_id'],
                 'prompt_type' => $selected_item['prompt_type'],
                 'keywords' => json_encode($selected_item['keywords']),
                 'user_details' => json_encode($selected_item['user_details']),
-                'thumbnail_url' => $selected_item['thumbnail_url'] ?? '', // 🔧 썸네일 URL 추가
+                'thumbnail_url' => $selected_item['thumbnail_url'] ?? '',
                 'publish_mode' => 'immediate'
             ];
             
+            // 🔧 절대 경로로 수정 및 에러 처리 강화
             $ch = curl_init();
-            curl_setopt($ch, CURLOPT_URL, 'keyword_processor.php');
+            
+            // 프로토콜과 호스트 정보 추출
+            $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+            $host = $_SERVER['HTTP_HOST'];
+            $script_dir = dirname($_SERVER['SCRIPT_NAME']);
+            
+            // keyword_processor.php의 전체 URL 구성
+            $processor_url = $protocol . $host . $script_dir . '/keyword_processor.php';
+            
+            error_log("keyword_processor.php URL: " . $processor_url);
+            
+            curl_setopt($ch, CURLOPT_URL, $processor_url);
             curl_setopt($ch, CURLOPT_POST, true);
             curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($publish_data));
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_TIMEOUT, 300);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // SSL 인증서 검증 비활성화 (개발 환경용)
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+            
+            // 🔧 디버깅을 위한 상세 정보 출력
+            curl_setopt($ch, CURLOPT_VERBOSE, true);
+            $verbose = fopen('php://temp', 'w+');
+            curl_setopt($ch, CURLOPT_STDERR, $verbose);
             
             $response = curl_exec($ch);
             $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curl_error = curl_error($ch);
+            $curl_info = curl_getinfo($ch);
+            
+            // 디버깅 정보 로깅
+            rewind($verbose);
+            $verboseLog = stream_get_contents($verbose);
+            error_log("CURL Verbose Log: " . $verboseLog);
+            error_log("HTTP Code: " . $http_code);
+            error_log("CURL Error: " . $curl_error);
+            error_log("Response length: " . strlen($response));
+            error_log("Response (first 500 chars): " . substr($response, 0, 500));
+            
             curl_close($ch);
             
-            if ($http_code === 200 && $response) {
-                $result = json_decode($response, true);
-                echo $result && isset($result['success']) ? $response : json_encode(['success' => false, 'message' => '발행 처리 중 오류가 발생했습니다.']);
+            // 🔧 응답 처리 개선
+            if ($curl_error) {
+                echo json_encode(['success' => false, 'message' => 'cURL 오류: ' . $curl_error]);
+                exit;
+            }
+            
+            if ($http_code !== 200) {
+                echo json_encode(['success' => false, 'message' => 'HTTP 오류: ' . $http_code]);
+                exit;
+            }
+            
+            if (!$response) {
+                echo json_encode(['success' => false, 'message' => '응답이 비어있습니다.']);
+                exit;
+            }
+            
+            // JSON 디코딩 시도
+            $result = json_decode($response, true);
+            
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                error_log("JSON 디코딩 오류: " . json_last_error_msg());
+                
+                // Python 스크립트 출력에서 성공 메시지 찾기
+                if (strpos($response, '워드프레스 발행 성공:') !== false) {
+                    // URL 추출 시도
+                    preg_match('/워드프레스 발행 성공: (https?:\/\/[^\s]+)/', $response, $matches);
+                    $post_url = $matches[1] ?? '';
+                    
+                    echo json_encode([
+                        'success' => true, 
+                        'message' => '글이 성공적으로 발행되었습니다!',
+                        'post_url' => $post_url
+                    ]);
+                } else {
+                    echo json_encode(['success' => false, 'message' => '발행 처리 중 오류가 발생했습니다. (응답 파싱 실패)']);
+                }
+                exit;
+            }
+            
+            // 정상적인 JSON 응답 처리
+            if ($result && isset($result['success'])) {
+                echo json_encode($result);
             } else {
-                echo json_encode(['success' => false, 'message' => '발행 요청 전송에 실패했습니다.']);
+                echo json_encode(['success' => false, 'message' => '발행 처리 중 오류가 발생했습니다.']);
             }
             exit;
             
@@ -380,7 +460,7 @@ if (isset($_POST['action'])) {
 <div class="main-container">
     <div class="header-section">
         <h1>📋 저장된 정보 관리</h1>
-        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v2.5 - 썸네일 URL 표시 기능 추가)</p>
+        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v2.6 - 즉시 발행 오류 수정)</p>
         <div class="header-actions">
             <a href="affiliate_editor.php" class="btn btn-primary">📝 새 글 작성</a>
             <button type="button" class="btn btn-secondary" onclick="refreshQueue()">🔄 새로고침</button>
