@@ -6,8 +6,8 @@
 키워드 입력 → 알리익스프레스 API → AI 콘텐츠 생성 → 워드프레스 자동 발행
 
 작성자: Claude AI
-날짜: 2025-07-23
-버전: v5.1 (한글 슬러그 + generated_html 활용 + 로그 경로 수정)
+날짜: 2025-07-24
+버전: v5.2 (SEO 최적화 완전 구현 + FIFU 썸네일 + Yoast SEO 연동)
 """
 
 import os
@@ -616,77 +616,190 @@ class AliExpressPostingSystem:
     {button_html}
 </div>'''
     
-    def generate_focus_keyphrase(self, title, keywords):
-        """YoastSEO 초점 키프레이즈 생성"""
-        print(f"[🤖] 초점 키프레이즈를 생성합니다...")
+    def generate_focus_keyphrase_with_gemini(self, title, content, keywords):
+        """🎯 Gemini API로 SEO 최적화된 초점 키프레이즈 생성"""
+        print(f"[🤖] Gemini AI로 초점 키프레이즈를 생성합니다...")
         
-        # 첫 번째 키워드를 기본 키프레이즈로 사용
-        if keywords and len(keywords) > 0:
-            base_keyword = keywords[0]
-            # 롱테일 키프레이즈 생성
-            if "추천" not in base_keyword and "가이드" not in base_keyword:
-                focus_keyphrase = f"{base_keyword} 추천"
-            else:
-                focus_keyphrase = base_keyword
-        else:
-            # 제목에서 키워드 추출
-            focus_keyphrase = title.split()[0] if title else "알리익스프레스 추천"
+        # 폴백 키프레이즈
+        fallback_keyphrase = f"{keywords[0]} 추천" if keywords else "알리익스프레스 추천"
         
-        print(f"[✅] 초점 키프레이즈 생성 완료: {focus_keyphrase}")
-        return focus_keyphrase
+        try:
+            # 콘텐츠 요약 생성 (너무 길면 잘라내기)
+            content_summary = content[:1000] if len(content) > 1000 else content
+            keywords_text = ", ".join(keywords) if keywords else ""
+            
+            prompt = f"""당신은 전문 SEO 콘텐츠 전략가입니다. 주어진 글 제목과 본문을 분석해서, 이 글의 핵심 주제를 가장 잘 나타내는 '초점 키프레이즈'를 딱 하나만 추출해 주세요.
+
+[글 정보]
+제목: {title}
+주요 키워드: {keywords_text}
+본문 요약: {content_summary}
+
+[규칙]
+1. 사용자가 이 글을 찾기 위해 검색할 것 같은 가장 가능성 높은 검색어여야 합니다.
+2. 3-5개 단어로 구성된 롱테일 키워드 형태가 좋습니다.
+3. 제목이나 본문에 자연스럽게 포함된 표현을 우선 고려하세요.
+4. 다른 설명은 붙이지 말고, 오직 키프레이즈만 출력하세요.
+
+예시: "여름 물놀이 필수템", "알리익스프레스 추천 상품", "2025년 인기 아이템"
+"""
+            
+            response = self.gemini_model.generate_content(prompt)
+            keyphrase = response.text.strip()
+            
+            # 유효성 검사
+            if not keyphrase or len(keyphrase) > 30 or '\n' in keyphrase:
+                print(f"[⚠️] 생성된 키프레이즈가 유효하지 않음, 폴백 사용: {fallback_keyphrase}")
+                return fallback_keyphrase
+            
+            print(f"[✅] 초점 키프레이즈 생성 완료: {keyphrase}")
+            return keyphrase
+            
+        except Exception as e:
+            print(f"[❌] 초점 키프레이즈 생성 실패: {e}, 폴백 사용: {fallback_keyphrase}")
+            return fallback_keyphrase
     
-    def generate_slug(self, title):
-        """🎯 URL 슬러그 생성 (한글 유지 방식 - auto_post_overseas.py와 동일)"""
-        print(f"[🤖] URL 슬러그를 생성합니다...")
+    def generate_meta_description_with_gemini(self, title, content, focus_keyphrase):
+        """🎯 Gemini API로 SEO 최적화된 메타 설명 생성"""
+        print(f"[🤖] Gemini AI로 메타 설명을 생성합니다...")
         
-        # 한글을 그대로 유지하고 공백만 하이픈으로 변환
-        slug = title.replace(" ", "-")
+        # 폴백 메타 설명
+        fallback_description = f"{focus_keyphrase}에 대한 완벽 가이드! 상품 정보부터 구매 팁까지 2025년 최신 정보를 확인하세요."
         
-        # 특수문자 제거 (한글과 영문, 숫자, 하이픈만 유지)
-        slug = re.sub(r'[^a-zA-Z0-9가-힣\-]', '', slug)
-        
-        # 연속된 하이픈 제거
-        slug = re.sub(r'-+', '-', slug)
-        
-        # 시작과 끝의 하이픈 제거
-        slug = slug.strip('-')
-        
-        # 슬러그가 비어있거나 너무 길면 기본값 사용
-        if not slug or len(slug) > 50:
-            slug = f"aliexpress-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-        
-        print(f"[✅] URL 슬러그 생성 완료 (한글 유지): {slug}")
-        return slug
+        try:
+            # 콘텐츠 요약 생성 (너무 길면 잘라내기)
+            content_summary = content[:1000] if len(content) > 1000 else content
+            
+            prompt = f"""당신은 전문 SEO 카피라이터입니다. 글 제목과 본문을 분석해서 해당 정보를 바탕으로 구글 검색 결과에 표시될 '메타 설명'을 작성해 주세요.
+
+[글 정보]
+제목: {title}
+초점 키프레이즈: {focus_keyphrase}
+본문 요약: {content_summary}
+
+[규칙]
+1. 반드시 '{focus_keyphrase}'를 자연스럽게 포함해야 합니다.
+2. 전체 글자 수는 공백 포함 150자 내로 맞춰주세요.
+3. 사용자의 호기심을 자극하고, 글을 클릭해서 읽고 싶게 만드는 매력적인 문구로 작성해 주세요.
+4. 다른 설명 없이, 완성된 메타 설명 문장만 출력해 주세요.
+
+예시: "여름 물놀이 필수템 완벽 가이드! 2025년 인기 상품부터 구매 팁까지 알리익스프레스 추천 아이템을 확인하세요."
+"""
+            
+            response = self.gemini_model.generate_content(prompt)
+            description = response.text.strip()
+            
+            # 유효성 검사
+            if not description or len(description) > 160 or len(description) < 100:
+                print(f"[⚠️] 생성된 메타 설명이 유효하지 않음, 폴백 사용: {fallback_description}")
+                return fallback_description
+            
+            print(f"[✅] 메타 설명 생성 완료 ({len(description)}자)")
+            return description
+            
+        except Exception as e:
+            print(f"[❌] 메타 설명 생성 실패: {e}, 폴백 사용: {fallback_description}")
+            return fallback_description
     
-    def generate_tags(self, title, keywords):
-        """키워드 기반 태그 생성"""
-        print(f"[🤖] 게시물 태그를 생성합니다...")
+    def generate_seo_optimized_tags_with_gemini(self, title, content, keywords):
+        """🎯 Gemini API로 SEO 최적화된 태그 생성"""
+        print(f"[🤖] Gemini AI로 SEO 최적화 태그를 생성합니다...")
         
-        tags = []
+        # 폴백 태그
+        fallback_tags = keywords[:3] + ["알리익스프레스", "추천", "구매가이드"] if keywords else ["알리익스프레스", "추천", "구매가이드"]
         
-        # 키워드를 태그로 추가
-        for keyword in keywords:
-            if keyword and keyword not in tags:
-                tags.append(keyword)
+        try:
+            # 콘텐츠 요약 생성 (너무 길면 잘라내기)
+            content_summary = content[:1000] if len(content) > 1000 else content
+            keywords_text = ", ".join(keywords) if keywords else ""
+            
+            prompt = f"""당신은 전문 SEO 전략가입니다. 주어진 글의 제목과 본문을 분석해서 해당 글에 관련된 '핵심키워드, 주요 키워드, 관련 키워드, 롱테일 키워드'를 추출하여 워드프레스 태그로 사용할 키워드들을 생성해주세요.
+
+[글 정보]
+제목: {title}
+기본 키워드: {keywords_text}
+본문 요약: {content_summary}
+
+[규칙]
+1. 검색에서 실제로 사용될 가능성이 높은 키워드들로 구성하세요.
+2. 너무 일반적이거나 너무 구체적이지 않은 적절한 수준의 키워드를 선택하세요.
+3. 8-12개의 키워드를 쉼표(,)로 구분하여 나열하세요.
+4. 각 키워드는 1-3개 단어로 구성하세요.
+5. 결과는 오직 '키워드1,키워드2,키워드3' 형식으로만 출력하고 다른 설명은 절대 추가하지 마세요.
+
+예시: "물놀이용품,여름필수템,휴가준비,수영용품,알리익스프레스,해외직구,추천상품,2025년,물놀이,여행용품"
+"""
+            
+            response = self.gemini_model.generate_content(prompt)
+            tags_string = response.text.strip()
+            
+            # 태그 파싱
+            if tags_string:
+                tags = [tag.strip() for tag in tags_string.split(',') if tag.strip()]
+                tags = tags[:12]  # 최대 12개로 제한
+                
+                if len(tags) >= 5:  # 최소 5개 이상이어야 유효
+                    print(f"[✅] SEO 최적화 태그 {len(tags)}개 생성 완료")
+                    return tags
+            
+            print(f"[⚠️] 생성된 태그가 유효하지 않음, 폴백 사용")
+            return fallback_tags
+            
+        except Exception as e:
+            print(f"[❌] SEO 태그 생성 실패: {e}, 폴백 사용")
+            return fallback_tags
+    
+    def generate_seo_optimized_slug_with_gemini(self, title, content):
+        """🎯 Gemini API로 SEO 최적화된 한글 슬러그 생성"""
+        print(f"[🤖] Gemini AI로 SEO 최적화 한글 슬러그를 생성합니다...")
         
-        # 제목에서 추가 태그 추출
-        title_words = title.split()
-        for word in title_words:
-            # 🔧 isdigit() 오류 수정: 문자열 타입 확인 후 호출
-            if len(str(word)) > 2 and word not in tags and not str(word).isdigit():
-                tags.append(word)
+        # 폴백 슬러그 (제목 기반)
+        fallback_slug = re.sub(r'[^가-힣a-zA-Z0-9\s]', '', title).replace(' ', '-')[:50]
         
-        # 공통 태그 추가
-        common_tags = ["알리익스프레스", "추천", "구매가이드", "해외직구"]
-        for tag in common_tags:
-            if tag not in tags and len(tags) < 10:
-                tags.append(tag)
-        
-        # 최대 10개로 제한
-        tags = tags[:10]
-        
-        print(f"[✅] 태그 {len(tags)}개 생성 완료: {', '.join(tags)}")
-        return tags
+        try:
+            # 콘텐츠 요약 생성 (너무 길면 잘라내기)
+            content_summary = content[:800] if len(content) > 800 else content
+            
+            prompt = f"""당신은 SEO 전문가입니다. 주어진 글 제목과 본문을 분석해서, 구글 검색 SEO에 가장 적합한 한글 슬러그를 생성해주세요.
+
+[글 정보]
+제목: {title}
+본문 요약: {content_summary}
+
+[규칙]
+1. 한글과 영문, 숫자, 하이픈(-)만 사용하세요.
+2. 글의 핵심 주제를 잘 나타내는 3-6개 단어로 구성하세요.
+3. 단어 사이는 하이픈(-)으로 연결하세요.
+4. 전체 길이는 30자 이내로 제한하세요.
+5. 검색 친화적이고 기억하기 쉬운 형태로 만드세요.
+6. 다른 설명 없이, 완성된 슬러그만 출력하세요.
+
+좋은 예시: "여름-물놀이-필수템", "알리익스프레스-추천-상품", "2025-휴가-준비물"
+나쁜 예시: "2025년-놓치면-후회할-여름휴가-피서-물놀이-필수템-총정리"
+"""
+            
+            response = self.gemini_model.generate_content(prompt)
+            slug = response.text.strip()
+            
+            # 슬러그 정리 및 유효성 검사
+            if slug:
+                # 특수문자 제거 (한글, 영문, 숫자, 하이픈만 유지)
+                cleaned_slug = re.sub(r'[^가-힣a-zA-Z0-9\-]', '', slug)
+                # 연속된 하이픈 제거
+                cleaned_slug = re.sub(r'-+', '-', cleaned_slug)
+                # 시작과 끝의 하이픈 제거
+                cleaned_slug = cleaned_slug.strip('-')
+                
+                if cleaned_slug and len(cleaned_slug) <= 40 and len(cleaned_slug) >= 10:
+                    print(f"[✅] SEO 최적화 슬러그 생성 완료: {cleaned_slug}")
+                    return cleaned_slug
+            
+            print(f"[⚠️] 생성된 슬러그가 유효하지 않음, 폴백 사용: {fallback_slug}")
+            return fallback_slug
+            
+        except Exception as e:
+            print(f"[❌] SEO 슬러그 생성 실패: {e}, 폴백 사용: {fallback_slug}")
+            return fallback_slug
     
     def ensure_tags_on_wordpress(self, tags):
         """워드프레스에 태그 확인 및 등록"""
@@ -741,7 +854,7 @@ class AliExpressPostingSystem:
         return tag_ids
     
     def post_to_wordpress(self, job_data, content):
-        """워드프레스에 글 발행 (FIFU, YoastSEO, 태그 포함)"""
+        """워드프레스에 글 발행 (FIFU, YoastSEO, 태그 포함) - auto_post_overseas.py 방식 적용"""
         try:
             mode_text = "즉시 발행" if self.immediate_mode else "큐 처리"
             print(f"[📝] 워드프레스에 '{job_data['title']}' 글을 발행합니다... ({mode_text})")
@@ -756,26 +869,31 @@ class AliExpressPostingSystem:
             # 키워드 추출
             keywords = [kw["name"] for kw in job_data.get("keywords", [])]
             
-            # SEO 데이터 생성
-            focus_keyphrase = self.generate_focus_keyphrase(job_data['title'], keywords)
-            slug = self.generate_slug(job_data['title'])
+            # 🎯 Gemini AI로 SEO 최적화 데이터 생성
+            print(f"[🤖] SEO 최적화를 위한 데이터를 생성합니다...")
             
-            # 메타 설명 생성
-            prompt_type = job_data.get('prompt_type', 'essential_items')
-            prompt_type_names = {
-                'essential_items': '필수 아이템',
-                'friend_review': '실제 후기',
-                'professional_analysis': '전문 분석',
-                'amazing_discovery': '혁신 제품'
-            }
+            # 1. 초점 키프레이즈 생성
+            focus_keyphrase = self.generate_focus_keyphrase_with_gemini(
+                job_data['title'], content, keywords
+            )
             
-            meta_description = f"{focus_keyphrase} - {prompt_type_names.get(prompt_type, '상품')} 추천 및 2025년 알리익스프레스 구매 가이드"
-            if job_data.get('has_user_details'):
-                meta_description += ". 사용자 맞춤 정보 기반 상세 리뷰"
+            # 2. 메타 설명 생성
+            meta_description = self.generate_meta_description_with_gemini(
+                job_data['title'], content, focus_keyphrase
+            )
             
-            # 태그 생성 및 등록
-            tags = self.generate_tags(job_data['title'], keywords)
-            tag_ids = self.ensure_tags_on_wordpress(tags)
+            # 3. SEO 최적화 태그 생성
+            seo_tags = self.generate_seo_optimized_tags_with_gemini(
+                job_data['title'], content, keywords
+            )
+            
+            # 4. SEO 최적화 슬러그 생성
+            seo_slug = self.generate_seo_optimized_slug_with_gemini(
+                job_data['title'], content
+            )
+            
+            # 5. 워드프레스 태그 등록
+            tag_ids = self.ensure_tags_on_wordpress(seo_tags)
             
             # 게시물 데이터
             post_data = {
@@ -783,8 +901,8 @@ class AliExpressPostingSystem:
                 "content": content,
                 "status": "publish",
                 "categories": [job_data["category_id"]],
-                "tags": tag_ids,  # 태그 추가
-                "slug": slug  # 한글 슬러그 추가
+                "tags": tag_ids,
+                "slug": seo_slug  # 🎯 SEO 최적화된 한글 슬러그
             }
             
             # 1단계: 게시물 생성
@@ -797,36 +915,42 @@ class AliExpressPostingSystem:
                 post_url = post_info.get("link", "")
                 print(f"[✅] 워드프레스 게시물 생성 성공! (ID: {post_id})")
                 
-                # 2단계: FIFU 썸네일 설정
-                if job_data.get('thumbnail_url'):
+                # 2단계: FIFU 썸네일 설정 (auto_post_overseas.py 방식)
+                thumbnail_url = job_data.get('thumbnail_url')
+                if thumbnail_url:
                     print(f"[⚙️] 2단계 - FIFU 썸네일을 설정합니다...")
-                    fifu_payload = {
-                        "meta": {
-                            "_fifu_image_url": job_data['thumbnail_url']
+                    try:
+                        fifu_payload = {
+                            "meta": {
+                                "_fifu_image_url": thumbnail_url
+                            }
                         }
-                    }
-                    fifu_response = requests.post(
-                        f"{self.config['wp_api_base']}/posts/{post_id}",
-                        auth=auth,
-                        json=fifu_payload,
-                        headers=headers,
-                        timeout=20
-                    )
-                    if fifu_response.status_code in [200, 201]:
-                        print("[✅] FIFU 썸네일 설정 완료.")
-                    else:
-                        print(f"[⚠️] FIFU 썸네일 설정 실패: {fifu_response.status_code}")
+                        fifu_response = requests.post(
+                            f"{self.config['wp_api_base']}/posts/{post_id}",
+                            auth=auth,
+                            json=fifu_payload,
+                            headers=headers,
+                            timeout=20
+                        )
+                        if fifu_response.status_code in [200, 201]:
+                            print("[✅] FIFU 썸네일 설정 완료.")
+                        else:
+                            print(f"[⚠️] FIFU 썸네일 설정 실패: {fifu_response.status_code}")
+                    except Exception as e:
+                        print(f"[⚠️] FIFU 썸네일 설정 중 오류: {e}")
+                else:
+                    print("[⚠️] 썸네일 URL이 없어 FIFU 설정을 건너뜁니다.")
                 
-                # 3단계: YoastSEO 메타데이터 설정
+                # 3단계: YoastSEO 메타데이터 설정 (auto_post_overseas.py 방식)
                 print(f"[⚙️] 3단계 - Yoast SEO 메타데이터를 설정합니다...")
-                yoast_payload = {
-                    "post_id": post_id,
-                    "focus_keyphrase": focus_keyphrase,
-                    "meta_description": meta_description
-                }
-                yoast_url = f"{self.config['wp_url'].rstrip('/')}/wp-json/my-api/v1/update-seo"
-                
                 try:
+                    yoast_payload = {
+                        "post_id": post_id,
+                        "focus_keyphrase": focus_keyphrase,
+                        "meta_description": meta_description
+                    }
+                    yoast_url = f"{self.config['wp_url'].rstrip('/')}/wp-json/my-api/v1/update-seo"
+                    
                     yoast_response = requests.post(
                         yoast_url,
                         auth=auth,
@@ -834,10 +958,12 @@ class AliExpressPostingSystem:
                         headers=headers,
                         timeout=20
                     )
+                    
                     if yoast_response.status_code in [200, 201]:
                         print("[✅] Yoast SEO 메타데이터 설정 완료.")
                     else:
                         print(f"[⚠️] Yoast SEO 설정 응답: {yoast_response.status_code}")
+                        
                 except Exception as e:
                     print(f"[⚠️] Yoast SEO 설정 중 오류 (무시하고 계속): {e}")
                 
@@ -845,6 +971,7 @@ class AliExpressPostingSystem:
                 self.save_published_log(job_data, post_url)
                 
                 print(f"[🎉] 모든 작업 완료! 발행된 글 주소: {post_url}")
+                print(f"[📊] SEO 정보 - 슬러그: {seo_slug}, 키프레이즈: {focus_keyphrase}, 태그: {len(seo_tags)}개")
                 return post_url
             else:
                 print(f"[❌] 워드프레스 발행 실패: {response.status_code}")
