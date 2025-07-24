@@ -35,3 +35,7 @@
 [2025-07-19 18:07:44] INFO: Item successfully added to queue with prompt type 'essential_items', user details, and product data. Queue stats: {"total":1,"pending":1,"processing":0,"completed":0,"failed":0}
 [2025-07-23 20:49:13] INFO: Input data received: Title='놓치면 후회! 2025년 여름휴가 피서 &amp; 물놀이 필수템 총정리', Category=356, Prompt Type=essential_items, Keywords=2, User Details=Yes, Publish Mode=queue, Thumbnail URL=Yes.
 [2025-07-23 20:49:14] INFO: Item successfully added to queue with prompt type 'essential_items', user details, product data, and thumbnail URL. Queue stats: {"total":1,"pending":1,"processing":0,"completed":0,"failed":0}
+[2025-07-23 21:25:29] INFO: Input data received: Title='2025년 여름, 당신의 캠핑과 차박을 &#039;호텔급&#039;으로 바꿔 줄 인생템', Category=356, Prompt Type=essential_items, Keywords=1, User Details=Yes, Publish Mode=queue, Thumbnail URL=Yes.
+[2025-07-23 21:25:30] INFO: Item successfully added to queue with prompt type 'essential_items', user details, product data, and thumbnail URL. Queue stats: {"total":2,"pending":2,"processing":0,"completed":0,"failed":0}
+[2025-07-24 15:05:09] INFO: Input data received: Title='2025년 해외여행의 질을 높이는 스마트 아이템 BEST 5 추천', Category=356, Prompt Type=essential_items, Keywords=5, User Details=Yes, Publish Mode=queue, Thumbnail URL=Yes.
+[2025-07-24 15:05:10] INFO: Item successfully added to queue with prompt type 'essential_items', user details, product data, and thumbnail URL. Queue stats: {"total":1,"pending":1,"processing":0,"completed":0,"failed":0}
