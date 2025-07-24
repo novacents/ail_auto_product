@@ -7,7 +7,7 @@
 
 작성자: Claude AI
 날짜: 2025-07-23
-버전: v5.1 (한글 슬러그 + generated_html 활용)
+버전: v5.1 (한글 슬러그 + generated_html 활용 + 로그 경로 수정)
 """
 
 import os
@@ -22,6 +22,10 @@ import google.generativeai as genai
 from datetime import datetime
 from dotenv import load_dotenv
 from prompt_templates import PromptTemplates
+
+# 🔧 AliExpress SDK 로그 경로 수정 (import 전에 환경변수 설정)
+os.environ['IOP_LOG_PATH'] = '/var/www/novacents/tools/logs'
+os.makedirs('/var/www/novacents/tools/logs', exist_ok=True)
 
 # 알리익스프레스 SDK 경로 추가
 sys.path.append('/home/novacents/aliexpress-sdk')
@@ -931,6 +935,9 @@ class AliExpressPostingSystem:
                     success_msg += "\n🎯 사용자 맞춤 정보 반영"
                 
                 self.send_telegram_notification(success_msg)
+                
+                # 🎉 성공 시 워드프레스 발행 성공 메시지 출력 (keyword_processor.php가 파싱)
+                print(f"워드프레스 발행 성공: {post_url}")
                 return True
             else:
                 raise Exception("워드프레스 발행 실패")
