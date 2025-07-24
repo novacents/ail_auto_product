@@ -668,7 +668,8 @@ class AliExpressPostingSystem:
         # 제목에서 추가 태그 추출
         title_words = title.split()
         for word in title_words:
-            if len(word) > 2 and word not in tags and not word.isdigit():
+            # 🔧 isdigit() 오류 수정: 문자열 타입 확인 후 호출
+            if len(str(word)) > 2 and word not in tags and not str(word).isdigit():
                 tags.append(word)
         
         # 공통 태그 추가
