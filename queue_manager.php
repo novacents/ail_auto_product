@@ -1,22 +1,26 @@
 <?php
 /**
- * 저장된 정보 관리 페이지 - 최적화된 버전
- * 버전: v2.6 (즉시 발행 오류 수정)
+ * 저장된 정보 관리 페이지 - 분할 시스템 적용 버전
+ * 버전: v3.0 (분할 시스템 적용)
  */
 require_once($_SERVER['DOCUMENT_ROOT'] . '/wp-config.php');
+require_once __DIR__ . '/queue_utils.php';
+
 if (!current_user_can('manage_options')) { wp_die('접근 권한이 없습니다.'); }
 
 define('QUEUE_FILE', '/var/www/novacents/tools/product_queue.json');
 
+// 레거시 호환용 함수들 (하위 호환성 유지)
 function load_queue() {
-    if (!file_exists(QUEUE_FILE)) return [];
-    $content = file_get_contents(QUEUE_FILE);
-    if ($content === false) return [];
-    $queue = json_decode($content, true);
-    return is_array($queue) ? $queue : [];
+    // 기존 시스템과의 호환성을 위해 유지
+    // 내부적으로는 분할 시스템 사용
+    return get_all_queues_split();
 }
 
 function save_queue($queue) {
+    // 기존 시스템과의 호환성을 위해 유지
+    // 단일 파일 시스템으로 저장 (레거시 지원)
+    if (!file_exists(QUEUE_FILE)) return false;
     $json_data = json_encode($queue, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     return $json_data !== false && file_put_contents(QUEUE_FILE, $json_data, LOCK_EX) !== false;
 }
@@ -64,312 +68,306 @@ if (isset($_POST['action'])) {
     header('Content-Type: application/json');
     $action = $_POST['action'];
     
-    switch ($action) {
-        case 'get_queue_list':
-            echo json_encode(['success' => true, 'queue' => load_queue()]);
-            exit;
-            
-        case 'delete_queue_item':
-            $queue_id = $_POST['queue_id'] ?? '';
-            $queue = load_queue();
-            $found = false;
-            foreach ($queue as $index => $item) {
-                if ($item['queue_id'] === $queue_id) {
-                    unset($queue[$index]);
-                    $queue = array_values($queue);
-                    $found = true;
-                    break;
+    try {
+        switch ($action) {
+            case 'get_queue_list':
+                // 분할 시스템 사용
+                $queues = get_all_queues_split();
+                echo json_encode(['success' => true, 'queue' => $queues]);
+                exit;
+                
+            case 'delete_queue_item':
+                $queue_id = $_POST['queue_id'] ?? '';
+                if (empty($queue_id)) {
+                    echo json_encode(['success' => false, 'message' => '큐 ID가 제공되지 않았습니다.']);
+                    exit;
                 }
-            }
-            echo json_encode($found && save_queue($queue) ? 
-                ['success' => true, 'message' => '항목이 삭제되었습니다.'] : 
-                ['success' => false, 'message' => '삭제에 실패했습니다.']
-            );
-            exit;
-            
-        case 'get_queue_item':
-            $queue_id = $_POST['queue_id'] ?? '';
-            $queue = load_queue();
-            
-            // 🔧 디버깅을 위한 로그
-            error_log("큐 항목 검색 시작: " . $queue_id);
-            error_log("전체 큐 항목 수: " . count($queue));
-            
-            foreach ($queue as $item) {
-                if ($item['queue_id'] === $queue_id) {
-                    // 🔧 데이터 무결성 확인 및 로그
-                    error_log("큐 항목 찾음: " . $queue_id);
-                    error_log("키워드 수: " . (isset($item['keywords']) ? count($item['keywords']) : 0));
-                    
+                
+                // 분할 시스템 사용
+                $result = remove_queue_split($queue_id);
+                
+                echo json_encode($result ? 
+                    ['success' => true, 'message' => '항목이 삭제되었습니다.'] : 
+                    ['success' => false, 'message' => '삭제에 실패했습니다.']
+                );
+                exit;
+                
+            case 'get_queue_item':
+                $queue_id = $_POST['queue_id'] ?? '';
+                if (empty($queue_id)) {
+                    echo json_encode(['success' => false, 'message' => '큐 ID가 제공되지 않았습니다.']);
+                    exit;
+                }
+                
+                // 분할 시스템 사용
+                error_log("큐 항목 검색 시작 (분할 시스템): " . $queue_id);
+                $item = load_queue_split($queue_id);
+                
+                if ($item) {
+                    error_log("큐 항목 찾음 (분할 시스템): " . $queue_id);
                     if (isset($item['keywords']) && is_array($item['keywords'])) {
+                        error_log("키워드 수: " . count($item['keywords']));
                         foreach ($item['keywords'] as $kIndex => $keyword) {
                             $productsCount = isset($keyword['products_data']) ? count($keyword['products_data']) : 0;
                             $aliexpressCount = isset($keyword['aliexpress']) ? count($keyword['aliexpress']) : 0;
                             error_log("키워드 {$kIndex} '{$keyword['name']}': products_data={$productsCount}, aliexpress={$aliexpressCount}");
-                            
-                            // 🔧 products_data 구조 확인
-                            if (isset($keyword['products_data']) && is_array($keyword['products_data'])) {
-                                foreach ($keyword['products_data'] as $pIndex => $product) {
-                                    $hasAnalysis = isset($product['analysis_data']) ? 'Y' : 'N';
-                                    $hasUserData = isset($product['user_data']) ? 'Y' : 'N';
-                                    error_log("  상품 {$pIndex}: URL={$product['url']}, analysis={$hasAnalysis}, user_data={$hasUserData}");
-                                }
-                            }
                         }
                     }
                     
-                    // 🔧 원본 데이터를 그대로 전달 (JSON 인코딩/디코딩으로 인한 데이터 손실 방지)
-                    $response = [
-                        'success' => true, 
-                        'item' => $item
-                    ];
-                    
-                    error_log("응답 데이터 크기: " . strlen(json_encode($response)));
-                    echo json_encode($response, JSON_UNESCAPED_UNICODE);
+                    echo json_encode(['success' => true, 'item' => $item], JSON_UNESCAPED_UNICODE);
+                } else {
+                    error_log("큐 항목을 찾을 수 없음 (분할 시스템): " . $queue_id);
+                    echo json_encode(['success' => false, 'message' => '항목을 찾을 수 없습니다.']);
+                }
+                exit;
+                
+            case 'update_queue_item':
+                $queue_id = $_POST['queue_id'] ?? '';
+                $updated_data = json_decode($_POST['data'] ?? '{}', true);
+                
+                if (empty($queue_id)) {
+                    echo json_encode(['success' => false, 'message' => '큐 ID가 제공되지 않았습니다.']);
                     exit;
                 }
-            }
-            
-            error_log("큐 항목을 찾을 수 없음: " . $queue_id);
-            echo json_encode(['success' => false, 'message' => '항목을 찾을 수 없습니다.']);
-            exit;
-            
-        case 'update_queue_item':
-            $queue_id = $_POST['queue_id'] ?? '';
-            $updated_data = json_decode($_POST['data'] ?? '{}', true);
-            $queue = load_queue();
-            $found = false;
-            
-            foreach ($queue as $index => $item) {
-                if ($item['queue_id'] === $queue_id) {
-                    // 🔧 기본 정보 업데이트
-                    $queue[$index]['title'] = $updated_data['title'] ?? $item['title'];
-                    $queue[$index]['category_id'] = $updated_data['category_id'] ?? $item['category_id'];
-                    $queue[$index]['category_name'] = get_category_name($updated_data['category_id'] ?? $item['category_id']);
-                    $queue[$index]['prompt_type'] = $updated_data['prompt_type'] ?? $item['prompt_type'];
-                    $queue[$index]['prompt_type_name'] = get_prompt_type_name($updated_data['prompt_type'] ?? $item['prompt_type']);
-                    
-                    // 🔧 썸네일 URL 업데이트
-                    $queue[$index]['thumbnail_url'] = $updated_data['thumbnail_url'] ?? $item['thumbnail_url'] ?? null;
-                    $queue[$index]['has_thumbnail_url'] = !empty($updated_data['thumbnail_url']);
-                    
-                    // 🔧 키워드 데이터 완전 교체 (전체 구조 보존)
-                    if (isset($updated_data['keywords']) && is_array($updated_data['keywords'])) {
-                        $queue[$index]['keywords'] = $updated_data['keywords'];
-                        error_log("키워드 데이터 업데이트 완료: " . count($updated_data['keywords']) . "개");
-                    }
-                    
-                    // 🔧 사용자 세부사항 업데이트
-                    $queue[$index]['user_details'] = $updated_data['user_details'] ?? $item['user_details'] ?? [];
-                    $queue[$index]['has_user_details'] = !empty($updated_data['user_details']);
-                    
-                    // 🔧 상품 데이터 존재 여부 확인
-                    $has_product_data = false;
-                    if (isset($queue[$index]['keywords']) && is_array($queue[$index]['keywords'])) {
-                        foreach ($queue[$index]['keywords'] as $keyword) {
-                            if (isset($keyword['products_data']) && is_array($keyword['products_data']) && count($keyword['products_data']) > 0) {
-                                $has_product_data = true;
-                                break;
-                            }
+                
+                if (!is_array($updated_data)) {
+                    echo json_encode(['success' => false, 'message' => '업데이트 데이터가 유효하지 않습니다.']);
+                    exit;
+                }
+                
+                // 기존 큐 항목 로드
+                $existing_item = load_queue_split($queue_id);
+                if (!$existing_item) {
+                    echo json_encode(['success' => false, 'message' => '업데이트할 항목을 찾을 수 없습니다.']);
+                    exit;
+                }
+                
+                // 기본 정보 업데이트
+                $updated_item = $existing_item;
+                $updated_item['title'] = $updated_data['title'] ?? $existing_item['title'];
+                $updated_item['category_id'] = $updated_data['category_id'] ?? $existing_item['category_id'];
+                $updated_item['category_name'] = get_category_name($updated_data['category_id'] ?? $existing_item['category_id']);
+                $updated_item['prompt_type'] = $updated_data['prompt_type'] ?? $existing_item['prompt_type'];
+                $updated_item['prompt_type_name'] = get_prompt_type_name($updated_data['prompt_type'] ?? $existing_item['prompt_type']);
+                
+                // 썸네일 URL 업데이트
+                $updated_item['thumbnail_url'] = $updated_data['thumbnail_url'] ?? $existing_item['thumbnail_url'] ?? null;
+                $updated_item['has_thumbnail_url'] = !empty($updated_data['thumbnail_url']);
+                
+                // 키워드 데이터 완전 교체 (전체 구조 보존)
+                if (isset($updated_data['keywords']) && is_array($updated_data['keywords'])) {
+                    $updated_item['keywords'] = $updated_data['keywords'];
+                    error_log("키워드 데이터 업데이트 완료 (분할 시스템): " . count($updated_data['keywords']) . "개");
+                }
+                
+                // 사용자 세부사항 업데이트
+                $updated_item['user_details'] = $updated_data['user_details'] ?? $existing_item['user_details'] ?? [];
+                $updated_item['has_user_details'] = !empty($updated_data['user_details']);
+                
+                // 상품 데이터 존재 여부 확인
+                $has_product_data = false;
+                if (isset($updated_item['keywords']) && is_array($updated_item['keywords'])) {
+                    foreach ($updated_item['keywords'] as $keyword) {
+                        if (isset($keyword['products_data']) && is_array($keyword['products_data']) && count($keyword['products_data']) > 0) {
+                            $has_product_data = true;
+                            break;
                         }
                     }
-                    $queue[$index]['has_product_data'] = $has_product_data;
-                    
-                    $queue[$index]['updated_at'] = date('Y-m-d H:i:s');
-                    $found = true;
-                    
-                    error_log("큐 항목 업데이트 완료: " . $queue_id);
-                    break;
                 }
-            }
-            
-            echo json_encode($found && save_queue($queue) ? 
-                ['success' => true, 'message' => '항목이 업데이트되었습니다.'] : 
-                ['success' => false, 'message' => '업데이트에 실패했습니다.']
-            );
-            exit;
-            
-        case 'reorder_queue':
-            $new_order = json_decode($_POST['order'] ?? '[]', true);
-            if (empty($new_order)) {
-                echo json_encode(['success' => false, 'message' => '순서 데이터가 없습니다.']);
-                exit;
-            }
-            
-            $queue = load_queue();
-            $reordered_queue = [];
-            foreach ($new_order as $queue_id) {
-                foreach ($queue as $item) {
-                    if ($item['queue_id'] === $queue_id) {
-                        $reordered_queue[] = $item;
-                        break;
-                    }
-                }
-            }
-            echo json_encode(count($reordered_queue) === count($queue) && save_queue($reordered_queue) ? 
-                ['success' => true, 'message' => '순서가 변경되었습니다.'] : 
-                ['success' => false, 'message' => '순서 변경에 실패했습니다.']
-            );
-            exit;
-            
-        case 'immediate_publish':
-            $queue_id = $_POST['queue_id'] ?? '';
-            $queue = load_queue();
-            $selected_item = null;
-            
-            // 큐에서 선택된 항목 찾기
-            foreach ($queue as $item) {
-                if ($item['queue_id'] === $queue_id) {
-                    $selected_item = $item;
-                    break;
-                }
-            }
-            
-            if (!$selected_item) {
-                echo json_encode(['success' => false, 'message' => '선택된 항목을 찾을 수 없습니다.']);
-                exit;
-            }
-            
-            // 🔧 디버깅 로그 추가
-            error_log("즉시 발행 시작: " . $selected_item['title']);
-            error_log("카테고리: " . $selected_item['category_id']);
-            error_log("프롬프트 타입: " . $selected_item['prompt_type']);
-            error_log("키워드 수: " . count($selected_item['keywords']));
-            
-            // 발행 데이터 준비
-            $publish_data = [
-                'title' => $selected_item['title'],
-                'category' => $selected_item['category_id'],
-                'prompt_type' => $selected_item['prompt_type'],
-                'keywords' => json_encode($selected_item['keywords']),
-                'user_details' => json_encode($selected_item['user_details']),
-                'thumbnail_url' => $selected_item['thumbnail_url'] ?? '',
-                'publish_mode' => 'immediate'
-            ];
-            
-            // 🔧 절대 경로로 수정 및 에러 처리 강화
-            $ch = curl_init();
-            
-            // 프로토콜과 호스트 정보 추출
-            $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
-            $host = $_SERVER['HTTP_HOST'];
-            $script_dir = dirname($_SERVER['SCRIPT_NAME']);
-            
-            // keyword_processor.php의 전체 URL 구성
-            $processor_url = $protocol . $host . $script_dir . '/keyword_processor.php';
-            
-            error_log("keyword_processor.php URL: " . $processor_url);
-            
-            curl_setopt($ch, CURLOPT_URL, $processor_url);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($publish_data));
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 300);
-            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // SSL 인증서 검증 비활성화 (개발 환경용)
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-            
-            // 🔧 디버깅을 위한 상세 정보 출력
-            curl_setopt($ch, CURLOPT_VERBOSE, true);
-            $verbose = fopen('php://temp', 'w+');
-            curl_setopt($ch, CURLOPT_STDERR, $verbose);
-            
-            $response = curl_exec($ch);
-            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $curl_error = curl_error($ch);
-            $curl_info = curl_getinfo($ch);
-            
-            // 디버깅 정보 로깅
-            rewind($verbose);
-            $verboseLog = stream_get_contents($verbose);
-            error_log("CURL Verbose Log: " . $verboseLog);
-            error_log("HTTP Code: " . $http_code);
-            error_log("CURL Error: " . $curl_error);
-            error_log("Response length: " . strlen($response));
-            error_log("Response (first 500 chars): " . substr($response, 0, 500));
-            
-            curl_close($ch);
-            
-            // 🔧 응답 처리 개선
-            if ($curl_error) {
-                echo json_encode(['success' => false, 'message' => 'cURL 오류: ' . $curl_error]);
-                exit;
-            }
-            
-            if ($http_code !== 200) {
-                echo json_encode(['success' => false, 'message' => 'HTTP 오류: ' . $http_code]);
-                exit;
-            }
-            
-            if (!$response) {
-                echo json_encode(['success' => false, 'message' => '응답이 비어있습니다.']);
-                exit;
-            }
-            
-            // JSON 디코딩 시도
-            $result = json_decode($response, true);
-            
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                error_log("JSON 디코딩 오류: " . json_last_error_msg());
+                $updated_item['has_product_data'] = $has_product_data;
+                $updated_item['updated_at'] = date('Y-m-d H:i:s');
                 
-                // Python 스크립트 출력에서 성공 메시지 찾기
-                if (strpos($response, '워드프레스 발행 성공:') !== false) {
-                    // URL 추출 시도
-                    preg_match('/워드프레스 발행 성공: (https?:\/\/[^\s]+)/', $response, $matches);
-                    $post_url = $matches[1] ?? '';
-                    
-                    echo json_encode([
-                        'success' => true, 
-                        'message' => '글이 성공적으로 발행되었습니다!',
-                        'post_url' => $post_url
-                    ]);
+                // 분할 시스템으로 업데이트
+                $result = update_queue_data_split($queue_id, $updated_item);
+                
+                if ($result) {
+                    error_log("큐 항목 업데이트 완료 (분할 시스템): " . $queue_id);
+                    echo json_encode(['success' => true, 'message' => '항목이 업데이트되었습니다.']);
                 } else {
-                    echo json_encode(['success' => false, 'message' => '발행 처리 중 오류가 발생했습니다. (응답 파싱 실패)']);
+                    echo json_encode(['success' => false, 'message' => '업데이트에 실패했습니다.']);
                 }
                 exit;
-            }
-            
-            // 정상적인 JSON 응답 처리
-            if ($result && isset($result['success'])) {
-                echo json_encode($result);
-            } else {
-                echo json_encode(['success' => false, 'message' => '발행 처리 중 오류가 발생했습니다.']);
-            }
-            exit;
-            
-        case 'analyze_product':
-            $url = $_POST['url'] ?? '';
-            if (empty($url)) {
-                echo json_encode(['success' => false, 'message' => '상품 URL을 입력해주세요.']);
+                
+            case 'reorder_queue':
+                $new_order = json_decode($_POST['order'] ?? '[]', true);
+                if (empty($new_order)) {
+                    echo json_encode(['success' => false, 'message' => '순서 데이터가 없습니다.']);
+                    exit;
+                }
+                
+                // 분할 시스템 사용
+                $result = reorder_queues_split($new_order);
+                
+                echo json_encode($result ? 
+                    ['success' => true, 'message' => '순서가 변경되었습니다.'] : 
+                    ['success' => false, 'message' => '순서 변경에 실패했습니다.']
+                );
                 exit;
-            }
-            
-            $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
-            $absolute_url = $protocol . $_SERVER['HTTP_HOST'] . dirname($_SERVER['REQUEST_URI']) . '/product_analyzer_v2.php';
-            
-            $ch = curl_init();
-            curl_setopt($ch, CURLOPT_URL, $absolute_url);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['action' => 'analyze_product', 'url' => $url, 'platform' => 'aliexpress']));
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 120);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-            curl_setopt($ch, CURLOPT_MAXREDIRS, 3);
-            
-            $response = curl_exec($ch);
-            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $curl_error = curl_error($ch);
-            curl_close($ch);
-            
-            if ($curl_error) {
-                echo json_encode(['success' => false, 'message' => 'cURL 오류: ' . $curl_error]);
-            } elseif ($http_code === 200 && $response) {
-                echo $response;
-            } else {
-                echo json_encode(['success' => false, 'message' => '상품 분석 요청에 실패했습니다. HTTP 코드: ' . $http_code]);
-            }
-            exit;
+                
+            case 'immediate_publish':
+                $queue_id = $_POST['queue_id'] ?? '';
+                if (empty($queue_id)) {
+                    echo json_encode(['success' => false, 'message' => '큐 ID가 제공되지 않았습니다.']);
+                    exit;
+                }
+                
+                // 분할 시스템으로 큐 항목 로드
+                $selected_item = load_queue_split($queue_id);
+                
+                if (!$selected_item) {
+                    echo json_encode(['success' => false, 'message' => '선택된 항목을 찾을 수 없습니다.']);
+                    exit;
+                }
+                
+                // 디버깅 로그 추가
+                error_log("즉시 발행 시작 (분할 시스템): " . $selected_item['title']);
+                error_log("카테고리: " . $selected_item['category_id']);
+                error_log("프롬프트 타입: " . $selected_item['prompt_type']);
+                error_log("키워드 수: " . count($selected_item['keywords']));
+                
+                // 발행 데이터 준비
+                $publish_data = [
+                    'title' => $selected_item['title'],
+                    'category' => $selected_item['category_id'],
+                    'prompt_type' => $selected_item['prompt_type'],
+                    'keywords' => json_encode($selected_item['keywords']),
+                    'user_details' => json_encode($selected_item['user_details']),
+                    'thumbnail_url' => $selected_item['thumbnail_url'] ?? '',
+                    'publish_mode' => 'immediate'
+                ];
+                
+                // 절대 경로로 수정 및 에러 처리 강화
+                $ch = curl_init();
+                
+                // 프로토콜과 호스트 정보 추출
+                $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+                $host = $_SERVER['HTTP_HOST'];
+                $script_dir = dirname($_SERVER['SCRIPT_NAME']);
+                
+                // keyword_processor.php의 전체 URL 구성
+                $processor_url = $protocol . $host . $script_dir . '/keyword_processor.php';
+                
+                error_log("keyword_processor.php URL: " . $processor_url);
+                
+                curl_setopt($ch, CURLOPT_URL, $processor_url);
+                curl_setopt($ch, CURLOPT_POST, true);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($publish_data));
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 300);
+                curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // SSL 인증서 검증 비활성화 (개발 환경용)
+                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+                
+                // 디버깅을 위한 상세 정보 출력
+                curl_setopt($ch, CURLOPT_VERBOSE, true);
+                $verbose = fopen('php://temp', 'w+');
+                curl_setopt($ch, CURLOPT_STDERR, $verbose);
+                
+                $response = curl_exec($ch);
+                $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $curl_error = curl_error($ch);
+                $curl_info = curl_getinfo($ch);
+                
+                // 디버깅 정보 로깅
+                rewind($verbose);
+                $verboseLog = stream_get_contents($verbose);
+                error_log("CURL Verbose Log: " . $verboseLog);
+                error_log("HTTP Code: " . $http_code);
+                error_log("CURL Error: " . $curl_error);
+                error_log("Response length: " . strlen($response));
+                error_log("Response (first 500 chars): " . substr($response, 0, 500));
+                
+                curl_close($ch);
+                
+                // 응답 처리 개선
+                if ($curl_error) {
+                    echo json_encode(['success' => false, 'message' => 'cURL 오류: ' . $curl_error]);
+                    exit;
+                }
+                
+                if ($http_code !== 200) {
+                    echo json_encode(['success' => false, 'message' => 'HTTP 오류: ' . $http_code]);
+                    exit;
+                }
+                
+                if (!$response) {
+                    echo json_encode(['success' => false, 'message' => '응답이 비어있습니다.']);
+                    exit;
+                }
+                
+                // JSON 디코딩 시도
+                $result = json_decode($response, true);
+                
+                if (json_last_error() !== JSON_ERROR_NONE) {
+                    error_log("JSON 디코딩 오류: " . json_last_error_msg());
+                    
+                    // Python 스크립트 출력에서 성공 메시지 찾기
+                    if (strpos($response, '워드프레스 발행 성공:') !== false) {
+                        // URL 추출 시도
+                        preg_match('/워드프레스 발행 성공: (https?:\/\/[^\s]+)/', $response, $matches);
+                        $post_url = $matches[1] ?? '';
+                        
+                        echo json_encode([
+                            'success' => true, 
+                            'message' => '글이 성공적으로 발행되었습니다!',
+                            'post_url' => $post_url
+                        ]);
+                    } else {
+                        echo json_encode(['success' => false, 'message' => '발행 처리 중 오류가 발생했습니다. (응답 파싱 실패)']);
+                    }
+                    exit;
+                }
+                
+                // 정상적인 JSON 응답 처리
+                if ($result && isset($result['success'])) {
+                    echo json_encode($result);
+                } else {
+                    echo json_encode(['success' => false, 'message' => '발행 처리 중 오류가 발생했습니다.']);
+                }
+                exit;
+                
+            case 'analyze_product':
+                $url = $_POST['url'] ?? '';
+                if (empty($url)) {
+                    echo json_encode(['success' => false, 'message' => '상품 URL을 입력해주세요.']);
+                    exit;
+                }
+                
+                $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+                $absolute_url = $protocol . $_SERVER['HTTP_HOST'] . dirname($_SERVER['REQUEST_URI']) . '/product_analyzer_v2.php';
+                
+                $ch = curl_init();
+                curl_setopt($ch, CURLOPT_URL, $absolute_url);
+                curl_setopt($ch, CURLOPT_POST, true);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['action' => 'analyze_product', 'url' => $url, 'platform' => 'aliexpress']));
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+                curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+                curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+                curl_setopt($ch, CURLOPT_MAXREDIRS, 3);
+                
+                $response = curl_exec($ch);
+                $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $curl_error = curl_error($ch);
+                curl_close($ch);
+                
+                if ($curl_error) {
+                    echo json_encode(['success' => false, 'message' => 'cURL 오류: ' . $curl_error]);
+                } elseif ($http_code === 200 && $response) {
+                    echo $response;
+                } else {
+                    echo json_encode(['success' => false, 'message' => '상품 분석 요청에 실패했습니다. HTTP 코드: ' . $http_code]);
+                }
+                exit;
+                
+            default:
+                echo json_encode(['success' => false, 'message' => '알 수 없는 액션입니다.']);
+                exit;
+        }
+    } catch (Exception $e) {
+        error_log("AJAX 요청 처리 중 오류 발생: " . $e->getMessage());
+        echo json_encode(['success' => false, 'message' => '서버 오류가 발생했습니다: ' . $e->getMessage()]);
+        exit;
     }
 }
 ?>
@@ -460,7 +458,7 @@ if (isset($_POST['action'])) {
 <div class="main-container">
     <div class="header-section">
         <h1>📋 저장된 정보 관리</h1>
-        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v2.6 - 즉시 발행 오류 수정)</p>
+        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v3.0 - 분할 시스템 적용)</p>
         <div class="header-actions">
             <a href="affiliate_editor.php" class="btn btn-primary">📝 새 글 작성</a>
             <button type="button" class="btn btn-secondary" onclick="refreshQueue()">🔄 새로고침</button>
