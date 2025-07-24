@@ -5,7 +5,7 @@
  * 워드프레스 환경에 전혀 종속되지 않으며, 순수 PHP로만 작동합니다.
  *
  * 파일 위치: /var/www/novacents/tools/keyword_processor.php
- * 버전: v4.5 (썸네일 URL 저장 기능 추가)
+ * 버전: v4.6 (파일 분할 방식 큐 관리 시스템 적용)
  */
 
 // 1. 초기 에러 리포팅 설정 (스크립트 시작 시점부터 에러를 잡기 위함)
@@ -21,6 +21,9 @@ define('DEBUG_LOG_FILE', BASE_PATH . '/debug_processor.txt');
 define('MAIN_LOG_FILE', BASE_PATH . '/processor_log.txt');
 define('QUEUE_FILE', '/var/www/novacents/tools/product_queue.json');
 define('TEMP_DIR', BASE_PATH . '/temp'); // 즉시 발행용 임시 파일 디렉토리
+
+// queue_utils.php 유틸리티 함수 포함
+require_once __DIR__ . '/queue_utils.php';
 
 // 3. 안전한 count 함수
 function safe_count($value) {
@@ -38,7 +41,7 @@ function debug_log($message) {
 }
 
 // 스크립트 시작 시 즉시 디버그 로그 기록
-debug_log("=== keyword_processor.php 시작 (썸네일 URL 저장 지원 버전) ===");
+debug_log("=== keyword_processor.php 시작 (파일 분할 방식 큐 관리 시스템) ===");
 debug_log("PHP Version: " . phpversion());
 debug_log("Request Method: " . ($_SERVER['REQUEST_METHOD'] ?? 'N/A'));
 debug_log("POST Data Empty: " . (empty($_POST) ? 'YES' : 'NO'));
@@ -225,7 +228,7 @@ function send_telegram_notification($message, $urgent = false) {
 }
 
 
-// 9. 큐 파일 로드/저장/관리 함수들
+// 9. 큐 파일 로드/저장/관리 함수들 (레거시 지원용 - 분할 시스템으로 점진적 마이그레이션)
 function get_queue_file_path() {
     return QUEUE_FILE;
 }
@@ -324,18 +327,18 @@ function save_queue($queue) {
     return true;
 }
 
+// 🚀 수정된 add_to_queue 함수 - 파일 분할 방식 사용
 function add_to_queue($queue_data) {
-    debug_log("add_to_queue: Adding new item to queue.");
+    debug_log("add_to_queue: Adding new item to queue using split file system.");
     
     try {
-        $queue = load_queue();
-        $queue[] = $queue_data;
-        $result = save_queue($queue);
+        // 새로운 파일 분할 방식 사용
+        $result = add_queue_split($queue_data);
         
         if ($result) {
-            debug_log("add_to_queue: Successfully added item to queue.");
+            debug_log("add_to_queue: Successfully added item to split queue system.");
         } else {
-            debug_log("add_to_queue: Failed to save queue after adding item.");
+            debug_log("add_to_queue: Failed to add item to split queue system.");
         }
         
         return $result;
@@ -346,21 +349,39 @@ function add_to_queue($queue_data) {
 }
 
 function get_queue_stats() {
-    debug_log("get_queue_stats: Calculating queue statistics.");
-    $queue = load_queue();
-    $stats = [
-        'total' => safe_count($queue),
-        'pending' => 0, 'processing' => 0,
-        'completed' => 0, 'failed' => 0
-    ];
-    foreach ($queue as $item) {
-        $status = $item['status'] ?? 'pending';
-        if (isset($stats[$status])) {
-            $stats[$status]++;
+    debug_log("get_queue_stats: Calculating queue statistics using split file system.");
+    
+    try {
+        // 분할 파일 시스템에서 통계 가져오기
+        $pending_queues = get_pending_queues_split();
+        $stats = [
+            'total' => safe_count($pending_queues),
+            'pending' => safe_count($pending_queues),
+            'processing' => 0, // 처리 중인 큐는 별도 디렉토리에서 관리
+            'completed' => 0, // 완료된 큐는 별도 디렉토리에서 관리
+            'failed' => 0
+        ];
+        
+        debug_log("get_queue_stats: Statistics from split system: " . json_encode($stats));
+        return $stats;
+    } catch (Exception $e) {
+        debug_log("get_queue_stats: Exception occurred: " . $e->getMessage());
+        // 실패 시 레거시 방식으로 fallback
+        $queue = load_queue();
+        $stats = [
+            'total' => safe_count($queue),
+            'pending' => 0, 'processing' => 0,
+            'completed' => 0, 'failed' => 0
+        ];
+        foreach ($queue as $item) {
+            $status = $item['status'] ?? 'pending';
+            if (isset($stats[$status])) {
+                $stats[$status]++;
+            }
         }
+        debug_log("get_queue_stats: Fallback statistics: " . json_encode($stats));
+        return $stats;
     }
-    debug_log("get_queue_stats: Statistics: " . json_encode($stats));
-    return $stats;
 }
 
 
@@ -923,7 +944,7 @@ function format_products_data_summary($keywords) {
 
 // 18. 메인 처리 로직 (4가지 프롬프트 템플릿 시스템 + 즉시 발행 지원 + count() 오류 수정 + 강화된 디버깅 + 상품 분석 데이터 저장 + 썸네일 URL 저장)
 function main_process() {
-    debug_log("main_process: Main processing started with thumbnail URL support.");
+    debug_log("main_process: Main processing started with split queue system support.");
 
     try {
         if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
@@ -1085,29 +1106,29 @@ function main_process() {
             process_immediate_publish($queue_data);
             // process_immediate_publish() 함수에서 JSON 응답 후 exit 됨
         } else {
-            debug_log("main_process: Processing queue mode request.");
+            debug_log("main_process: Processing queue mode request using split system.");
             
-            // Add to queue file
+            // Add to split queue system
             if (!add_to_queue($queue_data)) {
-                debug_log("main_process: Failed to add item to queue. check add_to_queue and save_queue functions.");
-                $telegram_msg = "❌ 큐 파일 저장 실패!\n파일 권한 또는 JSON 인코딩 문제일 수 있습니다.\n\n추가 정보:\n- 큐 파일: " . QUEUE_FILE . "\n- 디렉토리 권한 확인 필요";
+                debug_log("main_process: Failed to add item to split queue system. Check add_queue_split function.");
+                $telegram_msg = "❌ 분할 큐 시스템 저장 실패!\n파일 권한 또는 JSON 인코딩 문제일 수 있습니다.\n\n추가 정보:\n- 큐 디렉토리: /var/www/novacents/tools/queues/\n- 디렉토리 권한 확인 필요";
                 send_telegram_notification($telegram_msg, true);
-                main_log("Failed to add item to queue.");
-                redirect_to_editor(false, ['error' => '큐 파일 저장에 실패했습니다. 파일 권한을 확인하거나 관리자에게 문의하세요.']);
+                main_log("Failed to add item to split queue system.");
+                redirect_to_editor(false, ['error' => '분할 큐 시스템 저장에 실패했습니다. 파일 권한을 확인하거나 관리자에게 문의하세요.']);
             }
-            debug_log("main_process: Item successfully added to queue.");
+            debug_log("main_process: Item successfully added to split queue system.");
 
             // Get queue statistics for notification
             $stats = get_queue_stats();
             debug_log("main_process: Queue stats retrieved: " . json_encode($stats));
 
-            $telegram_success_msg = "✅ 새 작업이 발행 대기열에 추가되었습니다!\n\n";
+            $telegram_success_msg = "✅ 새 작업이 분할 큐 시스템에 추가되었습니다!\n\n";
             $telegram_success_msg .= "📋 <b>작업 정보</b>\n";
             $telegram_success_msg .= "• 제목: " . $input_data['title'] . "\n";
             $telegram_success_msg .= "• 카테고리: " . $queue_data['category_name'] . "\n";
             $telegram_success_msg .= "• 프롬프트 타입: " . $queue_data['prompt_type_name'] . "\n";
             $telegram_success_msg .= "• 키워드 수: " . safe_count($cleaned_keywords) . "개\n";
-            $telegram_success_msg .= "• 처리 모드: 4가지 프롬프트 템플릿 + 상품 분석 데이터\n";
+            $telegram_success_msg .= "• 처리 모드: 파일 분할 방식 + 상품 분석 데이터\n";
             $telegram_success_msg .= "• 쿠팡 링크: " . $coupang_total . "개\n";
             $telegram_success_msg .= "• 알리익스프레스 링크: " . $aliexpress_total . "개\n";
             
@@ -1142,9 +1163,9 @@ function main_process() {
             if ($stats['failed'] > 0) {
                 $telegram_success_msg .= "• 실패: " . $stats['failed'] . "개\n";
             }
-            $telegram_success_msg .= "\n🚀 4가지 프롬프트 템플릿 + 상품 분석 데이터 자동화 시스템이 순차적으로 처리할 예정입니다.";
+            $telegram_success_msg .= "\n🚀 파일 분할 방식 큐 관리 시스템이 순차적으로 처리할 예정입니다.";
             send_telegram_notification($telegram_success_msg);
-            main_log("Item successfully added to queue with prompt type '{$input_data['prompt_type']}', user details, product data, and thumbnail URL. Queue stats: " . json_encode($stats));
+            main_log("Item successfully added to split queue system with prompt type '{$input_data['prompt_type']}', user details, product data, and thumbnail URL. Queue stats: " . json_encode($stats));
 
             // Redirect to editor with success message
             redirect_to_editor(true, ['success' => '1']);
