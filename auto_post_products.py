@@ -7,7 +7,7 @@
 
 작성자: Claude AI
 날짜: 2025-07-24
-버전: v5.3 (메모리 최적화 + SEO 완전 구현)
+버전: v5.4 (메모리 최적화 + 파일분할 시스템)
 """
 
 import os
@@ -19,14 +19,16 @@ import traceback
 import argparse
 import re
 import gc  # 가비지 컬렉션 추가
+import subprocess
+import glob
 import google.generativeai as genai
 from datetime import datetime
 from dotenv import load_dotenv
 from prompt_templates import PromptTemplates
 
 # 🔧 AliExpress SDK 로그 경로 수정 (import 전에 환경변수 설정)
-os.environ['IOP_LOG_PATH'] = '/var/www/novacents/tools/logs'
-os.makedirs('/var/www/novacents/tools/logs', exist_ok=True)
+os.environ['IOP_LOG_PATH'] = '/var/www/logs'
+os.makedirs('/var/www/logs', exist_ok=True)
 
 # 알리익스프레스 SDK 경로 추가
 sys.path.append('/home/novacents/aliexpress-sdk')
@@ -36,9 +38,10 @@ import iop
 # 사용자 설정
 # ##############################################################################
 MAX_POSTS_PER_RUN = 1
-QUEUE_FILE = "/var/www/novacents/tools/product_queue.json"
-LOG_FILE = "/var/www/novacents/tools/auto_post_products.log"
-PUBLISHED_LOG_FILE = "/var/www/novacents/tools/published_log.txt"
+QUEUE_FILE = "/var/www/product_queue.json"  # 레거시 큐 파일 (백업용)
+QUEUES_DIR = "/var/www/queues"  # 새로운 분할 큐 디렉토리
+LOG_FILE = "/var/www/auto_post_products.log"
+PUBLISHED_LOG_FILE = "/var/www/published_log.txt"
 POST_DELAY_SECONDS = 30
 # ##############################################################################
 
@@ -154,12 +157,134 @@ class AliExpressPostingSystem:
             
         print(message)
         
+    def call_php_function(self, function_name, *args):
+        """PHP queue_utils.php 함수 호출"""
+        try:
+            # PHP 스크립트 경로
+            php_script = "/var/www/queue_utils.php"
+            
+            if not os.path.exists(php_script):
+                print(f"[❌] PHP 스크립트를 찾을 수 없습니다: {php_script}")
+                return None
+            
+            # PHP 함수 호출을 위한 wrapper 스크립트 생성
+            wrapper_code = f"""<?php
+require_once '{php_script}';
+
+$function_name = '{function_name}';
+$args = json_decode('{json.dumps(list(args), ensure_ascii=False)}', true);
+
+try {{
+    $result = call_user_func_array($function_name, $args);
+    echo json_encode($result, JSON_UNESCAPED_UNICODE);
+}} catch (Exception $e) {{
+    echo json_encode(['error' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+}}
+?>"""
+            
+            # 임시 파일에 wrapper 스크립트 저장
+            temp_file = f"/tmp/php_wrapper_{int(time.time())}.php"
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                f.write(wrapper_code)
+            
+            # PHP 실행
+            result = subprocess.run(
+                ['php', temp_file],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            # 임시 파일 삭제
+            os.unlink(temp_file)
+            
+            if result.returncode == 0:
+                response = json.loads(result.stdout)
+                if isinstance(response, dict) and 'error' in response:
+                    print(f"[❌] PHP 함수 오류: {response['error']}")
+                    return None
+                return response
+            else:
+                print(f"[❌] PHP 실행 오류: {result.stderr}")
+                return None
+                
+        except Exception as e:
+            print(f"[❌] PHP 함수 호출 중 오류: {e}")
+            return None
+        finally:
+            # 메모리 정리
+            gc.collect()
+        
+    def load_queue_split(self):
+        """분할 큐 시스템에서 pending 작업 로드"""
+        try:
+            print("[📋] 분할 큐 시스템에서 대기 중인 작업을 로드합니다...")
+            
+            # PHP 함수 호출: get_pending_queues_split($limit)
+            pending_jobs = self.call_php_function('get_pending_queues_split', MAX_POSTS_PER_RUN)
+            
+            if pending_jobs is None:
+                print("[❌] 분할 큐 로드 실패")
+                return []
+            
+            if not isinstance(pending_jobs, list):
+                print(f"[❌] 예상치 못한 응답 형태: {type(pending_jobs)}")
+                return []
+            
+            print(f"[📋] 분할 큐에서 {len(pending_jobs)}개의 대기 중인 작업을 발견했습니다.")
+            return pending_jobs
+            
+        except Exception as e:
+            print(f"[❌] 분할 큐 로드 중 오류 발생: {e}")
+            return []
+        finally:
+            gc.collect()
+            
+    def update_queue_status_split(self, queue_id, status, error_message=None):
+        """분할 큐 시스템에서 작업 상태 업데이트"""
+        try:
+            # PHP 함수 호출: update_queue_status_split($queue_id, $new_status, $error_message)
+            result = self.call_php_function('update_queue_status_split', queue_id, status, error_message)
+            
+            if result:
+                print(f"[✅] 큐 상태 업데이트 성공: {queue_id} -> {status}")
+                return True
+            else:
+                print(f"[❌] 큐 상태 업데이트 실패: {queue_id}")
+                return False
+                
+        except Exception as e:
+            print(f"[❌] 큐 상태 업데이트 중 오류: {e}")
+            return False
+        finally:
+            gc.collect()
+    
+    def remove_job_from_queue_split(self, queue_id):
+        """분할 큐 시스템에서 즉시 발행 후 작업 제거"""
+        try:
+            # pending에서 completed로 이동
+            success = self.update_queue_status_split(queue_id, 'completed')
+            
+            if success:
+                print(f"[🗑️] 작업 ID {queue_id}를 completed로 이동했습니다.")
+                return True
+            else:
+                print(f"[❌] 작업 제거 실패: {queue_id}")
+                return False
+                
+        except Exception as e:
+            print(f"[❌] 분할 큐에서 작업 제거 중 오류: {e}")
+            return False
+        finally:
+            gc.collect()
+    
+    # 레거시 큐 함수들 (호환성 유지)
     def load_queue(self):
-        """큐 파일에서 pending 작업 로드"""
+        """레거시 큐 파일에서 pending 작업 로드 (호환성)"""
         try:
             if not os.path.exists(QUEUE_FILE):
-                print(f"[❌] 큐 파일을 찾을 수 없습니다: {QUEUE_FILE}")
-                return []
+                print(f"[⚠️] 레거시 큐 파일이 없습니다. 분할 시스템을 사용합니다.")
+                return self.load_queue_split()
                 
             with open(QUEUE_FILE, "r", encoding="utf-8") as f:
                 queue_data = json.load(f)
@@ -167,7 +292,7 @@ class AliExpressPostingSystem:
             # pending 상태인 작업만 필터링
             pending_jobs = [job for job in queue_data if job.get("status") == "pending"]
             
-            print(f"[📋] 큐에서 {len(pending_jobs)}개의 대기 중인 작업을 발견했습니다.")
+            print(f"[📋] 레거시 큐에서 {len(pending_jobs)}개의 대기 중인 작업을 발견했습니다.")
             
             # 전체 큐 데이터는 메모리에서 제거
             del queue_data
@@ -176,20 +301,28 @@ class AliExpressPostingSystem:
             return pending_jobs
             
         except Exception as e:
-            print(f"[❌] 큐 로드 중 오류 발생: {e}")
-            return []
+            print(f"[❌] 레거시 큐 로드 중 오류 발생: {e}")
+            print("[🔄] 분할 시스템으로 전환합니다.")
+            return self.load_queue_split()
             
     def save_queue(self, queue_data):
-        """큐 파일 저장"""
+        """레거시 큐 파일 저장 (호환성)"""
         try:
             with open(QUEUE_FILE, "w", encoding="utf-8") as f:
                 json.dump(queue_data, f, ensure_ascii=False, indent=4)
-            print("[✅] 큐 파일이 성공적으로 저장되었습니다.")
+            print("[✅] 레거시 큐 파일이 성공적으로 저장되었습니다.")
         except Exception as e:
-            print(f"[❌] 큐 저장 중 오류 발생: {e}")
+            print(f"[❌] 레거시 큐 저장 중 오류 발생: {e}")
             
     def update_job_status(self, job_id, status, error_message=None):
-        """작업 상태 업데이트"""
+        """작업 상태 업데이트 (분할 시스템 우선)"""
+        # 분할 시스템 먼저 시도
+        success = self.update_queue_status_split(job_id, status, error_message)
+        
+        if success:
+            return True
+        
+        # 레거시 시스템 폴백
         try:
             with open(QUEUE_FILE, "r", encoding="utf-8") as f:
                 queue_data = json.load(f)
@@ -210,10 +343,17 @@ class AliExpressPostingSystem:
             gc.collect()
             
         except Exception as e:
-            print(f"[❌] 작업 상태 업데이트 중 오류: {e}")
+            print(f"[❌] 레거시 작업 상태 업데이트 중 오류: {e}")
     
     def remove_job_from_queue(self, job_id):
-        """즉시 발행 후 큐에서 작업 제거"""
+        """즉시 발행 후 큐에서 작업 제거 (분할 시스템 우선)"""
+        # 분할 시스템 먼저 시도
+        success = self.remove_job_from_queue_split(job_id)
+        
+        if success:
+            return True
+        
+        # 레거시 시스템 폴백
         try:
             with open(QUEUE_FILE, "r", encoding="utf-8") as f:
                 queue_data = json.load(f)
@@ -222,14 +362,14 @@ class AliExpressPostingSystem:
             queue_data = [job for job in queue_data if job.get("queue_id") != job_id]
             
             self.save_queue(queue_data)
-            print(f"[🗑️] 작업 ID {job_id}를 큐에서 제거했습니다.")
+            print(f"[🗑️] 레거시 큐에서 작업 ID {job_id}를 제거했습니다.")
             
             # 메모리 정리
             del queue_data
             gc.collect()
             
         except Exception as e:
-            print(f"[❌] 큐에서 작업 제거 중 오류: {e}")
+            print(f"[❌] 레거시 큐에서 작업 제거 중 오류: {e}")
     
     # 🚀 즉시 발행 전용 함수들
     def load_immediate_job(self, temp_file):
@@ -1260,9 +1400,9 @@ class AliExpressPostingSystem:
             return False
             
     def run(self):
-        """메인 실행 함수 (큐 모드) - 메모리 최적화"""
+        """메인 실행 함수 (큐 모드) - 메모리 최적화 및 분할 시스템"""
         print("=" * 60)
-        print("🌏 알리익스프레스 전용 어필리에이트 자동화 시스템 시작 (4가지 프롬프트 템플릿)")
+        print("🌏 알리익스프레스 전용 어필리에이트 자동화 시스템 시작 (분할 큐 시스템)")
         print("=" * 60)
         
         # 1. 설정 로드
@@ -1270,8 +1410,8 @@ class AliExpressPostingSystem:
             print("[❌] 설정 로드 실패. 프로그램을 종료합니다.")
             return
             
-        # 2. 큐에서 작업 로드
-        pending_jobs = self.load_queue()
+        # 2. 분할 큐에서 작업 로드
+        pending_jobs = self.load_queue_split()
         
         if not pending_jobs:
             print("[📋] 처리할 작업이 없습니다.")
@@ -1298,7 +1438,7 @@ class AliExpressPostingSystem:
                 
         # 4. 완료 메시지
         remaining_jobs = len(pending_jobs) - processed_count
-        completion_message = f"[🎉] 4가지 프롬프트 템플릿 자동화 완료! 처리: {processed_count}개, 남은 작업: {remaining_jobs}개"
+        completion_message = f"[🎉] 분할 큐 시스템 자동화 완료! 처리: {processed_count}개, 남은 작업: {remaining_jobs}개"
         
         self.log_message(completion_message)
         self.send_telegram_notification(completion_message)
@@ -1327,7 +1467,7 @@ def main():
             success = system.run_immediate_mode(args.immediate_file)
             sys.exit(0 if success else 1)
         else:
-            # 기존 큐 모드
+            # 분할 큐 모드
             system.run()
             
     except KeyboardInterrupt:
