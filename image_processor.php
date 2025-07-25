@@ -187,6 +187,9 @@ function handleProcessImage($gdrive, $input) {
         
         error_log("Step 4 완료: 변환 및 업로드 성공");
         
+        // 작업 완료 후 로그 정리 (성공한 경우)
+        cleanupGdriveDebugLogs(true);
+        
         // 성공 응답
         send_success_response([
             'message' => '이미지 처리가 완료되었습니다',
@@ -210,10 +213,54 @@ function handleProcessImage($gdrive, $input) {
     } catch (Exception $e) {
         error_log("이미지 처리 실패: " . $e->getMessage());
         error_log("Stack trace: " . $e->getTraceAsString());
+        
+        // 작업 실패 후 로그 정리 (실패한 경우)
+        cleanupGdriveDebugLogs(false);
+        
         throw $e;
     } finally {
         // 임시 파일 및 디렉토리 정리
         cleanupTempDirectory($temp_dir);
+    }
+}
+
+/**
+ * Google Drive 디버그 로그 정리
+ */
+function cleanupGdriveDebugLogs($success = true) {
+    try {
+        // 로그 관리자 클래스 포함
+        require_once __DIR__ . '/gdrive_log_manager.php';
+        
+        $logManager = new GdriveLogManager();
+        
+        // 가장 최근 로그 파일 찾기
+        $logFiles = glob(__DIR__ . '/gdrive_debug_*.log');
+        
+        if (!empty($logFiles)) {
+            // 가장 최근 파일 (수정 시간 기준)
+            usort($logFiles, function($a, $b) {
+                return filemtime($b) - filemtime($a);
+            });
+            
+            $latestLogFile = basename($logFiles[0]);
+            
+            // 성공한 경우 즉시 정리, 실패한 경우 logs/gdrive로 이동
+            if ($success) {
+                error_log("Google Drive 작업 성공 - 로그 파일 정리: {$latestLogFile}");
+                $logManager->cleanupSuccessLog($latestLogFile);
+            } else {
+                error_log("Google Drive 작업 실패 - 로그 파일 보관: {$latestLogFile}");
+                // 실패한 로그는 자동으로 logs/gdrive로 이동됨 (다음 정리 작업에서)
+            }
+        }
+        
+        // 전체 로그 정리 (오래된 로그들)
+        $logManager->deleteOldLogs();
+        
+    } catch (Exception $e) {
+        error_log("로그 정리 중 오류: " . $e->getMessage());
+        // 로그 정리 실패해도 메인 작업에는 영향 없음
     }
 }
 
