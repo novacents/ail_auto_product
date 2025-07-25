@@ -1,8 +1,8 @@
 <?php
 /**
- * Google Sheets API 연동 관리자
- * 상품 발굴 데이터를 구글 시트에 저장하고 관리
- * gdrive_config.php와 동일한 방식으로 Python 스크립트 사용
+ * Google Sheets API 연동 관리자 (단일 데이터 소스)
+ * 상품 발굴 데이터를 구글 시트에만 저장하고 관리
+ * JSON 파일 의존성 제거, 구글 시트가 단일 데이터 소스
  */
 
 class GoogleSheetsManager {
@@ -277,6 +277,232 @@ try:
             'spreadsheet_url': f'https://docs.google.com/spreadsheets/d/{spreadsheet_id}',
             'action': 'created_new'
         }))
+    
+except Exception as e:
+    print(json.dumps({
+        'success': False,
+        'error': str(e)
+    }))
+PYTHON;
+
+        return $this->executePythonScript($script);
+    }
+    
+    /**
+     * 구글 시트에서 모든 상품 데이터 읽기
+     */
+    public function getAllProducts() {
+        $script = <<<PYTHON
+import json
+import sys
+import os
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+
+try:
+    # OAuth 토큰 로드
+    creds = None
+    token_file = '{$this->token_file}'
+    
+    if os.path.exists(token_file):
+        creds = Credentials.from_authorized_user_file(token_file, [
+            'https://www.googleapis.com/auth/spreadsheets',
+            'https://www.googleapis.com/auth/drive'
+        ])
+    
+    if not creds:
+        raise Exception("OAuth 토큰을 찾을 수 없습니다. oauth_setup.php를 실행하세요.")
+    
+    # 토큰 갱신 필요 시 자동 갱신
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+        with open(token_file, 'w') as token:
+            token.write(creds.to_json())
+    
+    # Sheets API 및 Drive API 서비스 생성
+    sheets_service = build('sheets', 'v4', credentials=creds)
+    drive_service = build('drive', 'v3', credentials=creds)
+    
+    # 스프레드시트 찾기
+    query = f"name='{$this->spreadsheetName}' and mimeType='application/vnd.google-apps.spreadsheet'"
+    results = drive_service.files().list(q=query, fields="files(id, name)").execute()
+    files = results.get('files', [])
+    
+    if not files:
+        # 스프레드시트가 없으면 빈 배열 반환
+        print(json.dumps({
+            'success': True,
+            'data': [],
+            'count': 0
+        }))
+        sys.exit(0)
+    
+    spreadsheet_id = files[0]['id']
+    
+    # 모든 데이터 읽기 (헤더 제외)
+    range_result = sheets_service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range='Sheet1!A2:AA'
+    ).execute()
+    
+    values = range_result.get('values', [])
+    
+    print(json.dumps({
+        'success': True,
+        'data': values,
+        'count': len(values),
+        'spreadsheet_id': spreadsheet_id
+    }))
+    
+except Exception as e:
+    print(json.dumps({
+        'success': False,
+        'error': str(e)
+    }))
+PYTHON;
+
+        return $this->executePythonScript($script);
+    }
+    
+    /**
+     * 시트 행 데이터를 상품 객체로 변환
+     */
+    public function convertRowToProduct($row) {
+        if (count($row) < 10) {
+            return null; // 필수 데이터가 부족한 경우
+        }
+        
+        return [
+            'id' => $row[0] ?? '',
+            'keyword' => $row[1] ?? '',
+            'product_data' => [
+                'title' => $row[2] ?? '',
+                'price' => $row[3] ?? '',
+                'rating_display' => $row[4] ?? '',
+                'lastest_volume' => $row[5] ?? '',
+                'image_url' => $row[6] ?? '',
+                'affiliate_link' => $row[8] ?? ''
+            ],
+            'product_url' => $row[7] ?? '',
+            'created_at' => $row[9] ?? '',
+            'user_details' => [
+                'specs' => [
+                    'main_function' => $row[10] ?? '',
+                    'size_capacity' => $row[11] ?? '',
+                    'color' => $row[12] ?? '',
+                    'material' => $row[13] ?? '',
+                    'power_battery' => $row[14] ?? ''
+                ],
+                'efficiency' => [
+                    'problem_solving' => $row[15] ?? '',
+                    'time_saving' => $row[16] ?? '',
+                    'space_efficiency' => $row[17] ?? '',
+                    'cost_saving' => $row[18] ?? ''
+                ],
+                'usage' => [
+                    'usage_location' => $row[19] ?? '',
+                    'usage_frequency' => $row[20] ?? '',
+                    'target_users' => $row[21] ?? '',
+                    'usage_method' => $row[22] ?? ''
+                ],
+                'benefits' => [
+                    'advantages' => [
+                        $row[23] ?? '',
+                        $row[24] ?? '',
+                        $row[25] ?? ''
+                    ],
+                    'precautions' => $row[26] ?? ''
+                ]
+            ]
+        ];
+    }
+    
+    /**
+     * 특정 ID의 상품 삭제
+     */
+    public function deleteProduct($productId) {
+        $script = <<<PYTHON
+import json
+import sys
+import os
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+
+try:
+    # OAuth 토큰 로드
+    creds = None
+    token_file = '{$this->token_file}'
+    
+    if os.path.exists(token_file):
+        creds = Credentials.from_authorized_user_file(token_file, [
+            'https://www.googleapis.com/auth/spreadsheets',
+            'https://www.googleapis.com/auth/drive'
+        ])
+    
+    if not creds:
+        raise Exception("OAuth 토큰을 찾을 수 없습니다. oauth_setup.php를 실행하세요.")
+    
+    # 토큰 갱신 필요 시 자동 갱신
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+        with open(token_file, 'w') as token:
+            token.write(creds.to_json())
+    
+    # Sheets API 및 Drive API 서비스 생성
+    sheets_service = build('sheets', 'v4', credentials=creds)
+    drive_service = build('drive', 'v3', credentials=creds)
+    
+    # 스프레드시트 찾기
+    query = f"name='{$this->spreadsheetName}' and mimeType='application/vnd.google-apps.spreadsheet'"
+    results = drive_service.files().list(q=query, fields="files(id, name)").execute()
+    files = results.get('files', [])
+    
+    if not files:
+        raise Exception("스프레드시트를 찾을 수 없습니다.")
+    
+    spreadsheet_id = files[0]['id']
+    
+    # 모든 데이터 읽기 (ID 확인용)
+    range_result = sheets_service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range='Sheet1!A:A'
+    ).execute()
+    
+    values = range_result.get('values', [])
+    
+    # 삭제할 행 찾기 (헤더 제외)
+    delete_row = None
+    for i, row in enumerate(values[1:], start=2):  # 2행부터 시작 (헤더 제외)
+        if row and row[0] == '{$productId}':
+            delete_row = i
+            break
+    
+    if delete_row is None:
+        raise Exception("삭제할 상품을 찾을 수 없습니다.")
+    
+    # 행 삭제
+    requests = [{
+        'deleteDimension': {
+            'range': {
+                'sheetId': 0,
+                'dimension': 'ROWS',
+                'startIndex': delete_row - 1,  # 0-based index
+                'endIndex': delete_row
+            }
+        }
+    }]
+    
+    sheets_service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={'requests': requests}
+    ).execute()
+    
+    print(json.dumps({
+        'success': True,
+        'deleted_row': delete_row
+    }))
     
 except Exception as e:
     print(json.dumps({
