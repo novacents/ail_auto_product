@@ -26,10 +26,22 @@ class GoogleSheetsManager {
     private function initializeClient() {
         try {
             // Composer autoload (Google API Client 라이브러리 필요)
-            if (file_exists(__DIR__ . '/vendor/autoload.php')) {
-                require_once __DIR__ . '/vendor/autoload.php';
-            } else {
-                throw new Exception('Google API Client 라이브러리가 설치되지 않았습니다.');
+            $autoloadPaths = [
+                '/var/www/novacents/tools/vendor/autoload.php',
+                __DIR__ . '/vendor/autoload.php'
+            ];
+            
+            $autoloadFound = false;
+            foreach ($autoloadPaths as $path) {
+                if (file_exists($path)) {
+                    require_once $path;
+                    $autoloadFound = true;
+                    break;
+                }
+            }
+            
+            if (!$autoloadFound) {
+                throw new Exception('Google API Client 라이브러리가 설치되지 않았습니다. /var/www/novacents/tools/ 경로에 설치해주세요.');
             }
             
             $this->client = new Google_Client();
@@ -68,9 +80,9 @@ class GoogleSheetsManager {
      */
     private function getCredentialsPath() {
         $possiblePaths = [
+            '/var/www/novacents/tools/credentials.json',
             __DIR__ . '/credentials.json',
-            '/home/novacents/credentials.json',
-            $_SERVER['DOCUMENT_ROOT'] . '/tools/credentials.json'
+            '/home/novacents/credentials.json'
         ];
         
         foreach ($possiblePaths as $path) {
@@ -79,7 +91,7 @@ class GoogleSheetsManager {
             }
         }
         
-        throw new Exception('credentials.json 파일을 찾을 수 없습니다.');
+        throw new Exception('credentials.json 파일을 찾을 수 없습니다. /var/www/novacents/tools/ 경로에 저장해주세요.');
     }
     
     /**
