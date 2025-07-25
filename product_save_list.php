@@ -1,7 +1,7 @@
 <?php
 /**
  * 저장된 상품 관리 페이지
- * 저장된 상품들을 리스트 형태로 표시하고 편집/삭제/내보내기 기능 제공
+ * 저장된 상품들을 리스트 형태로 표시하고 편집/삭제/구글시트 내보내기 기능 제공
  */
 require_once($_SERVER['DOCUMENT_ROOT'].'/wp-config.php');
 if(!current_user_can('manage_options'))wp_die('접근 권한이 없습니다.');
@@ -75,9 +75,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .alert-success{background:#d4edda;color:#155724;border:1px solid #c3e6cb}
 .alert-error{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb}
 .alert-info{background:#d1ecf1;color:#0c5460;border:1px solid #bee5eb}
-.export-options{margin-top:15px}
-.export-options label{display:block;margin-bottom:10px;font-weight:600}
-.export-options select{width:100%;padding:10px;border:1px solid #ddd;border-radius:6px}
+.alert-warning{background:#fff3cd;color:#856404;border:1px solid #ffeaa7}
+.export-info{margin-top:15px;text-align:center}
+.sheets-url{margin-top:15px;padding:15px;background:#f8f9fa;border-radius:8px;border:1px solid #e9ecef}
+.sheets-url a{color:#007bff;text-decoration:none;font-weight:600}
+.sheets-url a:hover{text-decoration:underline}
 .pagination{display:flex;justify-content:center;align-items:center;gap:10px;margin-top:30px}
 .pagination button{padding:8px 12px;border:1px solid #ddd;background:white;cursor:pointer;border-radius:4px}
 .pagination button:hover{background:#f8f9fa}
@@ -89,6 +91,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .sort-header:hover{background:#e9ecef}
 .sort-header.asc::after{content:' ↑';position:absolute;right:5px}
 .sort-header.desc::after{content:' ↓';position:absolute;right:5px}
+.sheets-actions{margin-top:20px;text-align:center;padding:20px;background:#f0f8ff;border-radius:8px;border:1px solid #b3d9ff}
+.sheets-actions h4{margin:0 0 15px 0;color:#0066cc}
 </style>
 </head>
 <body>
@@ -107,31 +111,30 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <div class="modal" id="exportModal">
 <div class="modal-content">
 <div class="modal-header">
-<h3>내보내기 옵션</h3>
+<h3>📊 구글 시트로 내보내기</h3>
 </div>
 <div class="modal-body">
-<div class="export-options">
-<label>내보내기 형식:</label>
-<select id="exportFormat">
-<option value="csv">CSV 파일</option>
-<option value="excel">엑셀 파일 (.xlsx)</option>
-<option value="json">JSON 파일</option>
-</select>
-</div>
 <div class="alert alert-info">
-선택된 <span id="exportCount">0</span>개의 상품을 내보냅니다.
+선택된 <span id="exportCount">0</span>개의 상품을 구글 시트 '상품 발굴 데이터'에 저장합니다.
+</div>
+<div class="export-info">
+<p><strong>내보내기 후</strong> 구글 시트에서 데이터를 확인하고 엑셀로 다운로드할 수 있습니다.</p>
+</div>
+<div class="sheets-url" id="sheetsUrlSection" style="display:none;">
+<p><strong>구글 시트 URL:</strong></p>
+<a id="sheetsUrl" href="#" target="_blank">구글 시트에서 보기</a>
 </div>
 </div>
 <div class="modal-footer">
 <button class="btn btn-secondary" onclick="closeModal('exportModal')">취소</button>
-<button class="btn btn-success" onclick="confirmExport()">내보내기</button>
+<button class="btn btn-success" onclick="confirmExportToSheets()" id="exportToSheetsBtn">📊 구글 시트로 내보내기</button>
 </div>
 </div>
 </div>
 <div class="main-container">
 <div class="header-section">
 <h1>📋 저장된 상품 관리</h1>
-<p class="subtitle">발굴한 상품들을 관리하고 정리하여 활용하세요</p>
+<p class="subtitle">발굴한 상품들을 관리하고 구글 시트로 내보내세요</p>
 <?php if(!empty($success_message)):?>
 <div class="alert alert-success"><?php echo esc_html($success_message);?></div>
 <?php endif;?>
@@ -155,9 +158,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <div class="nav-links">
 <a href="product_save.php" class="nav-link">➕ 상품 추가</a>
 <a href="affiliate_editor.php" class="nav-link">✍️ 상품 글 작성</a>
+<button class="nav-link" onclick="openGoogleSheets()" style="border:none;background:rgba(255,255,255,0.2);">📊 구글 시트 보기</button>
 </div>
 </div>
 <div class="main-content">
+<div class="sheets-actions">
+<h4>📊 구글 시트 관리</h4>
+<button class="btn btn-primary" onclick="openGoogleSheets()">구글 시트 보기</button>
+<button class="btn btn-success" onclick="syncAllToSheets()">전체 데이터 동기화</button>
+</div>
 <div class="controls-section">
 <div class="controls-row">
 <div class="search-group">
@@ -166,13 +175,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <button class="btn btn-secondary" onclick="clearSearch()">초기화</button>
 </div>
 <div class="action-group">
-<button class="btn btn-success" onclick="exportSelected()" id="exportBtn" disabled>📤 내보내기</button>
+<button class="btn btn-success" onclick="exportSelected()" id="exportBtn" disabled>📊 구글 시트로 내보내기</button>
 <button class="btn btn-danger" onclick="deleteSelected()" id="deleteBtn" disabled>🗑️ 삭제</button>
 </div>
 </div>
 <div class="bulk-actions" id="bulkActions">
 <strong>선택된 항목:</strong> <span id="selectedCount">0</span>개 |
-<button class="btn btn-small btn-success" onclick="exportSelected()">내보내기</button>
+<button class="btn btn-small btn-success" onclick="exportSelected()">구글 시트로 내보내기</button>
 <button class="btn btn-small btn-danger" onclick="deleteSelected()">삭제</button>
 <button class="btn btn-small btn-secondary" onclick="clearSelection()">선택 해제</button>
 </div>
@@ -518,7 +527,6 @@ function previewProduct(id){
 }
 
 function editProduct(id){
-    // 상품 편집은 나중에 구현
     alert('상품 편집 기능은 준비 중입니다.');
 }
 
@@ -536,7 +544,7 @@ async function deleteProduct(id){
         
         if(rs.success){
             alert('상품이 삭제되었습니다.');
-            loadProducts(); // 데이터 새로고침
+            loadProducts();
         }else{
             throw new Error(rs.message);
         }
@@ -552,74 +560,88 @@ function exportSelected(){
     }
     
     document.getElementById('exportCount').textContent=selectedProducts.size;
+    document.getElementById('sheetsUrlSection').style.display='none';
     document.getElementById('exportModal').style.display='flex';
 }
 
-async function confirmExport(){
-    const format=document.getElementById('exportFormat').value;
+async function confirmExportToSheets(){
     const selectedIds=Array.from(selectedProducts);
+    const btn=document.getElementById('exportToSheetsBtn');
+    const originalText=btn.textContent;
+    
+    btn.disabled=true;
+    btn.textContent='내보내는 중...';
     
     try{
         const r=await fetch('product_save_handler.php',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({action:'export',ids:selectedIds,format:format})
+            body:JSON.stringify({action:'export_to_sheets',ids:selectedIds})
         });
         
         const rs=await r.json();
         
         if(rs.success){
-            // CSV 형태로 다운로드
-            downloadData(rs.data,format);
-            closeModal('exportModal');
-            alert('내보내기가 완료되었습니다.');
+            // 구글 시트 URL 표시
+            document.getElementById('sheetsUrl').href=rs.spreadsheet_url;
+            document.getElementById('sheetsUrl').textContent='구글 시트에서 확인하기';
+            document.getElementById('sheetsUrlSection').style.display='block';
+            
+            btn.textContent=originalText;
+            btn.disabled=false;
+            
+            alert(`${rs.rows_added}개의 상품이 구글 시트에 저장되었습니다!`);
         }else{
             throw new Error(rs.message);
         }
     }catch(e){
-        alert('내보내기 중 오류가 발생했습니다: '+e.message);
+        alert('구글 시트 내보내기 중 오류가 발생했습니다: '+e.message);
+        btn.textContent=originalText;
+        btn.disabled=false;
     }
 }
 
-function downloadData(data,format){
-    let content,filename,mimeType;
-    
-    switch(format){
-        case'csv':
-            content=convertToCSV(data);
-            filename=`products_${new Date().toISOString().split('T')[0]}.csv`;
-            mimeType='text/csv';
-            break;
-        case'json':
-            content=JSON.stringify(data,null,2);
-            filename=`products_${new Date().toISOString().split('T')[0]}.json`;
-            mimeType='application/json';
-            break;
-        default:
-            content=convertToCSV(data);
-            filename=`products_${new Date().toISOString().split('T')[0]}.csv`;
-            mimeType='text/csv';
+async function openGoogleSheets(){
+    try{
+        const r=await fetch('product_save_handler.php',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({action:'get_sheets_url'})
+        });
+        
+        const rs=await r.json();
+        
+        if(rs.success){
+            window.open(rs.spreadsheet_url,'_blank');
+        }else{
+            throw new Error(rs.message);
+        }
+    }catch(e){
+        alert('구글 시트를 열 수 없습니다: '+e.message);
     }
-    
-    const blob=new Blob([content],{type:mimeType});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url;
-    a.download=filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
 }
 
-function convertToCSV(data){
-    const headers=['ID','키워드','상품명','가격','평점','판매량','이미지URL','상품URL','어필리에이트링크','생성일시'];
-    const csvContent=[
-        headers.join(','),
-        ...data.map(row=>row.map(cell=>`"${String(cell).replace(/"/g,'""')}"`).join(','))
-    ].join('\n');
+async function syncAllToSheets(){
+    if(!confirm('모든 데이터를 구글 시트에 동기화하시겠습니까?'))return;
     
-    return'\ufeff'+csvContent; // UTF-8 BOM 추가
+    try{
+        const r=await fetch('product_save_handler.php',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({action:'sync_to_sheets'})
+        });
+        
+        const rs=await r.json();
+        
+        if(rs.success){
+            alert(`${rs.rows_added}개의 상품이 구글 시트에 동기화되었습니다!`);
+            window.open(rs.spreadsheet_url,'_blank');
+        }else{
+            throw new Error(rs.message);
+        }
+    }catch(e){
+        alert('동기화 중 오류가 발생했습니다: '+e.message);
+    }
 }
 
 async function deleteSelected(){
@@ -642,7 +664,7 @@ async function deleteSelected(){
         await Promise.all(deletePromises);
         alert('선택된 상품들이 삭제되었습니다.');
         clearSelection();
-        loadProducts(); // 데이터 새로고침
+        loadProducts();
     }catch(e){
         alert('삭제 중 오류가 발생했습니다.');
     }
