@@ -187,8 +187,10 @@ function handleProcessImage($gdrive, $input) {
         
         error_log("Step 4 완료: 변환 및 업로드 성공");
         
-        // 작업 완료 후 로그 정리 (성공한 경우)
+        // 작업 완료 후 로그 정리 (성공한 경우) - 출력 버퍼링으로 한국어 출력 차단
+        ob_start();
         cleanupGdriveDebugLogs(true);
+        ob_end_clean();
         
         // 성공 응답
         send_success_response([
@@ -214,8 +216,10 @@ function handleProcessImage($gdrive, $input) {
         error_log("이미지 처리 실패: " . $e->getMessage());
         error_log("Stack trace: " . $e->getTraceAsString());
         
-        // 작업 실패 후 로그 정리 (실패한 경우)
+        // 작업 실패 후 로그 정리 (실패한 경우) - 출력 버퍼링으로 한국어 출력 차단
+        ob_start();
         cleanupGdriveDebugLogs(false);
+        ob_end_clean();
         
         throw $e;
     } finally {
