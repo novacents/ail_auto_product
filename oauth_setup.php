@@ -1,6 +1,6 @@
 <?php
 /**
- * Google Drive OAuth 웹 기반 설정 페이지
+ * Google Drive & Sheets OAuth 웹 기반 설정 페이지
  * 브라우저에서 쉽게 OAuth 인증을 수행할 수 있습니다.
  */
 
@@ -14,11 +14,17 @@ $token_file = "/var/www/novacents/tools/google_token.json";
 
 // 1단계: 인증 URL로 리다이렉트
 if (!isset($_GET['code']) && !isset($_GET['action'])) {
+    // Google Drive와 Sheets 스코프 모두 포함
+    $scopes = [
+        'https://www.googleapis.com/auth/drive',
+        'https://www.googleapis.com/auth/spreadsheets'
+    ];
+    
     $auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" . http_build_query([
         'client_id' => $client_id,
         'redirect_uri' => $redirect_uri,
         'response_type' => 'code',
-        'scope' => 'https://www.googleapis.com/auth/drive',
+        'scope' => implode(' ', $scopes),
         'access_type' => 'offline',
         'prompt' => 'consent'
     ]);
@@ -27,7 +33,7 @@ if (!isset($_GET['code']) && !isset($_GET['action'])) {
     <html lang="ko">
     <head>
         <meta charset="UTF-8">
-        <title>Google Drive OAuth 설정</title>
+        <title>Google Drive & Sheets OAuth 설정</title>
         <style>
             body {
                 font-family: Arial, sans-serif;
@@ -74,20 +80,34 @@ if (!isset($_GET['code']) && !isset($_GET['action'])) {
                 margin: 20px 0;
                 border: 1px solid #ffeaa7;
             }
+            .scope-list {
+                background: #f8f9fa;
+                padding: 15px;
+                border-radius: 5px;
+                margin: 15px 0;
+            }
         </style>
     </head>
     <body>
         <div class="container">
-            <h1>🔐 Google Drive OAuth 설정</h1>
+            <h1>🔐 Google Drive & Sheets OAuth 설정</h1>
             
             <div class="info">
                 <h3>📋 설정 과정</h3>
                 <ol>
                     <li>아래 버튼을 클릭하여 Google 로그인</li>
-                    <li>Google Drive 접근 권한 허용</li>
+                    <li>Google Drive 및 Sheets 접근 권한 허용</li>
                     <li>자동으로 토큰 파일 생성</li>
                     <li>설정 완료!</li>
                 </ol>
+            </div>
+            
+            <div class="scope-list">
+                <h3>🔑 요청 권한</h3>
+                <ul>
+                    <li><strong>Google Drive API:</strong> 이미지 업로드 및 관리</li>
+                    <li><strong>Google Sheets API:</strong> 상품 데이터 저장 및 관리</li>
+                </ul>
             </div>
             
             <?php if (file_exists($token_file)): ?>
@@ -194,6 +214,12 @@ if (isset($_GET['code'])) {
                     .button:hover {
                         background: #218838;
                     }
+                    .scope-info {
+                        background: #e3f2fd;
+                        padding: 15px;
+                        border-radius: 5px;
+                        margin: 20px 0;
+                    }
                 </style>
             </head>
             <body>
@@ -202,12 +228,21 @@ if (isset($_GET['code'])) {
                     
                     <div class="success">
                         <strong>토큰이 성공적으로 저장되었습니다!</strong><br>
-                        이제 이미지 자동화 시스템을 사용할 수 있습니다.
+                        이제 Google Drive와 Sheets 시스템을 모두 사용할 수 있습니다.
+                    </div>
+                    
+                    <div class="scope-info">
+                        <h3>🔑 설정된 권한</h3>
+                        <ul>
+                            <li>✅ Google Drive API - 이미지 업로드</li>
+                            <li>✅ Google Sheets API - 상품 데이터 관리</li>
+                        </ul>
                     </div>
                     
                     <div style="text-align: center;">
                         <a href="image_selector.php" class="button">이미지 선택 페이지로 이동</a>
                         <a href="affiliate_editor.php" class="button">에디터로 돌아가기</a>
+                        <a href="product_save.php" class="button">상품 발굴 시스템</a>
                     </div>
                     
                     <div style="margin-top: 30px; padding: 15px; background: #f8f9fa; border-radius: 5px;">
@@ -232,3 +267,4 @@ if (isset($_GET['code'])) {
         echo "<pre>" . htmlspecialchars($response) . "</pre>";
     }
 }
+?>
