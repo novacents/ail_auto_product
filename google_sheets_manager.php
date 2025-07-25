@@ -171,11 +171,15 @@ try:
                     body={'values': [headers]}
                 ).execute()
                 
+                # 시트 ID 가져오기
+                spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+                sheet_id = spreadsheet['sheets'][0]['properties']['sheetId']
+                
                 # 헤더 스타일링
                 requests = [{
                     'repeatCell': {
                         'range': {
-                            'sheetId': 0,
+                            'sheetId': sheet_id,
                             'startRowIndex': 0,
                             'endRowIndex': 1,
                             'startColumnIndex': 0,
@@ -231,6 +235,7 @@ try:
         
         result = sheets_service.spreadsheets().create(body=spreadsheet).execute()
         spreadsheet_id = result['spreadsheetId']
+        sheet_id = result['sheets'][0]['properties']['sheetId']
         
         # 헤더 추가
         sheets_service.spreadsheets().values().update(
@@ -244,7 +249,7 @@ try:
         requests = [{
             'repeatCell': {
                 'range': {
-                    'sheetId': 0,
+                    'sheetId': sheet_id,
                     'startRowIndex': 0,
                     'endRowIndex': 1,
                     'startColumnIndex': 0,
@@ -464,6 +469,10 @@ try:
     
     spreadsheet_id = files[0]['id']
     
+    # 스프레드시트 메타데이터 가져오기 (실제 sheet ID 확인)
+    spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    sheet_id = spreadsheet['sheets'][0]['properties']['sheetId']
+    
     # 모든 데이터 읽기 (ID 확인용)
     range_result = sheets_service.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id,
@@ -486,7 +495,7 @@ try:
     requests = [{
         'deleteDimension': {
             'range': {
-                'sheetId': 0,
+                'sheetId': sheet_id,  # 실제 sheet ID 사용
                 'dimension': 'ROWS',
                 'startIndex': delete_row - 1,  # 0-based index
                 'endIndex': delete_row
