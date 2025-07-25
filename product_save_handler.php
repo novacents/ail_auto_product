@@ -227,6 +227,10 @@ function exportToGoogleSheets($productIds) {
         $sheetsManager = new GoogleSheetsManager();
         $result = $sheetsManager->addProducts(array_values($products));
         
+        if (!$result['success']) {
+            throw new Exception($result['error']);
+        }
+        
         echo json_encode([
             'success' => true,
             'message' => count($products) . '개의 상품이 구글 시트에 저장되었습니다.',
@@ -243,16 +247,22 @@ function exportToGoogleSheets($productIds) {
 }
 
 /**
- * 구글 시트 URL 가져오기
+ * 구글 시트 URL 가져오기 (수정된 버전)
  */
 function getGoogleSheetsUrl() {
     try {
         $sheetsManager = new GoogleSheetsManager();
-        $url = $sheetsManager->getSpreadsheetUrl();
+        
+        // getOrCreateSpreadsheet() 메서드를 사용하여 시트 생성 또는 찾기
+        $result = $sheetsManager->getOrCreateSpreadsheet();
+        
+        if (!$result['success']) {
+            throw new Exception($result['error']);
+        }
         
         echo json_encode([
             'success' => true,
-            'spreadsheet_url' => $url
+            'spreadsheet_url' => $result['spreadsheet_url']
         ]);
         
     } catch (Exception $e) {
@@ -276,6 +286,10 @@ function syncAllToGoogleSheets() {
         
         $sheetsManager = new GoogleSheetsManager();
         $result = $sheetsManager->addProducts($products);
+        
+        if (!$result['success']) {
+            throw new Exception($result['error']);
+        }
         
         echo json_encode([
             'success' => true,
