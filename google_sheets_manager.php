@@ -88,6 +88,9 @@ class GoogleSheetsManager {
      * 스프레드시트 생성 또는 기존 시트 찾기
      */
     public function getOrCreateSpreadsheet() {
+        // PHP 배열을 Python 리스트 문자열로 변환
+        $headers_str = "['" . implode("', '", $this->headers) . "']";
+        
         $script = <<<PYTHON
 import json
 import sys
@@ -153,7 +156,7 @@ try:
         spreadsheet_id = result['spreadsheetId']
         
         # 헤더 추가
-        headers = {json.dumps($this->headers)}
+        headers = {$headers_str}
         
         sheets_service.spreadsheets().values().update(
             spreadsheetId=spreadsheet_id,
