@@ -10,10 +10,14 @@ class GoogleSheetsManager {
     private $spreadsheetId;
     private $spreadsheetName = '상품 발굴 데이터';
     
-    // 구글 시트 열 구조
+    // 구글 시트 열 구조 (상세 정보 포함)
     private $headers = [
         'ID', '키워드', '상품명', '가격', '평점', '판매량', 
-        '이미지URL', '상품URL', '어필리에이트링크', '생성일시'
+        '이미지URL', '상품URL', '어필리에이트링크', '생성일시',
+        '주요기능', '크기/용량', '색상', '재질/소재', '전원/배터리',
+        '해결하는문제', '시간절약', '공간활용', '비용절감',
+        '사용장소', '사용빈도', '적합한사용자', '사용법',
+        '장점1', '장점2', '장점3', '주의사항'
     ];
     
     public function __construct() {
@@ -165,7 +169,9 @@ class GoogleSheetsManager {
      */
     private function addHeaders() {
         try {
-            $range = 'Sheet1!A1:J1';
+            // 헤더 수에 맞게 범위 확장 (A부터 끝 열까지)
+            $endColumn = chr(65 + count($this->headers) - 1); // A=65, 헤더 수에 따라 마지막 열 계산
+            $range = 'Sheet1!A1:' . $endColumn . '1';
             $values = [$this->headers];
             
             $body = new Google_Service_Sheets_ValueRange([
@@ -202,7 +208,9 @@ class GoogleSheetsManager {
                         'range' => [
                             'sheetId' => 0,
                             'startRowIndex' => 0,
-                            'endRowIndex' => 1
+                            'endRowIndex' => 1,
+                            'startColumnIndex' => 0,
+                            'endColumnIndex' => count($this->headers)
                         ],
                         'cell' => [
                             'userEnteredFormat' => [
@@ -254,8 +262,9 @@ class GoogleSheetsManager {
             $values = $response->getValues();
             $nextRow = count($values) + 1;
             
-            // 데이터 추가
-            $range = 'Sheet1!A' . $nextRow . ':J' . $nextRow;
+            // 데이터 추가 (모든 열 포함)
+            $endColumn = chr(65 + count($this->headers) - 1);
+            $range = 'Sheet1!A' . $nextRow . ':' . $endColumn . $nextRow;
             $body = new Google_Service_Sheets_ValueRange([
                 'values' => [$row]
             ]);
@@ -303,9 +312,10 @@ class GoogleSheetsManager {
             $values = $response->getValues();
             $nextRow = count($values) + 1;
             
-            // 데이터 추가
+            // 데이터 추가 (모든 열 포함)
             $endRow = $nextRow + count($rows) - 1;
-            $range = 'Sheet1!A' . $nextRow . ':J' . $endRow;
+            $endColumn = chr(65 + count($this->headers) - 1);
+            $range = 'Sheet1!A' . $nextRow . ':' . $endColumn . $endRow;
             
             $body = new Google_Service_Sheets_ValueRange([
                 'values' => $rows
@@ -336,10 +346,11 @@ class GoogleSheetsManager {
     }
     
     /**
-     * 상품 데이터를 시트 행으로 변환
+     * 상품 데이터를 시트 행으로 변환 (상세 정보 포함)
      */
     private function convertProductToRow($productData) {
-        return [
+        // 기본 상품 정보
+        $row = [
             $productData['id'] ?? '',
             $productData['keyword'] ?? '',
             $productData['product_data']['title'] ?? '',
@@ -351,6 +362,41 @@ class GoogleSheetsManager {
             $productData['product_data']['affiliate_link'] ?? '',
             $productData['created_at'] ?? date('Y-m-d H:i:s')
         ];
+        
+        // 상세 정보 추가
+        $userDetails = $productData['user_details'] ?? [];
+        
+        // 기능/스펙 정보
+        $specs = $userDetails['specs'] ?? [];
+        $row[] = $specs['main_function'] ?? '';
+        $row[] = $specs['size_capacity'] ?? '';
+        $row[] = $specs['color'] ?? '';
+        $row[] = $specs['material'] ?? '';
+        $row[] = $specs['power_battery'] ?? '';
+        
+        // 효율성 정보
+        $efficiency = $userDetails['efficiency'] ?? [];
+        $row[] = $efficiency['problem_solving'] ?? '';
+        $row[] = $efficiency['time_saving'] ?? '';
+        $row[] = $efficiency['space_efficiency'] ?? '';
+        $row[] = $efficiency['cost_saving'] ?? '';
+        
+        // 사용 시나리오 정보
+        $usage = $userDetails['usage'] ?? [];
+        $row[] = $usage['usage_location'] ?? '';
+        $row[] = $usage['usage_frequency'] ?? '';
+        $row[] = $usage['target_users'] ?? '';
+        $row[] = $usage['usage_method'] ?? '';
+        
+        // 장점/주의사항 정보
+        $benefits = $userDetails['benefits'] ?? [];
+        $advantages = $benefits['advantages'] ?? [];
+        $row[] = $advantages[0] ?? '';
+        $row[] = $advantages[1] ?? '';
+        $row[] = $advantages[2] ?? '';
+        $row[] = $benefits['precautions'] ?? '';
+        
+        return $row;
     }
     
     /**
