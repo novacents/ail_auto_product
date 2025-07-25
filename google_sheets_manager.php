@@ -2,13 +2,13 @@
 /**
  * Google Sheets API 연동 관리자
  * 상품 발굴 데이터를 구글 시트에 저장하고 관리
+ * gdrive_config.php와 동일한 방식으로 Python 스크립트 사용
  */
 
 class GoogleSheetsManager {
-    private $client;
-    private $service;
-    private $spreadsheetId;
     private $spreadsheetName = '상품 발굴 데이터';
+    private $python_path;
+    private $token_file;
     
     // 구글 시트 열 구조 (상세 정보 포함)
     private $headers = [
@@ -21,328 +21,371 @@ class GoogleSheetsManager {
     ];
     
     public function __construct() {
-        $this->initializeClient();
+        $this->python_path = '/usr/bin/python3';
+        $this->token_file = '/var/www/novacents/tools/google_token.json';
+        
+        // OAuth 토큰 파일 존재 확인
+        if (!file_exists($this->token_file)) {
+            throw new Exception("OAuth 토큰 파일을 찾을 수 없습니다. oauth_setup.php를 먼저 실행하세요: {$this->token_file}");
+        }
     }
     
     /**
-     * Google API 클라이언트 초기화
+     * Python 스크립트를 실행하여 Google Sheets API 호출
      */
-    private function initializeClient() {
+    private function executePythonScript($script_content) {
+        $temp_script = tempnam(sys_get_temp_dir(), 'gsheets_');
+        file_put_contents($temp_script, $script_content);
+        chmod($temp_script, 0755);
+        
         try {
-            // Composer autoload (Google API Client 라이브러리 필요)
-            $autoloadPaths = [
-                '/var/www/novacents/tools/vendor/autoload.php',
-                __DIR__ . '/vendor/autoload.php'
-            ];
+            // stderr를 별도 파일로 리다이렉트하여 JSON과 분리
+            $error_log = tempnam(sys_get_temp_dir(), 'gsheets_error_');
             
-            $autoloadFound = false;
-            foreach ($autoloadPaths as $path) {
-                if (file_exists($path)) {
-                    require_once $path;
-                    $autoloadFound = true;
-                    break;
-                }
+            $output = [];
+            $return_code = 0;
+            exec("{$this->python_path} {$temp_script} 2>{$error_log}", $output, $return_code);
+            
+            // 에러 로그 읽기 (디버깅용)
+            $error_output = file_exists($error_log) ? file_get_contents($error_log) : '';
+            
+            // 임시 파일들 삭제
+            unlink($temp_script);
+            if (file_exists($error_log)) {
+                unlink($error_log);
             }
             
-            if (!$autoloadFound) {
-                throw new Exception('Google API Client 라이브러리가 설치되지 않았습니다. /var/www/novacents/tools/ 경로에 설치해주세요.');
+            if ($return_code !== 0) {
+                throw new Exception("Python 스크립트 실행 실패 (종료 코드: {$return_code})\nSTDOUT: " . implode("\n", $output) . "\nSTDERR: " . $error_output);
             }
             
-            $this->client = new Google_Client();
-            $this->client->setApplicationName('Product Save System');
-            $this->client->setScopes([Google_Service_Sheets::SPREADSHEETS]);
-            $this->client->setAuthConfig($this->getCredentialsPath());
-            $this->client->setAccessType('offline');
-            $this->client->setPrompt('select_account consent');
+            $result = implode("\n", $output);
             
-            // 토큰 설정
-            $tokenPath = $this->getTokenPath();
-            if (file_exists($tokenPath)) {
-                $accessToken = json_decode(file_get_contents($tokenPath), true);
-                $this->client->setAccessToken($accessToken);
+            // 빈 결과 확인
+            if (empty(trim($result))) {
+                throw new Exception("Python 스크립트가 빈 결과를 반환했습니다.\nSTDERR: " . $error_output);
             }
             
-            // 토큰 갱신 확인
-            if ($this->client->isAccessTokenExpired()) {
-                if ($this->client->getRefreshToken()) {
-                    $this->client->fetchAccessTokenWithRefreshToken($this->client->getRefreshToken());
-                    file_put_contents($tokenPath, json_encode($this->client->getAccessToken()));
-                } else {
-                    throw new Exception('구글 시트 인증이 필요합니다. oauth_setup.php를 통해 인증을 완료해주세요.');
-                }
+            $json_result = json_decode($result, true);
+            
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new Exception("JSON 파싱 실패 (JSON 오류: " . json_last_error_msg() . ")\nPython 출력: " . $result . "\nSTDERR: " . $error_output);
             }
             
-            $this->service = new Google_Service_Sheets($this->client);
-            
+            return $json_result;
         } catch (Exception $e) {
-            throw new Exception('Google API 초기화 실패: ' . $e->getMessage());
-        }
-    }
-    
-    /**
-     * 인증 정보 파일 경로
-     */
-    private function getCredentialsPath() {
-        $possiblePaths = [
-            '/var/www/novacents/tools/credentials.json',
-            __DIR__ . '/credentials.json',
-            '/home/novacents/credentials.json'
-        ];
-        
-        foreach ($possiblePaths as $path) {
-            if (file_exists($path)) {
-                return $path;
+            if (file_exists($temp_script)) {
+                unlink($temp_script);
             }
+            if (isset($error_log) && file_exists($error_log)) {
+                unlink($error_log);
+            }
+            throw $e;
         }
-        
-        throw new Exception('credentials.json 파일을 찾을 수 없습니다. /var/www/novacents/tools/ 경로에 저장해주세요.');
-    }
-    
-    /**
-     * 토큰 파일 경로
-     */
-    private function getTokenPath() {
-        return __DIR__ . '/token.json';
     }
     
     /**
      * 스프레드시트 생성 또는 기존 시트 찾기
      */
     public function getOrCreateSpreadsheet() {
-        try {
-            // 기존 스프레드시트 ID가 있는지 확인
-            $configFile = __DIR__ . '/google_sheets_config.json';
-            if (file_exists($configFile)) {
-                $config = json_decode(file_get_contents($configFile), true);
-                if (isset($config['spreadsheet_id'])) {
-                    $this->spreadsheetId = $config['spreadsheet_id'];
-                    
-                    // 스프레드시트가 실제로 존재하는지 확인
-                    try {
-                        $this->service->spreadsheets->get($this->spreadsheetId);
-                        return $this->spreadsheetId;
-                    } catch (Exception $e) {
-                        // 스프레드시트가 존재하지 않으면 새로 생성
-                        unset($this->spreadsheetId);
-                    }
+        $script = <<<PYTHON
+import json
+import sys
+import os
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+
+try:
+    # OAuth 토큰 로드
+    creds = None
+    token_file = '{$this->token_file}'
+    
+    if os.path.exists(token_file):
+        creds = Credentials.from_authorized_user_file(token_file, [
+            'https://www.googleapis.com/auth/spreadsheets',
+            'https://www.googleapis.com/auth/drive'
+        ])
+    
+    if not creds:
+        raise Exception("OAuth 토큰을 찾을 수 없습니다. oauth_setup.php를 실행하세요.")
+    
+    # 토큰 갱신 필요 시 자동 갱신
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+        # 갱신된 토큰 저장
+        with open(token_file, 'w') as token:
+            token.write(creds.to_json())
+    
+    # Sheets API 및 Drive API 서비스 생성
+    sheets_service = build('sheets', 'v4', credentials=creds)
+    drive_service = build('drive', 'v3', credentials=creds)
+    
+    # 기존 스프레드시트 검색
+    query = f"name='{$this->spreadsheetName}' and mimeType='application/vnd.google-apps.spreadsheet'"
+    results = drive_service.files().list(q=query, fields="files(id, name)").execute()
+    
+    files = results.get('files', [])
+    
+    if files:
+        # 기존 스프레드시트 사용
+        spreadsheet_id = files[0]['id']
+        print(json.dumps({
+            'success': True,
+            'spreadsheet_id': spreadsheet_id,
+            'spreadsheet_url': f'https://docs.google.com/spreadsheets/d/{spreadsheet_id}',
+            'action': 'found_existing'
+        }))
+    else:
+        # 새 스프레드시트 생성
+        spreadsheet = {
+            'properties': {
+                'title': '{$this->spreadsheetName}'
+            },
+            'sheets': [{
+                'properties': {
+                    'title': 'Sheet1'
                 }
+            }]
+        }
+        
+        result = sheets_service.spreadsheets().create(body=spreadsheet).execute()
+        spreadsheet_id = result['spreadsheetId']
+        
+        # 헤더 추가
+        headers = {json.dumps($this->headers)}
+        
+        sheets_service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range='Sheet1!A1:AA1',
+            valueInputOption='RAW',
+            body={'values': [headers]}
+        ).execute()
+        
+        # 헤더 스타일링
+        requests = [{
+            'repeatCell': {
+                'range': {
+                    'sheetId': 0,
+                    'startRowIndex': 0,
+                    'endRowIndex': 1,
+                    'startColumnIndex': 0,
+                    'endColumnIndex': len(headers)
+                },
+                'cell': {
+                    'userEnteredFormat': {
+                        'backgroundColor': {
+                            'red': 0.9,
+                            'green': 0.9,
+                            'blue': 0.9
+                        },
+                        'textFormat': {
+                            'bold': True
+                        }
+                    }
+                },
+                'fields': 'userEnteredFormat(backgroundColor,textFormat)'
             }
-            
-            // 새 스프레드시트 생성
-            $spreadsheet = new Google_Service_Sheets_Spreadsheet([
-                'properties' => [
-                    'title' => $this->spreadsheetName
-                ],
-                'sheets' => [
-                    [
-                        'properties' => [
-                            'title' => 'Sheet1'
-                        ]
-                    ]
-                ]
-            ]);
-            
-            $spreadsheet = $this->service->spreadsheets->create($spreadsheet, [
-                'fields' => 'spreadsheetId'
-            ]);
-            
-            $this->spreadsheetId = $spreadsheet->spreadsheetId;
-            
-            // 설정 파일에 스프레드시트 ID 저장
-            file_put_contents($configFile, json_encode([
-                'spreadsheet_id' => $this->spreadsheetId,
-                'created_at' => date('Y-m-d H:i:s')
-            ], JSON_PRETTY_PRINT));
-            
-            // 헤더 추가
-            $this->addHeaders();
-            
-            return $this->spreadsheetId;
-            
-        } catch (Exception $e) {
-            throw new Exception('스프레드시트 생성/조회 실패: ' . $e->getMessage());
-        }
-    }
+        }]
+        
+        sheets_service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={'requests': requests}
+        ).execute()
+        
+        print(json.dumps({
+            'success': True,
+            'spreadsheet_id': spreadsheet_id,
+            'spreadsheet_url': f'https://docs.google.com/spreadsheets/d/{spreadsheet_id}',
+            'action': 'created_new'
+        }))
     
-    /**
-     * 헤더 행 추가
-     */
-    private function addHeaders() {
-        try {
-            // 헤더 수에 맞게 범위 확장 (A부터 끝 열까지)
-            $endColumn = chr(65 + count($this->headers) - 1); // A=65, 헤더 수에 따라 마지막 열 계산
-            $range = 'Sheet1!A1:' . $endColumn . '1';
-            $values = [$this->headers];
-            
-            $body = new Google_Service_Sheets_ValueRange([
-                'values' => $values
-            ]);
-            
-            $params = [
-                'valueInputOption' => 'RAW'
-            ];
-            
-            $this->service->spreadsheets_values->update(
-                $this->spreadsheetId,
-                $range,
-                $body,
-                $params
-            );
-            
-            // 헤더 행 스타일 설정
-            $this->formatHeaders();
-            
-        } catch (Exception $e) {
-            throw new Exception('헤더 추가 실패: ' . $e->getMessage());
-        }
-    }
-    
-    /**
-     * 헤더 행 포맷팅
-     */
-    private function formatHeaders() {
-        try {
-            $requests = [
-                [
-                    'repeatCell' => [
-                        'range' => [
-                            'sheetId' => 0,
-                            'startRowIndex' => 0,
-                            'endRowIndex' => 1,
-                            'startColumnIndex' => 0,
-                            'endColumnIndex' => count($this->headers)
-                        ],
-                        'cell' => [
-                            'userEnteredFormat' => [
-                                'backgroundColor' => [
-                                    'red' => 0.9,
-                                    'green' => 0.9,
-                                    'blue' => 0.9
-                                ],
-                                'textFormat' => [
-                                    'bold' => true
-                                ]
-                            ]
-                        ],
-                        'fields' => 'userEnteredFormat(backgroundColor,textFormat)'
-                    ]
-                ]
-            ];
-            
-            $batchUpdateRequest = new Google_Service_Sheets_BatchUpdateSpreadsheetRequest([
-                'requests' => $requests
-            ]);
-            
-            $this->service->spreadsheets->batchUpdate(
-                $this->spreadsheetId,
-                $batchUpdateRequest
-            );
-            
-        } catch (Exception $e) {
-            // 포맷팅 실패는 무시 (데이터 저장에는 영향 없음)
-            error_log('헤더 포맷팅 실패: ' . $e->getMessage());
-        }
+except Exception as e:
+    print(json.dumps({
+        'success': False,
+        'error': str(e)
+    }))
+PYTHON;
+
+        return $this->executePythonScript($script);
     }
     
     /**
      * 단일 상품 데이터 추가
      */
     public function addProduct($productData) {
-        try {
-            if (!$this->spreadsheetId) {
-                $this->getOrCreateSpreadsheet();
-            }
-            
-            // 데이터 변환
-            $row = $this->convertProductToRow($productData);
-            
-            // 다음 빈 행 찾기
-            $range = 'Sheet1!A:A';
-            $response = $this->service->spreadsheets_values->get($this->spreadsheetId, $range);
-            $values = $response->getValues();
-            $nextRow = count($values) + 1;
-            
-            // 데이터 추가 (모든 열 포함)
-            $endColumn = chr(65 + count($this->headers) - 1);
-            $range = 'Sheet1!A' . $nextRow . ':' . $endColumn . $nextRow;
-            $body = new Google_Service_Sheets_ValueRange([
-                'values' => [$row]
-            ]);
-            
-            $params = [
-                'valueInputOption' => 'RAW'
-            ];
-            
-            $result = $this->service->spreadsheets_values->update(
-                $this->spreadsheetId,
-                $range,
-                $body,
-                $params
-            );
-            
-            return [
-                'success' => true,
-                'row' => $nextRow,
-                'spreadsheet_url' => 'https://docs.google.com/spreadsheets/d/' . $this->spreadsheetId
-            ];
-            
-        } catch (Exception $e) {
-            throw new Exception('상품 데이터 추가 실패: ' . $e->getMessage());
-        }
+        // 데이터 변환
+        $row = $this->convertProductToRow($productData);
+        $row_json = json_encode($row);
+        
+        $script = <<<PYTHON
+import json
+import sys
+import os
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+
+try:
+    # OAuth 토큰 로드
+    creds = None
+    token_file = '{$this->token_file}'
+    
+    if os.path.exists(token_file):
+        creds = Credentials.from_authorized_user_file(token_file, [
+            'https://www.googleapis.com/auth/spreadsheets',
+            'https://www.googleapis.com/auth/drive'
+        ])
+    
+    if not creds:
+        raise Exception("OAuth 토큰을 찾을 수 없습니다. oauth_setup.php를 실행하세요.")
+    
+    # 토큰 갱신 필요 시 자동 갱신
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+        with open(token_file, 'w') as token:
+            token.write(creds.to_json())
+    
+    # Sheets API 및 Drive API 서비스 생성
+    sheets_service = build('sheets', 'v4', credentials=creds)
+    drive_service = build('drive', 'v3', credentials=creds)
+    
+    # 스프레드시트 찾기
+    query = f"name='{$this->spreadsheetName}' and mimeType='application/vnd.google-apps.spreadsheet'"
+    results = drive_service.files().list(q=query, fields="files(id, name)").execute()
+    files = results.get('files', [])
+    
+    if not files:
+        raise Exception("스프레드시트를 찾을 수 없습니다. 먼저 getOrCreateSpreadsheet()를 호출하세요.")
+    
+    spreadsheet_id = files[0]['id']
+    
+    # 다음 빈 행 찾기
+    range_result = sheets_service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range='Sheet1!A:A'
+    ).execute()
+    
+    values = range_result.get('values', [])
+    next_row = len(values) + 1
+    
+    # 데이터 추가
+    row_data = {$row_json}
+    
+    sheets_service.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id,
+        range=f'Sheet1!A{next_row}:AA{next_row}',
+        valueInputOption='RAW',
+        body={'values': [row_data]}
+    ).execute()
+    
+    print(json.dumps({
+        'success': True,
+        'row': next_row,
+        'spreadsheet_id': spreadsheet_id,
+        'spreadsheet_url': f'https://docs.google.com/spreadsheets/d/{spreadsheet_id}'
+    }))
+    
+except Exception as e:
+    print(json.dumps({
+        'success': False,
+        'error': str(e)
+    }))
+PYTHON;
+
+        return $this->executePythonScript($script);
     }
     
     /**
      * 여러 상품 데이터 일괄 추가
      */
     public function addProducts($productsData) {
-        try {
-            if (!$this->spreadsheetId) {
-                $this->getOrCreateSpreadsheet();
-            }
-            
-            // 데이터 변환
-            $rows = [];
-            foreach ($productsData as $productData) {
-                $rows[] = $this->convertProductToRow($productData);
-            }
-            
-            // 다음 빈 행 찾기
-            $range = 'Sheet1!A:A';
-            $response = $this->service->spreadsheets_values->get($this->spreadsheetId, $range);
-            $values = $response->getValues();
-            $nextRow = count($values) + 1;
-            
-            // 데이터 추가 (모든 열 포함)
-            $endRow = $nextRow + count($rows) - 1;
-            $endColumn = chr(65 + count($this->headers) - 1);
-            $range = 'Sheet1!A' . $nextRow . ':' . $endColumn . $endRow;
-            
-            $body = new Google_Service_Sheets_ValueRange([
-                'values' => $rows
-            ]);
-            
-            $params = [
-                'valueInputOption' => 'RAW'
-            ];
-            
-            $result = $this->service->spreadsheets_values->update(
-                $this->spreadsheetId,
-                $range,
-                $body,
-                $params
-            );
-            
-            return [
-                'success' => true,
-                'rows_added' => count($rows),
-                'start_row' => $nextRow,
-                'end_row' => $endRow,
-                'spreadsheet_url' => 'https://docs.google.com/spreadsheets/d/' . $this->spreadsheetId
-            ];
-            
-        } catch (Exception $e) {
-            throw new Exception('상품 데이터 일괄 추가 실패: ' . $e->getMessage());
+        // 데이터 변환
+        $rows = [];
+        foreach ($productsData as $productData) {
+            $rows[] = $this->convertProductToRow($productData);
         }
+        $rows_json = json_encode($rows);
+        
+        $script = <<<PYTHON
+import json
+import sys
+import os
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+
+try:
+    # OAuth 토큰 로드
+    creds = None
+    token_file = '{$this->token_file}'
+    
+    if os.path.exists(token_file):
+        creds = Credentials.from_authorized_user_file(token_file, [
+            'https://www.googleapis.com/auth/spreadsheets',
+            'https://www.googleapis.com/auth/drive'
+        ])
+    
+    if not creds:
+        raise Exception("OAuth 토큰을 찾을 수 없습니다. oauth_setup.php를 실행하세요.")
+    
+    # 토큰 갱신 필요 시 자동 갱신
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+        with open(token_file, 'w') as token:
+            token.write(creds.to_json())
+    
+    # Sheets API 및 Drive API 서비스 생성
+    sheets_service = build('sheets', 'v4', credentials=creds)
+    drive_service = build('drive', 'v3', credentials=creds)
+    
+    # 스프레드시트 찾기
+    query = f"name='{$this->spreadsheetName}' and mimeType='application/vnd.google-apps.spreadsheet'"
+    results = drive_service.files().list(q=query, fields="files(id, name)").execute()
+    files = results.get('files', [])
+    
+    if not files:
+        raise Exception("스프레드시트를 찾을 수 없습니다. 먼저 getOrCreateSpreadsheet()를 호출하세요.")
+    
+    spreadsheet_id = files[0]['id']
+    
+    # 다음 빈 행 찾기
+    range_result = sheets_service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range='Sheet1!A:A'
+    ).execute()
+    
+    values = range_result.get('values', [])
+    next_row = len(values) + 1
+    
+    # 데이터 일괄 추가
+    rows_data = {$rows_json}
+    end_row = next_row + len(rows_data) - 1
+    
+    sheets_service.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id,
+        range=f'Sheet1!A{next_row}:AA{end_row}',
+        valueInputOption='RAW',
+        body={'values': rows_data}
+    ).execute()
+    
+    print(json.dumps({
+        'success': True,
+        'rows_added': len(rows_data),
+        'start_row': next_row,
+        'end_row': end_row,
+        'spreadsheet_id': spreadsheet_id,
+        'spreadsheet_url': f'https://docs.google.com/spreadsheets/d/{spreadsheet_id}'
+    }))
+    
+except Exception as e:
+    print(json.dumps({
+        'success': False,
+        'error': str(e)
+    }))
+PYTHON;
+
+        return $this->executePythonScript($script);
     }
     
     /**
@@ -403,62 +446,61 @@ class GoogleSheetsManager {
      * 스프레드시트 URL 가져오기
      */
     public function getSpreadsheetUrl() {
-        if (!$this->spreadsheetId) {
-            $this->getOrCreateSpreadsheet();
+        $result = $this->getOrCreateSpreadsheet();
+        if ($result['success']) {
+            return $result['spreadsheet_url'];
         }
-        
-        return 'https://docs.google.com/spreadsheets/d/' . $this->spreadsheetId;
+        throw new Exception('스프레드시트 생성/조회 실패: ' . $result['error']);
     }
     
     /**
      * 스프레드시트 ID 가져오기
      */
     public function getSpreadsheetId() {
-        if (!$this->spreadsheetId) {
-            $this->getOrCreateSpreadsheet();
+        $result = $this->getOrCreateSpreadsheet();
+        if ($result['success']) {
+            return $result['spreadsheet_id'];
         }
-        
-        return $this->spreadsheetId;
-    }
-    
-    /**
-     * 인증 URL 생성 (최초 설정용)
-     */
-    public function getAuthUrl() {
-        return $this->client->createAuthUrl();
-    }
-    
-    /**
-     * 인증 코드로 토큰 교환
-     */
-    public function exchangeAuthCode($authCode) {
-        try {
-            $accessToken = $this->client->fetchAccessTokenWithAuthCode($authCode);
-            
-            if (isset($accessToken['error'])) {
-                throw new Exception('인증 실패: ' . $accessToken['error_description']);
-            }
-            
-            // 토큰 저장
-            $tokenPath = $this->getTokenPath();
-            file_put_contents($tokenPath, json_encode($accessToken));
-            
-            return true;
-            
-        } catch (Exception $e) {
-            throw new Exception('토큰 교환 실패: ' . $e->getMessage());
-        }
+        throw new Exception('스프레드시트 생성/조회 실패: ' . $result['error']);
     }
     
     /**
      * 인증 상태 확인
      */
     public function isAuthenticated() {
-        try {
-            return !$this->client->isAccessTokenExpired();
-        } catch (Exception $e) {
-            return false;
-        }
+        return file_exists($this->token_file);
     }
+}
+
+// 헬퍼 함수들
+
+/**
+ * JSON 응답 전송
+ */
+function send_json_response($data) {
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    exit;
+}
+
+/**
+ * 에러 응답 전송
+ */
+function send_error_response($message, $code = 500) {
+    http_response_code($code);
+    send_json_response([
+        'success' => false,
+        'error' => $message
+    ]);
+}
+
+/**
+ * 성공 응답 전송
+ */
+function send_success_response($data) {
+    send_json_response(array_merge(
+        ['success' => true],
+        $data
+    ));
 }
 ?>
