@@ -85,7 +85,7 @@ class GoogleSheetsManager {
     }
     
     /**
-     * 스프레드시트 생성 또는 기존 시트 찾기
+     * 스프레드시트 생성 또는 기존 시트 찾기 (헤더 확인 포함)
      */
     public function getOrCreateSpreadsheet() {
         // PHP 배열을 Python 리스트 문자열로 변환
@@ -129,15 +129,92 @@ try:
     results = drive_service.files().list(q=query, fields="files(id, name)").execute()
     
     files = results.get('files', [])
+    headers = {$headers_str}
     
     if files:
         # 기존 스프레드시트 사용
         spreadsheet_id = files[0]['id']
+        
+        # 첫 번째 행 확인하여 헤더가 있는지 체크
+        try:
+            range_result = sheets_service.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range='Sheet1!A1:AA1'
+            ).execute()
+            
+            first_row = range_result.get('values', [[]])
+            
+            # 헤더가 없거나 비어있으면 헤더 추가
+            if not first_row or not first_row[0] or first_row[0][0] != headers[0]:
+                # 기존 데이터가 있으면 한 행 아래로 이동
+                existing_data = sheets_service.spreadsheets().values().get(
+                    spreadsheetId=spreadsheet_id,
+                    range='Sheet1!A:AA'
+                ).execute()
+                
+                existing_values = existing_data.get('values', [])
+                
+                if existing_values:
+                    # 기존 데이터를 한 행 아래로 이동
+                    sheets_service.spreadsheets().values().update(
+                        spreadsheetId=spreadsheet_id,
+                        range=f'Sheet1!A2:AA{len(existing_values) + 1}',
+                        valueInputOption='RAW',
+                        body={'values': existing_values}
+                    ).execute()
+                
+                # 헤더 추가
+                sheets_service.spreadsheets().values().update(
+                    spreadsheetId=spreadsheet_id,
+                    range='Sheet1!A1:AA1',
+                    valueInputOption='RAW',
+                    body={'values': [headers]}
+                ).execute()
+                
+                # 헤더 스타일링
+                requests = [{
+                    'repeatCell': {
+                        'range': {
+                            'sheetId': 0,
+                            'startRowIndex': 0,
+                            'endRowIndex': 1,
+                            'startColumnIndex': 0,
+                            'endColumnIndex': len(headers)
+                        },
+                        'cell': {
+                            'userEnteredFormat': {
+                                'backgroundColor': {
+                                    'red': 0.9,
+                                    'green': 0.9,
+                                    'blue': 0.9
+                                },
+                                'textFormat': {
+                                    'bold': True
+                                }
+                            }
+                        },
+                        'fields': 'userEnteredFormat(backgroundColor,textFormat)'
+                    }
+                }]
+                
+                sheets_service.spreadsheets().batchUpdate(
+                    spreadsheetId=spreadsheet_id,
+                    body={'requests': requests}
+                ).execute()
+                
+                action = 'found_existing_added_header'
+            else:
+                action = 'found_existing_with_header'
+                
+        except Exception as header_error:
+            # 헤더 확인/추가 실패해도 기존 시트는 사용
+            action = 'found_existing_header_check_failed'
+        
         print(json.dumps({
             'success': True,
             'spreadsheet_id': spreadsheet_id,
             'spreadsheet_url': f'https://docs.google.com/spreadsheets/d/{spreadsheet_id}',
-            'action': 'found_existing'
+            'action': action
         }))
     else:
         # 새 스프레드시트 생성
@@ -156,8 +233,6 @@ try:
         spreadsheet_id = result['spreadsheetId']
         
         # 헤더 추가
-        headers = {$headers_str}
-        
         sheets_service.spreadsheets().values().update(
             spreadsheetId=spreadsheet_id,
             range='Sheet1!A1:AA1',
