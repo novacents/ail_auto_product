@@ -14,18 +14,21 @@
 
 ### 1. Google API PHP Client 라이브러리 설치
 
+**실제 서버에서 설치:**
 ```bash
-# Composer를 사용하여 Google API Client 라이브러리 설치
-cd /home/novacents/ail_auto_product
+# 실제 서버 경로에서 Composer를 사용하여 Google API Client 라이브러리 설치
+cd /var/www/novacents/tools/
 composer require google/apiclient:^2.0
 ```
 
+**중요:** 라이브러리는 실제 서버 경로인 `/var/www/novacents/tools/`에 설치해야 합니다.
+
 ### 2. credentials.json 파일 생성
 
-다음 위치 중 하나에 `credentials.json` 파일을 생성하세요:
-- `/home/novacents/ail_auto_product/credentials.json` (권장)
+다음 위치 중 하나에 `credentials.json` 파일을 생성하세요 (우선순위 순):
+- `/var/www/novacents/tools/credentials.json` (권장 - 실제 서버 경로)
+- 현재 프로젝트 폴더 내의 `credentials.json`
 - `/home/novacents/credentials.json`
-- `/home/novacents/tools/credentials.json`
 
 **credentials.json 파일 내용:**
 ```json
@@ -58,9 +61,9 @@ composer require google/apiclient:^2.0
 
 ```bash
 # 적절한 파일 권한 설정
-chmod 600 /home/novacents/ail_auto_product/credentials.json
-chmod 600 /home/novacents/ail_auto_product/token.json
-chmod 755 /home/novacents/ail_auto_product/google_sheets_manager.php
+chmod 600 /var/www/novacents/tools/credentials.json
+chmod 600 ./token.json  # 프로젝트 폴더 내의 token.json
+chmod 755 ./google_sheets_manager.php
 ```
 
 ## 📊 구글 시트 구조
@@ -89,12 +92,13 @@ chmod 755 /home/novacents/ail_auto_product/google_sheets_manager.php
 
 ### 1. "Google API Client 라이브러리가 설치되지 않았습니다" 오류
 ```bash
-cd /home/novacents/ail_auto_product
+cd /var/www/novacents/tools/
 composer require google/apiclient:^2.0
 ```
+**주의:** 반드시 실제 서버 경로에서 설치하세요.
 
 ### 2. "credentials.json 파일을 찾을 수 없습니다" 오류
-- credentials.json 파일이 올바른 위치에 있는지 확인
+- credentials.json 파일이 올바른 위치에 있는지 확인 (우선: `/var/www/novacents/tools/credentials.json`)
 - 파일 권한이 올바른지 확인 (600)
 
 ### 3. "구글 시트 인증이 필요합니다" 오류
