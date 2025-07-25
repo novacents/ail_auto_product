@@ -6,6 +6,9 @@
 require_once($_SERVER['DOCUMENT_ROOT'].'/wp-config.php');
 if(!current_user_can('manage_options'))wp_die('접근 권한이 없습니다.');
 
+// 구글 시트 매니저 포함
+require_once(__DIR__ . '/google_sheets_manager.php');
+
 // JSON 데이터 파일 경로
 define('PRODUCT_SAVE_DATA_FILE', __DIR__ . '/product_save_data.json');
 
@@ -48,8 +51,16 @@ switch ($action) {
         updateProduct($data['id'], $data['data']);
         break;
     
-    case 'export':
-        exportToGoogleSheets($data['ids']);
+    case 'export_to_sheets':
+        exportToGoogleSheets($data['ids'] ?? []);
+        break;
+    
+    case 'get_sheets_url':
+        getGoogleSheetsUrl();
+        break;
+        
+    case 'sync_to_sheets':
+        syncAllToGoogleSheets();
         break;
     
     default:
@@ -58,7 +69,7 @@ switch ($action) {
 }
 
 /**
- * 상품 저장 함수
+ * 상품 저장 함수 (JSON + 구글 시트 동시 저장)
  */
 function saveProduct($productData) {
     try {
@@ -68,19 +79,29 @@ function saveProduct($productData) {
         // 새 상품 추가
         $products[] = $productData;
         
-        // 파일에 저장
-        if (saveProductsData($products)) {
-            // 구글 시트에도 저장 시도 (옵션)
-            // saveToGoogleSheets($productData);
-            
-            echo json_encode([
-                'success' => true, 
-                'message' => '상품이 성공적으로 저장되었습니다.',
-                'id' => $productData['id']
-            ]);
-        } else {
-            throw new Exception('파일 저장 실패');
+        // JSON 파일에 저장
+        if (!saveProductsData($products)) {
+            throw new Exception('JSON 파일 저장 실패');
         }
+        
+        // 구글 시트에도 저장 시도
+        $sheetsResult = null;
+        try {
+            $sheetsManager = new GoogleSheetsManager();
+            $sheetsResult = $sheetsManager->addProduct($productData);
+        } catch (Exception $e) {
+            // 구글 시트 저장 실패는 경고로만 처리 (JSON 저장은 성공했으므로)
+            error_log('구글 시트 저장 실패: ' . $e->getMessage());
+            $sheetsResult = ['success' => false, 'error' => $e->getMessage()];
+        }
+        
+        echo json_encode([
+            'success' => true, 
+            'message' => '상품이 성공적으로 저장되었습니다.',
+            'id' => $productData['id'],
+            'sheets_result' => $sheetsResult
+        ]);
+        
     } catch (Exception $e) {
         echo json_encode([
             'success' => false, 
@@ -185,7 +206,7 @@ function updateProduct($id, $newData) {
 }
 
 /**
- * 구글 시트로 내보내기 함수
+ * 선택된 상품들을 구글 시트로 내보내기
  */
 function exportToGoogleSheets($productIds) {
     try {
@@ -198,36 +219,75 @@ function exportToGoogleSheets($productIds) {
             });
         }
         
-        // 구글 시트 형식으로 데이터 변환
-        $sheetData = [];
-        foreach ($products as $product) {
-            $sheetData[] = [
-                $product['id'],
-                $product['keyword'],
-                $product['product_data']['title'] ?? '',
-                $product['product_data']['price'] ?? '',
-                $product['product_data']['rating_display'] ?? '',
-                $product['product_data']['lastest_volume'] ?? '',
-                $product['product_data']['image_url'] ?? '',
-                $product['product_url'],
-                $product['product_data']['affiliate_link'] ?? '',
-                $product['created_at']
-            ];
+        if (empty($products)) {
+            throw new Exception('내보낼 상품이 없습니다.');
         }
         
-        // TODO: 실제 구글 시트 API 연동 구현
-        // 현재는 CSV 형식으로 반환
+        // 구글 시트에 저장
+        $sheetsManager = new GoogleSheetsManager();
+        $result = $sheetsManager->addProducts(array_values($products));
+        
         echo json_encode([
             'success' => true,
-            'message' => '구글 시트 내보내기 준비 완료',
-            'data' => $sheetData,
-            'count' => count($sheetData)
+            'message' => count($products) . '개의 상품이 구글 시트에 저장되었습니다.',
+            'spreadsheet_url' => $result['spreadsheet_url'],
+            'rows_added' => $result['rows_added']
         ]);
         
     } catch (Exception $e) {
         echo json_encode([
             'success' => false,
-            'message' => '내보내기 중 오류가 발생했습니다: ' . $e->getMessage()
+            'message' => '구글 시트 내보내기 중 오류가 발생했습니다: ' . $e->getMessage()
+        ]);
+    }
+}
+
+/**
+ * 구글 시트 URL 가져오기
+ */
+function getGoogleSheetsUrl() {
+    try {
+        $sheetsManager = new GoogleSheetsManager();
+        $url = $sheetsManager->getSpreadsheetUrl();
+        
+        echo json_encode([
+            'success' => true,
+            'spreadsheet_url' => $url
+        ]);
+        
+    } catch (Exception $e) {
+        echo json_encode([
+            'success' => false,
+            'message' => '구글 시트 URL을 가져올 수 없습니다: ' . $e->getMessage()
+        ]);
+    }
+}
+
+/**
+ * 모든 데이터를 구글 시트와 동기화
+ */
+function syncAllToGoogleSheets() {
+    try {
+        $products = loadProductsData();
+        
+        if (empty($products)) {
+            throw new Exception('동기화할 데이터가 없습니다.');
+        }
+        
+        $sheetsManager = new GoogleSheetsManager();
+        $result = $sheetsManager->addProducts($products);
+        
+        echo json_encode([
+            'success' => true,
+            'message' => '모든 데이터가 구글 시트에 동기화되었습니다.',
+            'spreadsheet_url' => $result['spreadsheet_url'],
+            'rows_added' => $result['rows_added']
+        ]);
+        
+    } catch (Exception $e) {
+        echo json_encode([
+            'success' => false,
+            'message' => '동기화 중 오류가 발생했습니다: ' . $e->getMessage()
         ]);
     }
 }
@@ -269,22 +329,13 @@ function saveProductsData($products) {
 }
 
 /**
- * 구글 시트에 단일 상품 저장 (미구현)
- */
-function saveToGoogleSheets($productData) {
-    // TODO: 구글 시트 API 연동 구현
-    // 1. OAuth 인증
-    // 2. 시트 ID 및 범위 설정
-    // 3. 데이터 추가
-    
-    // 현재는 로그만 남김
-    error_log('Google Sheets 저장 대기: ' . json_encode($productData));
-}
-
-/**
  * 데이터 백업 함수 (일일 백업)
  */
 function backupData() {
+    if (!file_exists(PRODUCT_SAVE_DATA_FILE)) {
+        return;
+    }
+    
     $backupDir = __DIR__ . '/backups';
     if (!is_dir($backupDir)) {
         mkdir($backupDir, 0755, true);
