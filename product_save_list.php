@@ -40,6 +40,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .btn-success{background:#28a745;color:white}.btn-success:hover{background:#1e7e34}
 .btn-danger{background:#dc3545;color:white}.btn-danger:hover{background:#c82333}
 .btn-warning{background:#ffc107;color:#212529}.btn-warning:hover{background:#e0a800}
+.btn-info{background:#17a2b8;color:white}.btn-info:hover{background:#138496}
 .btn-small{padding:6px 12px;font-size:12px}
 .products-table{width:100%;border-collapse:collapse;margin-top:20px;background:white;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
 .products-table th,.products-table td{padding:15px;text-align:left;border-bottom:1px solid #e0e0e0}
@@ -175,12 +176,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <button class="btn btn-secondary" onclick="clearSearch()">초기화</button>
 </div>
 <div class="action-group">
+<button class="btn btn-info" onclick="exportToExcel()" id="excelBtn" disabled>📥 엑셀 다운로드</button>
 <button class="btn btn-success" onclick="exportSelected()" id="exportBtn" disabled>📊 구글 시트로 내보내기</button>
 <button class="btn btn-danger" onclick="deleteSelected()" id="deleteBtn" disabled>🗑️ 삭제</button>
 </div>
 </div>
 <div class="bulk-actions" id="bulkActions">
 <strong>선택된 항목:</strong> <span id="selectedCount">0</span>개 |
+<button class="btn btn-small btn-info" onclick="exportToExcel()">엑셀 다운로드</button>
 <button class="btn btn-small btn-success" onclick="exportSelected()">구글 시트로 내보내기</button>
 <button class="btn btn-small btn-danger" onclick="deleteSelected()">삭제</button>
 <button class="btn btn-small btn-secondary" onclick="clearSelection()">선택 해제</button>
@@ -482,16 +485,19 @@ function updateSelectionUI(){
     const bulkActions=document.getElementById('bulkActions');
     const exportBtn=document.getElementById('exportBtn');
     const deleteBtn=document.getElementById('deleteBtn');
+    const excelBtn=document.getElementById('excelBtn');
     
     if(count>0){
         bulkActions.classList.add('show');
         exportBtn.disabled=false;
         deleteBtn.disabled=false;
+        excelBtn.disabled=false;
         document.getElementById('selectedCount').textContent=count;
     }else{
         bulkActions.classList.remove('show');
         exportBtn.disabled=true;
         deleteBtn.disabled=true;
+        excelBtn.disabled=true;
     }
     
     // 전체 선택 체크박스 상태 업데이트
@@ -668,6 +674,97 @@ async function deleteSelected(){
     }catch(e){
         alert('삭제 중 오류가 발생했습니다.');
     }
+}
+
+// 엑셀 다운로드 기능
+function exportToExcel(){
+    if(selectedProducts.size===0){
+        alert('엑셀로 다운로드할 상품을 선택해주세요.');
+        return;
+    }
+    
+    // 선택된 상품 데이터 가져오기
+    const selectedData=products.filter(p=>selectedProducts.has(p.id));
+    
+    // CSV 헤더 정의
+    const headers=[
+        'ID','키워드','상품명','가격','평점','판매량','이미지URL','상품URL','어필리에이트링크','생성일시',
+        '주요기능','크기/용량','색상','재질/소재','전원/배터리',
+        '해결하는문제','시간절약','공간활용','비용절감',
+        '사용장소','사용빈도','적합한사용자','사용법',
+        '장점1','장점2','장점3','주의사항'
+    ];
+    
+    // CSV 데이터 생성
+    let csvContent='\uFEFF'; // UTF-8 BOM 추가
+    csvContent+=headers.join(',')+'\n';
+    
+    selectedData.forEach(product=>{
+        const row=[];
+        
+        // 기본 정보
+        row.push(product.id);
+        row.push(product.keyword);
+        row.push(product.product_data.title||'');
+        row.push(product.product_data.price||'');
+        row.push(product.product_data.rating_display||'');
+        row.push(product.product_data.lastest_volume||'');
+        row.push(product.product_data.image_url||'');
+        row.push(product.product_url||'');
+        row.push(product.product_data.affiliate_link||'');
+        row.push(product.created_at||'');
+        
+        // 기능/스펙
+        const specs=product.user_details?.specs||{};
+        row.push(specs.main_function||'');
+        row.push(specs.size_capacity||'');
+        row.push(specs.color||'');
+        row.push(specs.material||'');
+        row.push(specs.power_battery||'');
+        
+        // 효율성
+        const efficiency=product.user_details?.efficiency||{};
+        row.push(efficiency.problem_solving||'');
+        row.push(efficiency.time_saving||'');
+        row.push(efficiency.space_efficiency||'');
+        row.push(efficiency.cost_saving||'');
+        
+        // 사용법
+        const usage=product.user_details?.usage||{};
+        row.push(usage.usage_location||'');
+        row.push(usage.usage_frequency||'');
+        row.push(usage.target_users||'');
+        row.push(usage.usage_method||'');
+        
+        // 장점/주의사항
+        const benefits=product.user_details?.benefits||{};
+        const advantages=benefits.advantages||[];
+        row.push(advantages[0]||'');
+        row.push(advantages[1]||'');
+        row.push(advantages[2]||'');
+        row.push(benefits.precautions||'');
+        
+        // CSV 형식으로 변환 (쉼표와 줄바꿈 처리)
+        const csvRow=row.map(cell=>{
+            const cellStr=String(cell).replace(/"/g,'""');
+            return cellStr.includes(',')||cellStr.includes('\n')?`"${cellStr}"`:cellStr;
+        });
+        
+        csvContent+=csvRow.join(',')+'\n';
+    });
+    
+    // 다운로드 실행
+    const blob=new Blob([csvContent],{type:'text/csv;charset=utf-8;'});
+    const url=URL.createObjectURL(blob);
+    const link=document.createElement('a');
+    link.href=url;
+    link.download=`상품_발굴_데이터_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    alert(`${selectedProducts.size}개의 상품이 엑셀 파일로 다운로드되었습니다.`);
 }
 
 function closeModal(modalId){
