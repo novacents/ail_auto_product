@@ -330,15 +330,6 @@ function renderTable(){
         // URL 정규화 (이중 슬래시 제거)
         productUrl = normalizeUrl(productUrl);
         
-        // 디버그 정보 출력
-        console.log('Product URL data:', {
-            id: p.id,
-            product_url: p.product_url,
-            product_data_url: p.product_data?.url,
-            url: p.url,
-            normalized_url: productUrl
-        });
-        
         return `
         <tr>
             <td class="checkbox-col">
@@ -356,7 +347,7 @@ function renderTable(){
                 <div class="product-price">${escapeHtml(p.product_data?.price||'가격 정보 없음')}</div>
             </td>
             <td class="keyword-col">
-                <span class="product-keyword">${escapeHtml(p.keyword)}</span>
+                <span class="product-keyword">${escapeHtml(p.keyword||'키워드 없음')}</span>
             </td>
             <td class="date-col">
                 <div class="created-date">${formatDate(p.created_at)}</div>
