@@ -824,7 +824,7 @@ async function deleteSelected(){
     }
 }
 
-// 엑셀 다운로드 기능
+// 엑셀 다운로드 기능 - 한글 인코딩 문제 해결
 function exportToExcel(){
     if(selectedProducts.size===0){
         alert('엑셀로 다운로드할 상품을 선택해주세요.');
@@ -843,9 +843,9 @@ function exportToExcel(){
         '장점1','장점2','장점3','주의사항'
     ];
     
-    // CSV 데이터 생성
-    let csvContent='\\uFEFF'; // UTF-8 BOM 추가
-    csvContent+=headers.join(',')+'\\n';
+    // CSV 데이터 생성 (UTF-8 BOM 올바르게 추가)
+    let csvContent = '\uFEFF'; // UTF-8 BOM
+    csvContent += headers.join(',') + '\n';
     
     selectedData.forEach(product=>{
         const row=[];
@@ -894,19 +894,23 @@ function exportToExcel(){
         
         // CSV 형식으로 변환 (쉼표와 줄바꿈 처리)
         const csvRow=row.map(cell=>{
-            const cellStr=String(cell).replace(/"/g,'""');
-            return cellStr.includes(',')||cellStr.includes('\\n')?`"${cellStr}"`:cellStr;
+            let cellStr = String(cell || '').replace(/"/g, '""');
+            // 쉼표, 줄바꿈, 따옴표가 포함된 경우 따옴표로 감싸기
+            if(cellStr.includes(',') || cellStr.includes('\n') || cellStr.includes('\r') || cellStr.includes('"')){
+                cellStr = `"${cellStr}";
+            }
+            return cellStr;
         });
         
-        csvContent+=csvRow.join(',')+'\\n';
+        csvContent += csvRow.join(',') + '\n';
     });
     
     // 다운로드 실행
-    const blob=new Blob([csvContent],{type:'text/csv;charset=utf-8;'});
-    const url=URL.createObjectURL(blob);
-    const link=document.createElement('a');
-    link.href=url;
-    link.download=`상품_발굴_데이터_${new Date().toISOString().slice(0,10)}.csv`;
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `상품_발굴_데이터_${new Date().toISOString().slice(0,10)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
