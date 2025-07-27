@@ -242,14 +242,6 @@ const itemsPerPage=20;
 let searchKeywords=new Set(); // 다중 검색을 위한 키워드 저장
 let isMultiSearchMode=false; // 다중 검색 모드 여부
 
-// HTML 이스케이프 함수
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
 document.addEventListener('DOMContentLoaded',function(){
     loadProducts();
     
@@ -295,7 +287,7 @@ async function loadProducts(){
         }
     }catch(e){
         console.error('데이터 로드 오류:',e);
-        alert('데이터를 불러오는 중 오류가 발생했습니다: '+e.message);
+        alert('데이터를 불러오는 중 오류가 발생했습니다.');
         document.getElementById('loadingSection').style.display='none';
         document.getElementById('emptySection').style.display='block';
     }
@@ -395,7 +387,7 @@ function updateMultiSearchUI(){
         searchKeywords.forEach(keyword=>{
             const tag=document.createElement('span');
             tag.className='search-tag';
-            tag.innerHTML=`${escapeHtml(keyword)}<span class="remove" onclick="removeSearchKeyword('${escapeHtml(keyword)}')">&times;</span>`;
+            tag.innerHTML=`${keyword}<span class="remove" onclick="removeSearchKeyword('${keyword}')">&times;</span>`;
             searchTags.appendChild(tag);
         });
         
@@ -477,30 +469,30 @@ function renderTable(){
         return `
         <tr>
             <td class="checkbox-col">
-                <input type="checkbox" value="${escapeHtml(p.id)}" onchange="toggleProductSelection('${escapeHtml(p.id)}')" ${selectedProducts.has(p.id)?'checked':''}>
+                <input type="checkbox" value="${p.id}" onchange="toggleProductSelection('${p.id}')" ${selectedProducts.has(p.id)?'checked':''}>
             </td>
             <td class="image-col">
-                <img src="${escapeHtml((p.product_data && p.product_data.image_url) || '/tools/images/no-image.png')}" alt="${escapeHtml((p.product_data && p.product_data.title) || '상품 이미지')}" class="product-image" onclick="previewProduct('${escapeHtml(p.id)}')" onerror="this.src='/tools/images/no-image.png'">
+                <img src="${p.product_data && p.product_data.image_url || '/tools/images/no-image.png'}" alt="${p.product_data && p.product_data.title || '상품 이미지'}" class="product-image" onclick="previewProduct('${p.id}')" onerror="this.src='/tools/images/no-image.png'">
             </td>
             <td class="title-col">
                 <div class="product-title">
-                    <a href="${escapeHtml(p.product_url || '')}" target="_blank">${escapeHtml((p.product_data && p.product_data.title) || '제목 없음')}</a>
+                    <a href="${p.product_url || ''}" target="_blank">${p.product_data && p.product_data.title || '제목 없음'}</a>
                 </div>
             </td>
             <td class="price-col">
-                <div class="product-price">${escapeHtml((p.product_data && p.product_data.price) || '가격 정보 없음')}</div>
+                <div class="product-price">${p.product_data && p.product_data.price || '가격 정보 없음'}</div>
             </td>
             <td class="keyword-col">
-                <span class="${keywordClass}">${escapeHtml(p.keyword || '키워드 없음')}</span>
+                <span class="${keywordClass}">${p.keyword || '키워드 없음'}</span>
             </td>
             <td class="date-col">
                 <div class="created-date">${formatDate(p.created_at)}</div>
             </td>
             <td class="actions-col">
                 <div class="product-actions">
-                    <button class="btn btn-small btn-primary" onclick="previewProduct('${escapeHtml(p.id)}')" title="미리보기">👁️</button>
-                    <button class="btn btn-small btn-warning" onclick="editProduct('${escapeHtml(p.id)}')" title="수정">✏️</button>
-                    <button class="btn btn-small btn-danger" onclick="deleteProduct('${escapeHtml(p.id)}')" title="삭제">🗑️</button>
+                    <button class="btn btn-small btn-primary" onclick="previewProduct('${p.id}')" title="미리보기">👁️</button>
+                    <button class="btn btn-small btn-warning" onclick="editProduct('${p.id}')" title="수정">✏️</button>
+                    <button class="btn btn-small btn-danger" onclick="deleteProduct('${p.id}')" title="삭제">🗑️</button>
                 </div>
             </td>
         </tr>
@@ -577,12 +569,12 @@ function sortTable(field){
         
         switch(field){
             case'title':
-                aVal=((a.product_data && a.product_data.title) || '').toLowerCase();
-                bVal=((b.product_data && b.product_data.title) || '').toLowerCase();
+                aVal=(a.product_data && a.product_data.title || '').toLowerCase();
+                bVal=(b.product_data && b.product_data.title || '').toLowerCase();
                 break;
             case'price':
-                aVal=parseFloat(((a.product_data && a.product_data.price) || '0').replace(/[^\\d.]/g,''))||0;
-                bVal=parseFloat(((b.product_data && b.product_data.price) || '0').replace(/[^\\d.]/g,''))||0;
+                aVal=parseFloat((a.product_data && a.product_data.price || '0').replace(/[^\d.]/g,''))||0;
+                bVal=parseFloat((b.product_data && b.product_data.price || '0').replace(/[^\d.]/g,''))||0;
                 break;
             case'keyword':
                 aVal=(a.keyword || '').toLowerCase();
@@ -667,10 +659,9 @@ function previewProduct(id){
     const content=document.getElementById('previewContent');
     content.innerHTML=`
         <div style="margin-bottom:20px;">
-            <h4>${escapeHtml((product.product_data && product.product_data.title) || '제목 없음')}</h4>
-            <p><strong>키워드:</strong> ${escapeHtml(product.keyword || '')}</p>
-            <p><strong>가격:</strong> ${escapeHtml((product.product_data && product.product_data.price) || '가격 정보 없음')}</p>
-            <p><strong>URL:</strong> <a href="${escapeHtml(product.product_url || '')}" target="_blank">${escapeHtml(product.product_url || 'URL 없음')}</a></p>
+            <h4>${product.product_data && product.product_data.title || '제목 없음'}</h4>
+            <p><strong>키워드:</strong> ${product.keyword || ''}</p>
+            <p><strong>가격:</strong> ${product.product_data && product.product_data.price || '가격 정보 없음'}</p>
             <p><strong>저장일:</strong> ${formatDate(product.created_at)}</p>
         </div>
         <div style="max-height:400px;overflow-y:auto;">
@@ -737,14 +728,15 @@ async function confirmExportToSheets(){
         const rs=await r.json();
         
         if(rs.success){
-            document.getElementById('sheetsUrl').href=rs.spreadsheet_url||'#';
+            // 구글 시트 URL 표시
+            document.getElementById('sheetsUrl').href=rs.spreadsheet_url;
             document.getElementById('sheetsUrl').textContent='구글 시트에서 확인하기';
             document.getElementById('sheetsUrlSection').style.display='block';
             
             btn.textContent=originalText;
             btn.disabled=false;
             
-            alert('선택된 상품이 구글 시트에 저장되었습니다!');
+            alert(`${rs.rows_added || '선택된'}개의 상품이 구글 시트에 저장되었습니다!`);
         }else{
             throw new Error(rs.message);
         }
@@ -788,7 +780,7 @@ async function syncAllToSheets(){
         const rs=await r.json();
         
         if(rs.success){
-            alert('모든 데이터가 구글 시트에 동기화되었습니다!');
+            alert(`${rs.rows_added || '모든'}개의 상품이 구글 시트에 동기화되었습니다!`);
             if(rs.spreadsheet_url) window.open(rs.spreadsheet_url,'_blank');
         }else{
             throw new Error(rs.message);
@@ -824,7 +816,7 @@ async function deleteSelected(){
     }
 }
 
-// 엑셀 다운로드 기능 - 한글 인코딩 문제 해결
+// 엑셀 다운로드 기능
 function exportToExcel(){
     if(selectedProducts.size===0){
         alert('엑셀로 다운로드할 상품을 선택해주세요.');
@@ -843,8 +835,8 @@ function exportToExcel(){
         '장점1','장점2','장점3','주의사항'
     ];
     
-    // CSV 데이터 생성 (UTF-8 BOM 올바르게 추가)
-    let csvContent = '\uFEFF'; // UTF-8 BOM
+    // CSV 데이터 생성
+    let csvContent = '\uFEFF'; // UTF-8 BOM 추가
     csvContent += headers.join(',') + '\n';
     
     selectedData.forEach(product=>{
@@ -894,23 +886,19 @@ function exportToExcel(){
         
         // CSV 형식으로 변환 (쉼표와 줄바꿈 처리)
         const csvRow=row.map(cell=>{
-            let cellStr = String(cell || '').replace(/"/g, '""');
-            // 쉼표, 줄바꿈, 따옴표가 포함된 경우 따옴표로 감싸기
-            if(cellStr.includes(',') || cellStr.includes('\n') || cellStr.includes('\r') || cellStr.includes('"')){
-                cellStr = `"${cellStr}";
-            }
-            return cellStr;
+            const cellStr=String(cell || '').replace(/"/g,'""');
+            return cellStr.includes(',')||cellStr.includes('\n')?`"${cellStr}"`:cellStr;
         });
         
-        csvContent += csvRow.join(',') + '\n';
+        csvContent+=csvRow.join(',')+'\n';
     });
     
     // 다운로드 실행
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `상품_발굴_데이터_${new Date().toISOString().slice(0,10)}.csv`;
+    const blob=new Blob([csvContent],{type:'text/csv;charset=utf-8;'});
+    const url=URL.createObjectURL(blob);
+    const link=document.createElement('a');
+    link.href=url;
+    link.download=`상품_발굴_데이터_${new Date().toISOString().slice(0,10)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
