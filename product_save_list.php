@@ -103,7 +103,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .sort-header.desc::after{content:' ↓';position:absolute;right:5px}
 .sheets-actions{margin-top:20px;text-align:center;padding:20px;background:#f0f8ff;border-radius:8px;border:1px solid #b3d9ff}
 .sheets-actions h4{margin:0 0 15px 0;color:#0066cc}
-.debug-info{display:none;padding:10px;background:#f0f0f0;border:1px solid #ddd;margin-top:10px;font-size:12px;font-family:monospace}
+.debug-info{display:block;padding:10px;background:#f0f0f0;border:1px solid #ddd;margin-top:10px;font-size:12px;font-family:monospace}
 .search-info{margin-bottom:10px;padding:10px;background:#e8f5e9;border:1px solid #4caf50;border-radius:4px;font-size:14px;color:#2e7d32}
 </style>
 </head>
@@ -294,6 +294,9 @@ document.addEventListener('DOMContentLoaded',function(){
 });
 
 async function loadProducts(){
+    const debugInfo = document.getElementById('debugInfo');
+    debugInfo.innerHTML = '데이터 로딩 시작...';
+    
     try{
         const r=await fetch('product_save_handler.php',{
             method:'POST',
@@ -301,10 +304,29 @@ async function loadProducts(){
             body:JSON.stringify({action:'load'})
         });
         
-        const rs=await r.json();
+        debugInfo.innerHTML += '<br>HTTP 상태: ' + r.status;
+        
+        if (!r.ok) {
+            throw new Error('HTTP 오류: ' + r.status + ' ' + r.statusText);
+        }
+        
+        const responseText = await r.text();
+        debugInfo.innerHTML += '<br>응답 텍스트 길이: ' + responseText.length;
+        debugInfo.innerHTML += '<br>응답 내용 (처음 500자): ' + responseText.substring(0, 500);
+        
+        let rs;
+        try {
+            rs = JSON.parse(responseText);
+        } catch (jsonError) {
+            debugInfo.innerHTML += '<br>JSON 파싱 오류: ' + jsonError.message;
+            debugInfo.innerHTML += '<br>전체 응답: ' + responseText;
+            throw new Error('JSON 파싱 실패: ' + jsonError.message);
+        }
+        
+        debugInfo.innerHTML += '<br>파싱된 JSON: ' + JSON.stringify(rs, null, 2);
         
         if(rs.success){
-            products=rs.data;
+            products=rs.data || [];
             filteredProducts=[...products];
             updateStats();
             renderTable();
@@ -315,12 +337,15 @@ async function loadProducts(){
             }else{
                 document.getElementById('emptySection').style.display='block';
             }
+            
+            debugInfo.innerHTML += '<br>성공: ' + products.length + '개 상품 로드됨';
         }else{
-            throw new Error(rs.message);
+            throw new Error(rs.message || '알 수 없는 오류');
         }
     }catch(e){
         console.error('데이터 로드 오류:',e);
-        alert('데이터를 불러오는 중 오류가 발생했습니다.');
+        debugInfo.innerHTML += '<br>오류 발생: ' + e.message;
+        alert('데이터를 불러오는 중 오류가 발생했습니다: ' + e.message);
         document.getElementById('loadingSection').style.display='none';
         document.getElementById('emptySection').style.display='block';
     }
