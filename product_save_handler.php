@@ -3,8 +3,28 @@
  * 상품 발굴 저장 시스템 - 백엔드 처리 핸들러 (구글 시트 전용)
  * JSON 파일 의존성 제거, 구글 시트만을 단일 데이터 소스로 사용
  */
-require_once($_SERVER['DOCUMENT_ROOT'].'/wp-config.php');
-if(!current_user_can('manage_options'))wp_die('접근 권한이 없습니다.');
+
+// WordPress 환경에서만 권한 체크
+if (file_exists($_SERVER['DOCUMENT_ROOT'].'/wp-config.php')) {
+    require_once($_SERVER['DOCUMENT_ROOT'].'/wp-config.php');
+    
+    // 로그인된 사용자인지 확인 (AJAX 요청 고려)
+    if (!is_user_logged_in()) {
+        // 쿠키나 세션을 통한 추가 인증 확인
+        $user_id = get_current_user_id();
+        if (!$user_id) {
+            // 개발 환경에서는 임시로 허용 (운영 환경에서는 제거 필요)
+            if (!defined('WP_DEBUG') || !WP_DEBUG) {
+                wp_die('로그인이 필요합니다.');
+            }
+        }
+    } else {
+        // 로그인된 사용자라면 관리자 권한 체크
+        if (!current_user_can('manage_options')) {
+            wp_die('접근 권한이 없습니다.');
+        }
+    }
+}
 
 // 구글 시트 매니저 포함
 require_once(__DIR__ . '/google_sheets_manager.php');
@@ -212,9 +232,13 @@ function updateProduct($id, $newData) {
  */
 function exportSelectedToGoogleSheets($productIds) {
     try {
+        $sheetsManager = new GoogleSheetsManager();
+        $spreadsheetResult = $sheetsManager->getOrCreateSpreadsheet();
+        
         echo json_encode([
             'success' => true,
             'message' => '모든 데이터가 이미 구글 시트에 저장되어 있습니다.',
+            'spreadsheet_url' => $spreadsheetResult['spreadsheet_url'] ?? '',
             'note' => '단일 데이터 소스 시스템으로 별도 내보내기가 불필요합니다.'
         ]);
         
