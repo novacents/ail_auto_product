@@ -308,8 +308,8 @@ function renderTable(){
     }
     
     tbody.innerHTML=pageProducts.map(p=>{
-        // URL 찾기 - 여러 위치에서 확인
-        const productUrl = p.product_data?.url || p.product_url || p.url || '';
+        // URL 우선순위: 사용자 입력 원본(product_url) → 분석 결과(product_data.url) → 기타
+        const productUrl = p.product_url || p.product_data?.url || p.url || '';
         
         // 디버그 정보 출력
         console.log('Product URL data:', {
@@ -532,8 +532,8 @@ function previewProduct(id){
     const product=products.find(p=>p.id===id);
     if(!product)return;
     
-    // URL 찾기
-    const productUrl = product.product_data?.url || product.product_url || product.url || '';
+    // URL 우선순위: 사용자 입력 원본(product_url) → 분석 결과(product_data.url) → 기타
+    const productUrl = product.product_url || product.product_data?.url || product.url || '';
     
     const content=document.getElementById('previewContent');
     content.innerHTML=`
@@ -722,8 +722,8 @@ function exportToExcel(){
     selectedData.forEach(product=>{
         const row=[];
         
-        // URL 찾기
-        const productUrl = product.product_data?.url || product.product_url || product.url || '';
+        // URL 우선순위: 사용자 입력 원본(product_url) → 분석 결과(product_data.url) → 기타
+        const productUrl = product.product_url || product.product_data?.url || product.url || '';
         
         // 기본 정보
         row.push(product.id);
