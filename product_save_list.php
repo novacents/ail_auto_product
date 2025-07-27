@@ -29,6 +29,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .nav-link{background:rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:4px;text-decoration:none;font-size:14px;transition:all 0.3s}
 .nav-link:hover{background:rgba(255,255,255,0.3);color:white}
 .main-content{padding:30px}
+.keyword-overview{margin-bottom:30px;padding:25px;background:#f8f9fa;border-radius:12px;border:1px solid #e0e0e0}
+.keyword-overview h3{margin:0 0 20px 0;color:#333;font-size:18px;display:flex;align-items:center;gap:8px}
+.keyword-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:15px;margin-bottom:20px}
+.keyword-stat{background:white;padding:15px;border-radius:8px;text-align:center;border:1px solid #e9ecef;box-shadow:0 1px 3px rgba(0,0,0,0.1)}
+.keyword-stat-number{font-size:24px;font-weight:bold;color:#007bff;margin-bottom:5px}
+.keyword-stat-label{font-size:12px;color:#666;font-weight:500}
+.keyword-list{max-height:200px;overflow-y:auto;background:white;border-radius:8px;border:1px solid #e9ecef}
+.keyword-list-header{background:#f8f9fa;padding:12px 15px;border-bottom:1px solid #e9ecef;font-weight:600;color:#333;position:sticky;top:0;z-index:5}
+.keyword-item{display:flex;justify-content:space-between;align-items:center;padding:10px 15px;border-bottom:1px solid #f0f0f0;transition:background 0.2s}
+.keyword-item:hover{background:#f8f9fa;cursor:pointer}
+.keyword-item:last-child{border-bottom:none}
+.keyword-name{font-weight:500;color:#333;flex:1}
+.keyword-count{background:#007bff;color:white;padding:3px 8px;border-radius:12px;font-size:12px;font-weight:600;min-width:25px;text-align:center}
+.keyword-controls{display:flex;gap:10px;margin-top:15px;align-items:center}
+.keyword-sort{padding:6px 12px;border:1px solid #ddd;border-radius:6px;font-size:12px;background:white;cursor:pointer}
+.keyword-toggle{background:#007bff;color:white;border:none;padding:8px 16px;border-radius:6px;font-size:12px;cursor:pointer;transition:background 0.3s}
+.keyword-toggle:hover{background:#0056b3}
+.keyword-toggle.collapsed{background:#6c757d}
 .controls-section{margin-bottom:30px;padding:20px;background:#f8f9fa;border-radius:8px}
 .controls-row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:15px}
 .search-group{display:flex;gap:10px;align-items:center;flex:1;max-width:600px}
@@ -170,6 +188,45 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 </div>
 </div>
 <div class="main-content">
+<div class="keyword-overview">
+<h3>🏷️ 키워드 현황</h3>
+<div class="keyword-stats">
+<div class="keyword-stat">
+<div class="keyword-stat-number" id="uniqueKeywordCount">0</div>
+<div class="keyword-stat-label">고유 키워드</div>
+</div>
+<div class="keyword-stat">
+<div class="keyword-stat-number" id="avgProductsPerKeyword">0</div>
+<div class="keyword-stat-label">평균 상품수</div>
+</div>
+<div class="keyword-stat">
+<div class="keyword-stat-number" id="maxProductsKeyword">-</div>
+<div class="keyword-stat-label">최다 상품 키워드</div>
+</div>
+<div class="keyword-stat">
+<div class="keyword-stat-number" id="recentKeywordCount">0</div>
+<div class="keyword-stat-label">오늘 추가 키워드</div>
+</div>
+</div>
+<div class="keyword-controls">
+<select class="keyword-sort" id="keywordSort" onchange="sortKeywordList()">
+<option value="name_asc">키워드명 오름차순</option>
+<option value="name_desc">키워드명 내림차순</option>
+<option value="count_desc">상품수 많은순</option>
+<option value="count_asc">상품수 적은순</option>
+<option value="recent">최근 추가순</option>
+</select>
+<button class="keyword-toggle" id="keywordToggle" onclick="toggleKeywordList()">키워드 목록 펼치기</button>
+</div>
+<div class="keyword-list" id="keywordList" style="display:none;">
+<div class="keyword-list-header">
+<span>키워드명</span>
+<span>상품수</span>
+</div>
+<div id="keywordListBody">
+</div>
+</div>
+</div>
 <div class="sheets-actions">
 <h4>📊 구글 시트 관리</h4>
 <button class="btn btn-primary" onclick="openGoogleSheets()">구글 시트 보기</button>
@@ -241,6 +298,7 @@ let currentPage=1;
 const itemsPerPage=20;
 let searchKeywords=new Set(); // 다중 검색을 위한 키워드 저장
 let isMultiSearchMode=false; // 다중 검색 모드 여부
+let keywordStats={}; // 키워드 통계 데이터
 
 document.addEventListener('DOMContentLoaded',function(){
     loadProducts();
@@ -274,6 +332,7 @@ async function loadProducts(){
             products=rs.data || [];
             filteredProducts=[...products];
             updateStats();
+            updateKeywordOverview();
             renderTable();
             document.getElementById('loadingSection').style.display='none';
             
@@ -307,6 +366,132 @@ function updateStats(){
     
     document.getElementById('keywordCount').textContent=keywords.size;
     document.getElementById('todayCount').textContent=todayCount;
+}
+
+function updateKeywordOverview(){
+    // 키워드별 상품 수 계산
+    keywordStats={};
+    const today=new Date().toDateString();
+    let recentKeywords=new Set();
+    
+    products.forEach(p=>{
+        if(p.keyword){
+            if(!keywordStats[p.keyword]){
+                keywordStats[p.keyword]={
+                    count:0,
+                    latestDate:p.created_at,
+                    isToday:false
+                };
+            }
+            keywordStats[p.keyword].count++;
+            
+            // 최신 날짜 업데이트
+            if(new Date(p.created_at)>new Date(keywordStats[p.keyword].latestDate)){
+                keywordStats[p.keyword].latestDate=p.created_at;
+            }
+            
+            // 오늘 추가된 키워드 체크
+            if(new Date(p.created_at).toDateString()===today){
+                keywordStats[p.keyword].isToday=true;
+                recentKeywords.add(p.keyword);
+            }
+        }
+    });
+    
+    const keywordCount=Object.keys(keywordStats).length;
+    const totalProducts=Object.values(keywordStats).reduce((sum,stat)=>sum+stat.count,0);
+    const avgProducts=keywordCount>0?Math.round(totalProducts/keywordCount):0;
+    
+    // 최다 상품 키워드 찾기
+    let maxKeyword='-';
+    let maxCount=0;
+    Object.entries(keywordStats).forEach(([keyword,stat])=>{
+        if(stat.count>maxCount){
+            maxCount=stat.count;
+            maxKeyword=keyword;
+        }
+    });
+    
+    // 통계 업데이트
+    document.getElementById('uniqueKeywordCount').textContent=keywordCount;
+    document.getElementById('avgProductsPerKeyword').textContent=avgProducts;
+    document.getElementById('maxProductsKeyword').textContent=maxKeyword;
+    document.getElementById('recentKeywordCount').textContent=recentKeywords.size;
+    
+    // 키워드 목록 업데이트
+    renderKeywordList();
+}
+
+function renderKeywordList(){
+    const listBody=document.getElementById('keywordListBody');
+    const sortType=document.getElementById('keywordSort').value;
+    
+    // 키워드 배열 생성 및 정렬
+    let keywordArray=Object.entries(keywordStats).map(([keyword,stat])=>({
+        keyword,
+        count:stat.count,
+        latestDate:stat.latestDate,
+        isToday:stat.isToday
+    }));
+    
+    // 정렬
+    switch(sortType){
+        case'name_asc':
+            keywordArray.sort((a,b)=>a.keyword.localeCompare(b.keyword));
+            break;
+        case'name_desc':
+            keywordArray.sort((a,b)=>b.keyword.localeCompare(a.keyword));
+            break;
+        case'count_desc':
+            keywordArray.sort((a,b)=>b.count-a.count);
+            break;
+        case'count_asc':
+            keywordArray.sort((a,b)=>a.count-b.count);
+            break;
+        case'recent':
+            keywordArray.sort((a,b)=>new Date(b.latestDate)-new Date(a.latestDate));
+            break;
+    }
+    
+    // 목록 렌더링
+    listBody.innerHTML=keywordArray.map(item=>`
+        <div class="keyword-item" onclick="filterByKeyword('${item.keyword}')">
+            <span class="keyword-name">${item.keyword}${item.isToday?' 🆕':''}</span>
+            <span class="keyword-count">${item.count}</span>
+        </div>
+    `).join('');
+}
+
+function sortKeywordList(){
+    renderKeywordList();
+}
+
+function toggleKeywordList(){
+    const list=document.getElementById('keywordList');
+    const toggle=document.getElementById('keywordToggle');
+    
+    if(list.style.display==='none'){
+        list.style.display='block';
+        toggle.textContent='키워드 목록 접기';
+        toggle.classList.remove('collapsed');
+    }else{
+        list.style.display='none';
+        toggle.textContent='키워드 목록 펼치기';
+        toggle.classList.add('collapsed');
+    }
+}
+
+function filterByKeyword(keyword){
+    // 검색 입력창에 키워드 설정
+    document.getElementById('searchInput').value=keyword;
+    
+    // 검색 실행
+    searchProducts();
+    
+    // 키워드 목록 접기
+    document.getElementById('keywordList').style.display='none';
+    document.getElementById('keywordToggle').textContent='키워드 목록 펼치기';
+    document.getElementById('keywordToggle').classList.add('collapsed');
 }
 
 function searchProducts(){
