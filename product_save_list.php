@@ -242,12 +242,6 @@ const itemsPerPage=20;
 let searchKeywords=new Set(); // 다중 검색을 위한 키워드 저장
 let isMultiSearchMode=false; // 다중 검색 모드 여부
 
-// URL 정규화 함수 - 이중 슬래시 제거
-function normalizeUrl(url) {
-    if (!url) return '';
-    return url.replace(/([^:]\\/)\\\\/+/g, '$1');
-}
-
 // HTML 이스케이프 함수
 function escapeHtml(text) {
     if (!text) return '';
@@ -276,10 +270,10 @@ document.addEventListener('DOMContentLoaded',function(){
 
 async function loadProducts(){
     try{
-        const r=await fetch('/tools/product_save_handler.php',{
+        const r=await fetch('product_save_handler.php',{
             method:'POST',
-            headers:{'Content-Type':'application/x-www-form-urlencoded'},
-            body:'operation=load'
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({action:'load'})
         });
         
         const rs=await r.json();
@@ -469,10 +463,6 @@ function renderTable(){
     }
     
     tbody.innerHTML=pageProducts.map(p=>{
-        // URL 우선순위: 사용자 입력 원본(product_url) → 분석 결과(product_data.url) → 기타
-        let productUrl = p.product_url || (p.product_data && p.product_data.url) || p.url || '';
-        productUrl = normalizeUrl(productUrl);
-        
         // 키워드 하이라이트 확인
         let keywordClass = 'product-keyword';
         if(isMultiSearchMode && searchKeywords.size > 0){
@@ -494,7 +484,7 @@ function renderTable(){
             </td>
             <td class="title-col">
                 <div class="product-title">
-                    <a href="${escapeHtml(productUrl)}" target="_blank">${escapeHtml((p.product_data && p.product_data.title) || '제목 없음')}</a>
+                    <a href="${escapeHtml(p.product_url || '')}" target="_blank">${escapeHtml((p.product_data && p.product_data.title) || '제목 없음')}</a>
                 </div>
             </td>
             <td class="price-col">
@@ -674,16 +664,13 @@ function previewProduct(id){
     const product=products.find(p=>p.id===id);
     if(!product)return;
     
-    let productUrl = product.product_url || (product.product_data && product.product_data.url) || product.url || '';
-    productUrl = normalizeUrl(productUrl);
-    
     const content=document.getElementById('previewContent');
     content.innerHTML=`
         <div style="margin-bottom:20px;">
             <h4>${escapeHtml((product.product_data && product.product_data.title) || '제목 없음')}</h4>
             <p><strong>키워드:</strong> ${escapeHtml(product.keyword || '')}</p>
             <p><strong>가격:</strong> ${escapeHtml((product.product_data && product.product_data.price) || '가격 정보 없음')}</p>
-            <p><strong>URL:</strong> <a href="${escapeHtml(productUrl)}" target="_blank">${escapeHtml(productUrl || 'URL 없음')}</a></p>
+            <p><strong>URL:</strong> <a href="${escapeHtml(product.product_url || '')}" target="_blank">${escapeHtml(product.product_url || 'URL 없음')}</a></p>
             <p><strong>저장일:</strong> ${formatDate(product.created_at)}</p>
         </div>
         <div style="max-height:400px;overflow-y:auto;">
@@ -702,10 +689,10 @@ async function deleteProduct(id){
     if(!confirm('이 상품을 삭제하시겠습니까?'))return;
     
     try{
-        const r=await fetch('/tools/product_save_handler.php',{
+        const r=await fetch('product_save_handler.php',{
             method:'POST',
-            headers:{'Content-Type':'application/x-www-form-urlencoded'},
-            body:`operation=delete&id=${encodeURIComponent(id)}`
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({action:'delete',id:id})
         });
         
         const rs=await r.json();
@@ -741,10 +728,10 @@ async function confirmExportToSheets(){
     btn.textContent='내보내는 중...';
     
     try{
-        const r=await fetch('/tools/product_save_handler.php',{
+        const r=await fetch('product_save_handler.php',{
             method:'POST',
-            headers:{'Content-Type':'application/x-www-form-urlencoded'},
-            body:`operation=export_to_sheets&ids=${encodeURIComponent(JSON.stringify(selectedIds))}`
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({action:'export_to_sheets',ids:selectedIds})
         });
         
         const rs=await r.json();
@@ -770,10 +757,10 @@ async function confirmExportToSheets(){
 
 async function openGoogleSheets(){
     try{
-        const r=await fetch('/tools/product_save_handler.php',{
+        const r=await fetch('product_save_handler.php',{
             method:'POST',
-            headers:{'Content-Type':'application/x-www-form-urlencoded'},
-            body:'operation=get_sheets_url'
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({action:'get_sheets_url'})
         });
         
         const rs=await r.json();
@@ -792,10 +779,10 @@ async function syncAllToSheets(){
     if(!confirm('모든 데이터를 구글 시트에 동기화하시겠습니까?'))return;
     
     try{
-        const r=await fetch('/tools/product_save_handler.php',{
+        const r=await fetch('product_save_handler.php',{
             method:'POST',
-            headers:{'Content-Type':'application/x-www-form-urlencoded'},
-            body:'operation=sync_to_sheets'
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({action:'sync_to_sheets'})
         });
         
         const rs=await r.json();
@@ -820,10 +807,10 @@ async function deleteSelected(){
     if(!confirm(`선택된 ${selectedProducts.size}개의 상품을 삭제하시겠습니까?`))return;
     
     const deletePromises=Array.from(selectedProducts).map(id=>
-        fetch('/tools/product_save_handler.php',{
+        fetch('product_save_handler.php',{
             method:'POST',
-            headers:{'Content-Type':'application/x-www-form-urlencoded'},
-            body:`operation=delete&id=${encodeURIComponent(id)}`
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({action:'delete',id:id})
         })
     );
     
@@ -863,9 +850,6 @@ function exportToExcel(){
     selectedData.forEach(product=>{
         const row=[];
         
-        let productUrl = product.product_url || (product.product_data && product.product_data.url) || product.url || '';
-        productUrl = normalizeUrl(productUrl);
-        
         // 기본 정보
         row.push(product.id || '');
         row.push(product.keyword || '');
@@ -874,7 +858,7 @@ function exportToExcel(){
         row.push((product.product_data && product.product_data.rating_display) || '');
         row.push((product.product_data && product.product_data.lastest_volume) || '');
         row.push((product.product_data && product.product_data.image_url) || '');
-        row.push(productUrl);
+        row.push(product.product_url || '');
         row.push((product.product_data && product.product_data.affiliate_link) || '');
         row.push(product.created_at || '');
         
