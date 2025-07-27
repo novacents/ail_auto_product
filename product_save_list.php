@@ -42,12 +42,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .btn-warning{background:#ffc107;color:#212529}.btn-warning:hover{background:#e0a800}
 .btn-info{background:#17a2b8;color:white}.btn-info:hover{background:#138496}
 .btn-small{padding:6px 12px;font-size:12px}
-.search-mode-toggle{display:flex;gap:5px;align-items:center;margin-bottom:15px}
-.search-mode-toggle label{font-size:14px;color:#666}
-.search-mode-toggle input[type="checkbox"]{margin-left:5px}
-.active-searches{margin-top:15px;padding:15px;background:#e3f2fd;border:1px solid #2196F3;border-radius:6px;display:none}
-.active-searches.show{display:block}
-.search-tag{display:inline-block;background:#2196F3;color:white;padding:4px 12px;border-radius:16px;font-size:13px;margin:4px;position:relative}
+.multi-search-section{margin-bottom:15px;padding:15px;background:#e8f5e9;border:1px solid #4caf50;border-radius:6px;display:none}
+.multi-search-section.show{display:block}
+.search-tags{margin-top:10px}
+.search-tag{display:inline-block;background:#4caf50;color:white;padding:4px 12px;border-radius:16px;font-size:13px;margin:4px;position:relative}
 .search-tag .remove{margin-left:8px;cursor:pointer;font-weight:bold}
 .search-tag .remove:hover{color:#ff6b6b}
 .products-table{width:100%;border-collapse:collapse;margin-top:20px;background:white;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
@@ -103,8 +101,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .sort-header.desc::after{content:' ↓';position:absolute;right:5px}
 .sheets-actions{margin-top:20px;text-align:center;padding:20px;background:#f0f8ff;border-radius:8px;border:1px solid #b3d9ff}
 .sheets-actions h4{margin:0 0 15px 0;color:#0066cc}
-.debug-info{display:block;padding:10px;background:#f0f0f0;border:1px solid #ddd;margin-top:10px;font-size:12px;font-family:monospace}
-.search-info{margin-bottom:10px;padding:10px;background:#e8f5e9;border:1px solid #4caf50;border-radius:4px;font-size:14px;color:#2e7d32}
 </style>
 </head>
 <body>
@@ -180,17 +176,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <button class="btn btn-success" onclick="syncAllToSheets()">전체 데이터 동기화</button>
 </div>
 <div class="controls-section">
-<div class="search-mode-toggle">
-<label>
-<input type="checkbox" id="multiSearchMode" onchange="toggleMultiSearchMode()">
-다중 키워드 검색 모드 (여러 키워드 결과를 누적해서 보기)
-</label>
-</div>
 <div class="controls-row">
 <div class="search-group">
 <input type="text" id="searchInput" placeholder="키워드나 상품명으로 검색...">
 <button class="btn btn-primary" onclick="searchProducts()">🔍 검색</button>
-<button class="btn btn-warning" onclick="addToSearch()" id="addSearchBtn" style="display:none;">➕ 추가</button>
+<button class="btn btn-warning" onclick="addToMultiSearch()" id="addSearchBtn" style="display:none;">➕ 추가검색</button>
 <button class="btn btn-secondary" onclick="clearSearch()">초기화</button>
 </div>
 <div class="action-group">
@@ -199,9 +189,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <button class="btn btn-danger" onclick="deleteSelected()" id="deleteBtn" disabled>🗑️ 삭제</button>
 </div>
 </div>
-<div class="active-searches" id="activeSearches">
-<strong>활성 검색어:</strong>
-<div id="searchTags"></div>
+<div class="multi-search-section" id="multiSearchSection">
+<strong>다중 키워드 검색 결과</strong> - <span id="searchResultInfo"></span>
+<div class="search-tags" id="searchTags"></div>
 </div>
 <div class="bulk-actions" id="bulkActions">
 <strong>선택된 항목:</strong> <span id="selectedCount">0</span>개 |
@@ -216,7 +206,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <p>데이터를 불러오는 중...</p>
 </div>
 <div id="productsSection" style="display:none;">
-<div id="searchInfo" class="search-info" style="display:none;"></div>
 <table class="products-table">
 <thead>
 <tr>
@@ -241,7 +230,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <p>상품을 발굴하여 저장해보세요!</p>
 <a href="product_save.php" class="btn btn-primary">상품 추가하기</a>
 </div>
-<div class="debug-info" id="debugInfo"></div>
 </div>
 </div>
 <script>
@@ -251,15 +239,12 @@ let selectedProducts=new Set();
 let currentSort={field:null,direction:'asc'};
 let currentPage=1;
 const itemsPerPage=20;
-let multiSearchMode=false;
-let activeSearches=new Set();
-let multiSearchResults=new Map();
+let searchKeywords=new Set(); // 다중 검색을 위한 키워드 저장
+let isMultiSearchMode=false; // 다중 검색 모드 여부
 
 // URL 정규화 함수 - 이중 슬래시 제거
 function normalizeUrl(url) {
     if (!url) return '';
-    
-    // 프로토콜 부분은 보존하고 나머지 부분의 이중 슬래시 제거
     return url.replace(/([^:]\/)\\/+/g, '$1');
 }
 
@@ -277,11 +262,7 @@ document.addEventListener('DOMContentLoaded',function(){
     // 검색 엔터키 처리
     document.getElementById('searchInput').addEventListener('keypress',function(e){
         if(e.key==='Enter'){
-            if(multiSearchMode && activeSearches.size > 0){
-                addToSearch();
-            }else{
-                searchProducts();
-            }
+            searchProducts();
         }
     });
     
@@ -294,9 +275,6 @@ document.addEventListener('DOMContentLoaded',function(){
 });
 
 async function loadProducts(){
-    const debugInfo = document.getElementById('debugInfo');
-    debugInfo.innerHTML = '데이터 로딩 시작...';
-    
     try{
         const r=await fetch('product_save_handler.php',{
             method:'POST',
@@ -304,26 +282,7 @@ async function loadProducts(){
             body:JSON.stringify({action:'load'})
         });
         
-        debugInfo.innerHTML += '<br>HTTP 상태: ' + r.status;
-        
-        if (!r.ok) {
-            throw new Error('HTTP 오류: ' + r.status + ' ' + r.statusText);
-        }
-        
-        const responseText = await r.text();
-        debugInfo.innerHTML += '<br>응답 텍스트 길이: ' + responseText.length;
-        debugInfo.innerHTML += '<br>응답 내용 (처음 500자): ' + responseText.substring(0, 500);
-        
-        let rs;
-        try {
-            rs = JSON.parse(responseText);
-        } catch (jsonError) {
-            debugInfo.innerHTML += '<br>JSON 파싱 오류: ' + jsonError.message;
-            debugInfo.innerHTML += '<br>전체 응답: ' + responseText;
-            throw new Error('JSON 파싱 실패: ' + jsonError.message);
-        }
-        
-        debugInfo.innerHTML += '<br>파싱된 JSON: ' + JSON.stringify(rs, null, 2);
+        const rs=await r.json();
         
         if(rs.success){
             products=rs.data || [];
@@ -337,15 +296,12 @@ async function loadProducts(){
             }else{
                 document.getElementById('emptySection').style.display='block';
             }
-            
-            debugInfo.innerHTML += '<br>성공: ' + products.length + '개 상품 로드됨';
         }else{
-            throw new Error(rs.message || '알 수 없는 오류');
+            throw new Error(rs.message);
         }
     }catch(e){
         console.error('데이터 로드 오류:',e);
-        debugInfo.innerHTML += '<br>오류 발생: ' + e.message;
-        alert('데이터를 불러오는 중 오류가 발생했습니다: ' + e.message);
+        alert('데이터를 불러오는 중 오류가 발생했습니다: '+e.message);
         document.getElementById('loadingSection').style.display='none';
         document.getElementById('emptySection').style.display='block';
     }
@@ -359,7 +315,7 @@ function updateStats(){
     const today=new Date().toDateString();
     
     products.forEach(p=>{
-        keywords.add(p.keyword);
+        if(p.keyword) keywords.add(p.keyword);
         if(new Date(p.created_at).toDateString()===today)todayCount++;
     });
     
@@ -367,138 +323,137 @@ function updateStats(){
     document.getElementById('todayCount').textContent=todayCount;
 }
 
-function toggleMultiSearchMode(){
-    multiSearchMode=document.getElementById('multiSearchMode').checked;
-    document.getElementById('addSearchBtn').style.display=multiSearchMode?'inline-block':'none';
-    
-    if(!multiSearchMode){
-        activeSearches.clear();
-        multiSearchResults.clear();
-        document.getElementById('activeSearches').classList.remove('show');
-        document.getElementById('searchTags').innerHTML='';
-        filteredProducts=[...products];
-        renderTable();
-    }
-}
-
 function searchProducts(){
     const query=document.getElementById('searchInput').value.toLowerCase().trim();
     
     if(!query){
-        if(!multiSearchMode){
-            filteredProducts=[...products];
-        }
+        // 검색어가 없으면 전체 목록 표시
+        filteredProducts=[...products];
+        isMultiSearchMode=false;
+        searchKeywords.clear();
+        updateMultiSearchUI();
     }else{
-        if(multiSearchMode){
-            // 다중 검색 모드: 기존 검색 결과 초기화하고 새로 시작
-            activeSearches.clear();
-            multiSearchResults.clear();
-            activeSearches.add(query);
-            
-            const results=products.filter(p=>
-                p.keyword.toLowerCase().includes(query)||
-                (p.product_data.title&&p.product_data.title.toLowerCase().includes(query))
-            );
-            
-            multiSearchResults.set(query,new Set(results.map(p=>p.id)));
-            updateMultiSearchResults();
-        }else{
-            // 단일 검색 모드
-            filteredProducts=products.filter(p=>
-                p.keyword.toLowerCase().includes(query)||
-                (p.product_data.title&&p.product_data.title.toLowerCase().includes(query))
-            );
-        }
+        // 첫 번째 검색 수행
+        searchKeywords.clear();
+        searchKeywords.add(query);
+        isMultiSearchMode=true;
+        
+        filteredProducts=products.filter(p=>
+            (p.keyword && p.keyword.toLowerCase().includes(query)) ||
+            (p.product_data && p.product_data.title && p.product_data.title.toLowerCase().includes(query))
+        );
+        
+        updateMultiSearchUI();
+        document.getElementById('addSearchBtn').style.display='inline-block';
     }
     
     currentPage=1;
     renderTable();
-    
-    if(multiSearchMode)updateSearchTags();
 }
 
-function addToSearch(){
+function addToMultiSearch(){
     const query=document.getElementById('searchInput').value.toLowerCase().trim();
     
-    if(!query||activeSearches.has(query)){
-        if(activeSearches.has(query)){
-            alert('이미 검색된 키워드입니다.');
-        }
+    if(!query){
+        alert('검색할 키워드를 입력해주세요.');
         return;
     }
     
-    activeSearches.add(query);
+    if(searchKeywords.has(query)){
+        alert('이미 검색된 키워드입니다.');
+        return;
+    }
     
-    const results=products.filter(p=>
-        p.keyword.toLowerCase().includes(query)||
-        (p.product_data.title&&p.product_data.title.toLowerCase().includes(query))
+    // 새 키워드 추가
+    searchKeywords.add(query);
+    
+    // 기존 결과에 새 검색 결과 추가
+    const newResults=products.filter(p=>
+        (p.keyword && p.keyword.toLowerCase().includes(query)) ||
+        (p.product_data && p.product_data.title && p.product_data.title.toLowerCase().includes(query))
     );
     
-    multiSearchResults.set(query,new Set(results.map(p=>p.id)));
-    updateMultiSearchResults();
-    updateSearchTags();
+    // 중복 제거하면서 결과 합치기
+    const existingIds=new Set(filteredProducts.map(p=>p.id));
+    newResults.forEach(product=>{
+        if(!existingIds.has(product.id)){
+            filteredProducts.push(product);
+            existingIds.add(product.id);
+        }
+    });
     
+    updateMultiSearchUI();
     document.getElementById('searchInput').value='';
+    currentPage=1;
+    renderTable();
 }
 
-function updateMultiSearchResults(){
-    // 모든 검색 결과의 합집합 계산
-    const allResultIds=new Set();
-    multiSearchResults.forEach(resultSet=>{
-        resultSet.forEach(id=>allResultIds.add(id));
-    });
+function updateMultiSearchUI(){
+    const multiSearchSection=document.getElementById('multiSearchSection');
+    const searchTags=document.getElementById('searchTags');
+    const searchResultInfo=document.getElementById('searchResultInfo');
     
-    filteredProducts=products.filter(p=>allResultIds.has(p.id));
-    
-    // 검색 정보 표시
-    const searchInfo=document.getElementById('searchInfo');
-    if(activeSearches.size>0){
-        searchInfo.innerHTML=`🔍 ${activeSearches.size}개의 검색어로 총 ${filteredProducts.length}개의 상품을 찾았습니다.`;
-        searchInfo.style.display='block';
+    if(isMultiSearchMode && searchKeywords.size>0){
+        multiSearchSection.classList.add('show');
+        
+        // 검색 태그 업데이트
+        searchTags.innerHTML='';
+        searchKeywords.forEach(keyword=>{
+            const tag=document.createElement('span');
+            tag.className='search-tag';
+            tag.innerHTML=`${escapeHtml(keyword)}<span class="remove" onclick="removeSearchKeyword('${escapeHtml(keyword)}')">&times;</span>`;
+            searchTags.appendChild(tag);
+        });
+        
+        // 검색 결과 정보 업데이트
+        searchResultInfo.textContent=`${searchKeywords.size}개 키워드로 ${filteredProducts.length}개 상품 검색됨`;
     }else{
-        searchInfo.style.display='none';
+        multiSearchSection.classList.remove('show');
     }
 }
 
-function updateSearchTags(){
-    const container=document.getElementById('searchTags');
-    container.innerHTML='';
+function removeSearchKeyword(keyword){
+    searchKeywords.delete(keyword);
     
-    activeSearches.forEach(search=>{
-        const tag=document.createElement('span');
-        tag.className='search-tag';
-        tag.innerHTML=`${escapeHtml(search)}<span class="remove" onclick="removeSearch('${escapeHtml(search)}')">&times;</span>`;
-        container.appendChild(tag);
-    });
-    
-    document.getElementById('activeSearches').classList.toggle('show',activeSearches.size>0);
-}
-
-function removeSearch(search){
-    activeSearches.delete(search);
-    multiSearchResults.delete(search);
-    
-    if(activeSearches.size===0){
+    if(searchKeywords.size===0){
+        // 모든 키워드가 삭제되면 전체 목록 표시
         filteredProducts=[...products];
-        document.getElementById('searchInfo').style.display='none';
+        isMultiSearchMode=false;
+        document.getElementById('addSearchBtn').style.display='none';
     }else{
-        updateMultiSearchResults();
+        // 남은 키워드로 다시 검색
+        filteredProducts=[];
+        const addedIds=new Set();
+        
+        searchKeywords.forEach(kw=>{
+            const results=products.filter(p=>
+                (p.keyword && p.keyword.toLowerCase().includes(kw)) ||
+                (p.product_data && p.product_data.title && p.product_data.title.toLowerCase().includes(kw))
+            );
+            
+            results.forEach(product=>{
+                if(!addedIds.has(product.id)){
+                    filteredProducts.push(product);
+                    addedIds.add(product.id);
+                }
+            });
+        });
     }
     
-    updateSearchTags();
+    updateMultiSearchUI();
     currentPage=1;
     renderTable();
 }
 
 function clearSearch(){
     document.getElementById('searchInput').value='';
-    activeSearches.clear();
-    multiSearchResults.clear();
+    searchKeywords.clear();
     filteredProducts=[...products];
+    isMultiSearchMode=false;
+    document.getElementById('addSearchBtn').style.display='none';
+    updateMultiSearchUI();
     currentPage=1;
     renderTable();
-    updateSearchTags();
-    document.getElementById('searchInfo').style.display='none';
 }
 
 function renderTable(){
@@ -515,16 +470,14 @@ function renderTable(){
     
     tbody.innerHTML=pageProducts.map(p=>{
         // URL 우선순위: 사용자 입력 원본(product_url) → 분석 결과(product_data.url) → 기타
-        let productUrl = p.product_url || p.product_data?.url || p.url || '';
-        
-        // URL 정규화 (이중 슬래시 제거)
+        let productUrl = p.product_url || (p.product_data && p.product_data.url) || p.url || '';
         productUrl = normalizeUrl(productUrl);
         
-        // 키워드가 검색어와 일치하는지 확인
+        // 키워드 하이라이트 확인
         let keywordClass = 'product-keyword';
-        if(multiSearchMode && activeSearches.size > 0){
-            for(let search of activeSearches){
-                if(p.keyword.toLowerCase().includes(search)){
+        if(isMultiSearchMode && searchKeywords.size > 0){
+            for(let keyword of searchKeywords){
+                if(p.keyword && p.keyword.toLowerCase().includes(keyword)){
                     keywordClass = 'product-keyword highlighted';
                     break;
                 }
@@ -537,18 +490,18 @@ function renderTable(){
                 <input type="checkbox" value="${escapeHtml(p.id)}" onchange="toggleProductSelection('${escapeHtml(p.id)}')" ${selectedProducts.has(p.id)?'checked':''}>
             </td>
             <td class="image-col">
-                <img src="${escapeHtml(p.product_data?.image_url||'/tools/images/no-image.png')}" alt="${escapeHtml(p.product_data?.title||'상품 이미지')}" class="product-image" onclick="previewProduct('${escapeHtml(p.id)}')" onerror="this.src='/tools/images/no-image.png'">
+                <img src="${escapeHtml((p.product_data && p.product_data.image_url) || '/tools/images/no-image.png')}" alt="${escapeHtml((p.product_data && p.product_data.title) || '상품 이미지')}" class="product-image" onclick="previewProduct('${escapeHtml(p.id)}')" onerror="this.src='/tools/images/no-image.png'">
             </td>
             <td class="title-col">
                 <div class="product-title">
-                    <a href="${escapeHtml(productUrl)}" target="_blank">${escapeHtml(p.product_data?.title||'제목 없음')}</a>
+                    <a href="${escapeHtml(productUrl)}" target="_blank">${escapeHtml((p.product_data && p.product_data.title) || '제목 없음')}</a>
                 </div>
             </td>
             <td class="price-col">
-                <div class="product-price">${escapeHtml(p.product_data?.price||'가격 정보 없음')}</div>
+                <div class="product-price">${escapeHtml((p.product_data && p.product_data.price) || '가격 정보 없음')}</div>
             </td>
             <td class="keyword-col">
-                <span class="${keywordClass}">${escapeHtml(p.keyword||'키워드 없음')}</span>
+                <span class="${keywordClass}">${escapeHtml(p.keyword || '키워드 없음')}</span>
             </td>
             <td class="date-col">
                 <div class="created-date">${formatDate(p.created_at)}</div>
@@ -604,6 +557,7 @@ function changePage(page){
 }
 
 function formatDate(dateString){
+    if(!dateString) return '';
     const date=new Date(dateString);
     return date.toLocaleDateString('ko-KR',{
         year:'numeric',
@@ -633,20 +587,20 @@ function sortTable(field){
         
         switch(field){
             case'title':
-                aVal=(a.product_data.title||'').toLowerCase();
-                bVal=(b.product_data.title||'').toLowerCase();
+                aVal=((a.product_data && a.product_data.title) || '').toLowerCase();
+                bVal=((b.product_data && b.product_data.title) || '').toLowerCase();
                 break;
             case'price':
-                aVal=parseFloat((a.product_data.price||'0').replace(/[^\d.]/g,''))||0;
-                bVal=parseFloat((b.product_data.price||'0').replace(/[^\d.]/g,''))||0;
+                aVal=parseFloat(((a.product_data && a.product_data.price) || '0').replace(/[^\d.]/g,''))||0;
+                bVal=parseFloat(((b.product_data && b.product_data.price) || '0').replace(/[^\d.]/g,''))||0;
                 break;
             case'keyword':
-                aVal=a.keyword.toLowerCase();
-                bVal=b.keyword.toLowerCase();
+                aVal=(a.keyword || '').toLowerCase();
+                bVal=(b.keyword || '').toLowerCase();
                 break;
             case'date':
-                aVal=new Date(a.created_at);
-                bVal=new Date(b.created_at);
+                aVal=new Date(a.created_at || 0);
+                bVal=new Date(b.created_at || 0);
                 break;
             default:
                 return 0;
@@ -720,17 +674,16 @@ function previewProduct(id){
     const product=products.find(p=>p.id===id);
     if(!product)return;
     
-    // URL 우선순위: 사용자 입력 원본(product_url) → 분석 결과(product_data.url) → 기타
-    let productUrl = product.product_url || product.product_data?.url || product.url || '';
+    let productUrl = product.product_url || (product.product_data && product.product_data.url) || product.url || '';
     productUrl = normalizeUrl(productUrl);
     
     const content=document.getElementById('previewContent');
     content.innerHTML=`
         <div style="margin-bottom:20px;">
-            <h4>${escapeHtml(product.product_data?.title||'제목 없음')}</h4>
-            <p><strong>키워드:</strong> ${escapeHtml(product.keyword)}</p>
-            <p><strong>가격:</strong> ${escapeHtml(product.product_data?.price||'가격 정보 없음')}</p>
-            <p><strong>URL:</strong> <a href="${escapeHtml(productUrl)}" target="_blank">${escapeHtml(productUrl||'URL 없음')}</a></p>
+            <h4>${escapeHtml((product.product_data && product.product_data.title) || '제목 없음')}</h4>
+            <p><strong>키워드:</strong> ${escapeHtml(product.keyword || '')}</p>
+            <p><strong>가격:</strong> ${escapeHtml((product.product_data && product.product_data.price) || '가격 정보 없음')}</p>
+            <p><strong>URL:</strong> <a href="${escapeHtml(productUrl)}" target="_blank">${escapeHtml(productUrl || 'URL 없음')}</a></p>
             <p><strong>저장일:</strong> ${formatDate(product.created_at)}</p>
         </div>
         <div style="max-height:400px;overflow-y:auto;">
@@ -797,15 +750,14 @@ async function confirmExportToSheets(){
         const rs=await r.json();
         
         if(rs.success){
-            // 구글 시트 URL 표시
-            document.getElementById('sheetsUrl').href=rs.spreadsheet_url;
+            document.getElementById('sheetsUrl').href=rs.spreadsheet_url||'#';
             document.getElementById('sheetsUrl').textContent='구글 시트에서 확인하기';
             document.getElementById('sheetsUrlSection').style.display='block';
             
             btn.textContent=originalText;
             btn.disabled=false;
             
-            alert(`${rs.rows_added}개의 상품이 구글 시트에 저장되었습니다!`);
+            alert('선택된 상품이 구글 시트에 저장되었습니다!');
         }else{
             throw new Error(rs.message);
         }
@@ -849,8 +801,8 @@ async function syncAllToSheets(){
         const rs=await r.json();
         
         if(rs.success){
-            alert(`${rs.rows_added}개의 상품이 구글 시트에 동기화되었습니다!`);
-            window.open(rs.spreadsheet_url,'_blank');
+            alert('모든 데이터가 구글 시트에 동기화되었습니다!');
+            if(rs.spreadsheet_url) window.open(rs.spreadsheet_url,'_blank');
         }else{
             throw new Error(rs.message);
         }
@@ -911,51 +863,50 @@ function exportToExcel(){
     selectedData.forEach(product=>{
         const row=[];
         
-        // URL 우선순위: 사용자 입력 원본(product_url) → 분석 결과(product_data.url) → 기타
-        let productUrl = product.product_url || product.product_data?.url || product.url || '';
+        let productUrl = product.product_url || (product.product_data && product.product_data.url) || product.url || '';
         productUrl = normalizeUrl(productUrl);
         
         // 기본 정보
-        row.push(product.id);
-        row.push(product.keyword);
-        row.push(product.product_data?.title||'');
-        row.push(product.product_data?.price||'');
-        row.push(product.product_data?.rating_display||'');
-        row.push(product.product_data?.lastest_volume||'');
-        row.push(product.product_data?.image_url||'');
+        row.push(product.id || '');
+        row.push(product.keyword || '');
+        row.push((product.product_data && product.product_data.title) || '');
+        row.push((product.product_data && product.product_data.price) || '');
+        row.push((product.product_data && product.product_data.rating_display) || '');
+        row.push((product.product_data && product.product_data.lastest_volume) || '');
+        row.push((product.product_data && product.product_data.image_url) || '');
         row.push(productUrl);
-        row.push(product.product_data?.affiliate_link||'');
-        row.push(product.created_at||'');
+        row.push((product.product_data && product.product_data.affiliate_link) || '');
+        row.push(product.created_at || '');
         
         // 기능/스펙
-        const specs=product.user_details?.specs||{};
-        row.push(specs.main_function||'');
-        row.push(specs.size_capacity||'');
-        row.push(specs.color||'');
-        row.push(specs.material||'');
-        row.push(specs.power_battery||'');
+        const specs=(product.user_details && product.user_details.specs) || {};
+        row.push(specs.main_function || '');
+        row.push(specs.size_capacity || '');
+        row.push(specs.color || '');
+        row.push(specs.material || '');
+        row.push(specs.power_battery || '');
         
         // 효율성
-        const efficiency=product.user_details?.efficiency||{};
-        row.push(efficiency.problem_solving||'');
-        row.push(efficiency.time_saving||'');
-        row.push(efficiency.space_efficiency||'');
-        row.push(efficiency.cost_saving||'');
+        const efficiency=(product.user_details && product.user_details.efficiency) || {};
+        row.push(efficiency.problem_solving || '');
+        row.push(efficiency.time_saving || '');
+        row.push(efficiency.space_efficiency || '');
+        row.push(efficiency.cost_saving || '');
         
         // 사용법
-        const usage=product.user_details?.usage||{};
-        row.push(usage.usage_location||'');
-        row.push(usage.usage_frequency||'');
-        row.push(usage.target_users||'');
-        row.push(usage.usage_method||'');
+        const usage=(product.user_details && product.user_details.usage) || {};
+        row.push(usage.usage_location || '');
+        row.push(usage.usage_frequency || '');
+        row.push(usage.target_users || '');
+        row.push(usage.usage_method || '');
         
         // 장점/주의사항
-        const benefits=product.user_details?.benefits||{};
-        const advantages=benefits.advantages||[];
-        row.push(advantages[0]||'');
-        row.push(advantages[1]||'');
-        row.push(advantages[2]||'');
-        row.push(benefits.precautions||'');
+        const benefits=(product.user_details && product.user_details.benefits) || {};
+        const advantages=(benefits.advantages) || [];
+        row.push(advantages[0] || '');
+        row.push(advantages[1] || '');
+        row.push(advantages[2] || '');
+        row.push(benefits.precautions || '');
         
         // CSV 형식으로 변환 (쉼표와 줄바꿈 처리)
         const csvRow=row.map(cell=>{
