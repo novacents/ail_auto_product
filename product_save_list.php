@@ -242,14 +242,10 @@ const itemsPerPage=20;
 let searchKeywords=new Set(); // 다중 검색을 위한 키워드 저장
 let isMultiSearchMode=false; // 다중 검색 모드 여부
 
-// WordPress AJAX URL 및 nonce
-const ajaxUrl = '<?php echo admin_url('admin-ajax.php'); ?>';
-const ajaxNonce = '<?php echo wp_create_nonce('product_ajax_nonce'); ?>';
-
 // URL 정규화 함수 - 이중 슬래시 제거
 function normalizeUrl(url) {
     if (!url) return '';
-    return url.replace(/([^:]\/)\\/+/g, '$1');
+    return url.replace(/([^:]\\/)\\\\/+/g, '$1');
 }
 
 // HTML 이스케이프 함수
@@ -280,14 +276,10 @@ document.addEventListener('DOMContentLoaded',function(){
 
 async function loadProducts(){
     try{
-        const formData = new FormData();
-        formData.append('action', 'handle_product_ajax');
-        formData.append('nonce', ajaxNonce);
-        formData.append('operation', 'load');
-        
-        const r=await fetch(ajaxUrl, {
+        const r=await fetch('/tools/product_save_handler.php',{
             method:'POST',
-            body: formData
+            headers:{'Content-Type':'application/x-www-form-urlencoded'},
+            body:'operation=load'
         });
         
         const rs=await r.json();
@@ -599,8 +591,8 @@ function sortTable(field){
                 bVal=((b.product_data && b.product_data.title) || '').toLowerCase();
                 break;
             case'price':
-                aVal=parseFloat(((a.product_data && a.product_data.price) || '0').replace(/[^\d.]/g,''))||0;
-                bVal=parseFloat(((b.product_data && b.product_data.price) || '0').replace(/[^\d.]/g,''))||0;
+                aVal=parseFloat(((a.product_data && a.product_data.price) || '0').replace(/[^\\d.]/g,''))||0;
+                bVal=parseFloat(((b.product_data && b.product_data.price) || '0').replace(/[^\\d.]/g,''))||0;
                 break;
             case'keyword':
                 aVal=(a.keyword || '').toLowerCase();
@@ -710,15 +702,10 @@ async function deleteProduct(id){
     if(!confirm('이 상품을 삭제하시겠습니까?'))return;
     
     try{
-        const formData = new FormData();
-        formData.append('action', 'handle_product_ajax');
-        formData.append('nonce', ajaxNonce);
-        formData.append('operation', 'delete');
-        formData.append('id', id);
-        
-        const r=await fetch(ajaxUrl, {
+        const r=await fetch('/tools/product_save_handler.php',{
             method:'POST',
-            body: formData
+            headers:{'Content-Type':'application/x-www-form-urlencoded'},
+            body:`operation=delete&id=${encodeURIComponent(id)}`
         });
         
         const rs=await r.json();
@@ -754,15 +741,10 @@ async function confirmExportToSheets(){
     btn.textContent='내보내는 중...';
     
     try{
-        const formData = new FormData();
-        formData.append('action', 'handle_product_ajax');
-        formData.append('nonce', ajaxNonce);
-        formData.append('operation', 'export_to_sheets');
-        formData.append('ids', JSON.stringify(selectedIds));
-        
-        const r=await fetch(ajaxUrl, {
+        const r=await fetch('/tools/product_save_handler.php',{
             method:'POST',
-            body: formData
+            headers:{'Content-Type':'application/x-www-form-urlencoded'},
+            body:`operation=export_to_sheets&ids=${encodeURIComponent(JSON.stringify(selectedIds))}`
         });
         
         const rs=await r.json();
@@ -788,14 +770,10 @@ async function confirmExportToSheets(){
 
 async function openGoogleSheets(){
     try{
-        const formData = new FormData();
-        formData.append('action', 'handle_product_ajax');
-        formData.append('nonce', ajaxNonce);
-        formData.append('operation', 'get_sheets_url');
-        
-        const r=await fetch(ajaxUrl, {
+        const r=await fetch('/tools/product_save_handler.php',{
             method:'POST',
-            body: formData
+            headers:{'Content-Type':'application/x-www-form-urlencoded'},
+            body:'operation=get_sheets_url'
         });
         
         const rs=await r.json();
@@ -814,14 +792,10 @@ async function syncAllToSheets(){
     if(!confirm('모든 데이터를 구글 시트에 동기화하시겠습니까?'))return;
     
     try{
-        const formData = new FormData();
-        formData.append('action', 'handle_product_ajax');
-        formData.append('nonce', ajaxNonce);
-        formData.append('operation', 'sync_to_sheets');
-        
-        const r=await fetch(ajaxUrl, {
+        const r=await fetch('/tools/product_save_handler.php',{
             method:'POST',
-            body: formData
+            headers:{'Content-Type':'application/x-www-form-urlencoded'},
+            body:'operation=sync_to_sheets'
         });
         
         const rs=await r.json();
@@ -845,18 +819,13 @@ async function deleteSelected(){
     
     if(!confirm(`선택된 ${selectedProducts.size}개의 상품을 삭제하시겠습니까?`))return;
     
-    const deletePromises=Array.from(selectedProducts).map(id=>{
-        const formData = new FormData();
-        formData.append('action', 'handle_product_ajax');
-        formData.append('nonce', ajaxNonce);
-        formData.append('operation', 'delete');
-        formData.append('id', id);
-        
-        return fetch(ajaxUrl, {
+    const deletePromises=Array.from(selectedProducts).map(id=>
+        fetch('/tools/product_save_handler.php',{
             method:'POST',
-            body: formData
-        });
-    });
+            headers:{'Content-Type':'application/x-www-form-urlencoded'},
+            body:`operation=delete&id=${encodeURIComponent(id)}`
+        })
+    );
     
     try{
         await Promise.all(deletePromises);
@@ -888,8 +857,8 @@ function exportToExcel(){
     ];
     
     // CSV 데이터 생성
-    let csvContent='\uFEFF'; // UTF-8 BOM 추가
-    csvContent+=headers.join(',')+'\n';
+    let csvContent='\\uFEFF'; // UTF-8 BOM 추가
+    csvContent+=headers.join(',')+'\\n';
     
     selectedData.forEach(product=>{
         const row=[];
@@ -942,10 +911,10 @@ function exportToExcel(){
         // CSV 형식으로 변환 (쉼표와 줄바꿈 처리)
         const csvRow=row.map(cell=>{
             const cellStr=String(cell).replace(/"/g,'""');
-            return cellStr.includes(',')||cellStr.includes('\n')?`"${cellStr}"`:cellStr;
+            return cellStr.includes(',')||cellStr.includes('\\n')?`"${cellStr}"`:cellStr;
         });
         
-        csvContent+=csvRow.join(',')+'\n';
+        csvContent+=csvRow.join(',')+'\\n';
     });
     
     // 다운로드 실행
