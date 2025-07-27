@@ -893,12 +893,23 @@ function exportToExcel(){
         csvContent+=csvRow.join(',')+'\n';
     });
     
+    // 현재 날짜와 시간을 포함한 파일명 생성
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    
+    const fileName = `상품_발굴_데이터_${year}${month}${day}_${hours}${minutes}${seconds}.csv`;
+    
     // 다운로드 실행
     const blob=new Blob([csvContent],{type:'text/csv;charset=utf-8;'});
     const url=URL.createObjectURL(blob);
     const link=document.createElement('a');
     link.href=url;
-    link.download=`상품_발굴_데이터_${new Date().toISOString().slice(0,10)}.csv`;
+    link.download=fileName;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
