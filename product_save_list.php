@@ -94,6 +94,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .sort-header.desc::after{content:' ↓';position:absolute;right:5px}
 .sheets-actions{margin-top:20px;text-align:center;padding:20px;background:#f0f8ff;border-radius:8px;border:1px solid #b3d9ff}
 .sheets-actions h4{margin:0 0 15px 0;color:#0066cc}
+.debug-info{display:none;padding:10px;background:#f0f0f0;border:1px solid #ddd;margin-top:10px;font-size:12px;font-family:monospace}
 </style>
 </head>
 <body>
@@ -218,6 +219,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <p>상품을 발굴하여 저장해보세요!</p>
 <a href="product_save.php" class="btn btn-primary">상품 추가하기</a>
 </div>
+<div class="debug-info" id="debugInfo"></div>
 </div>
 </div>
 <script>
@@ -305,7 +307,20 @@ function renderTable(){
         return;
     }
     
-    tbody.innerHTML=pageProducts.map(p=>`
+    tbody.innerHTML=pageProducts.map(p=>{
+        // URL 찾기 - 여러 위치에서 확인
+        const productUrl = p.product_data?.url || p.product_url || p.url || '';
+        
+        // 디버그 정보 출력
+        console.log('Product URL data:', {
+            id: p.id,
+            product_url: p.product_url,
+            product_data_url: p.product_data?.url,
+            url: p.url,
+            final_url: productUrl
+        });
+        
+        return `
         <tr>
             <td class="checkbox-col">
                 <input type="checkbox" value="${p.id}" onchange="toggleProductSelection('${p.id}')" ${selectedProducts.has(p.id)?'checked':''}>
@@ -315,7 +330,7 @@ function renderTable(){
             </td>
             <td class="title-col">
                 <div class="product-title">
-                    <a href="${p.product_url}" target="_blank">${p.product_data.title||'제목 없음'}</a>
+                    <a href="${productUrl}" target="_blank">${p.product_data.title||'제목 없음'}</a>
                 </div>
             </td>
             <td class="price-col">
@@ -335,7 +350,8 @@ function renderTable(){
                 </div>
             </td>
         </tr>
-    `).join('');
+        `;
+    }).join('');
     
     renderPagination();
 }
@@ -516,12 +532,16 @@ function previewProduct(id){
     const product=products.find(p=>p.id===id);
     if(!product)return;
     
+    // URL 찾기
+    const productUrl = product.product_data?.url || product.product_url || product.url || '';
+    
     const content=document.getElementById('previewContent');
     content.innerHTML=`
         <div style="margin-bottom:20px;">
             <h4>${product.product_data.title||'제목 없음'}</h4>
             <p><strong>키워드:</strong> ${product.keyword}</p>
             <p><strong>가격:</strong> ${product.product_data.price||'가격 정보 없음'}</p>
+            <p><strong>URL:</strong> <a href="${productUrl}" target="_blank">${productUrl||'URL 없음'}</a></p>
             <p><strong>저장일:</strong> ${formatDate(product.created_at)}</p>
         </div>
         <div style="max-height:400px;overflow-y:auto;">
@@ -702,6 +722,9 @@ function exportToExcel(){
     selectedData.forEach(product=>{
         const row=[];
         
+        // URL 찾기
+        const productUrl = product.product_data?.url || product.product_url || product.url || '';
+        
         // 기본 정보
         row.push(product.id);
         row.push(product.keyword);
@@ -710,7 +733,7 @@ function exportToExcel(){
         row.push(product.product_data.rating_display||'');
         row.push(product.product_data.lastest_volume||'');
         row.push(product.product_data.image_url||'');
-        row.push(product.product_url||'');
+        row.push(productUrl);
         row.push(product.product_data.affiliate_link||'');
         row.push(product.created_at||'');
         
