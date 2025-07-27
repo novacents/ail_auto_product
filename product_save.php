@@ -27,6 +27,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .input-with-button{display:flex;gap:10px;align-items:flex-end}
 .input-with-button input{flex:1;padding:12px;border:1px solid rgba(255,255,255,0.3);border-radius:6px;background:rgba(255,255,255,0.1);color:white;font-size:16px}
 .input-with-button input::placeholder{color:rgba(255,255,255,0.7)}
+.input-with-button input.error{border-color:#ff6b6b;background:rgba(255,107,107,0.1)}
 .nav-links{display:flex;gap:10px;margin-top:15px;align-items:center}
 .nav-link{background:rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:4px;text-decoration:none;font-size:14px;transition:all 0.3s}
 .nav-link:hover{background:rgba(255,255,255,0.3);color:white}
@@ -75,6 +76,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .alert{padding:15px;border-radius:6px;margin-bottom:20px}
 .alert-success{background:#d4edda;color:#155724;border:1px solid #c3e6cb}
 .alert-error{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb}
+.alert-warning{background:#fff3cd;color:#856404;border:1px solid #ffeaa7}
 .loading-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10000;display:none;align-items:center;justify-content:center}
 .loading-content{background:white;border-radius:10px;padding:40px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.3)}
 .loading-spinner{display:inline-block;width:40px;height:40px;border:4px solid #f3f3f3;border-top:4px solid #4CAF50;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:20px}
@@ -87,6 +89,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .success-modal-message{font-size:16px;color:#666;margin-bottom:30px;line-height:1.5}
 .success-modal-button{background:#28a745;color:white;border:none;padding:12px 30px;border-radius:6px;cursor:pointer;font-size:16px;font-weight:600;transition:all 0.3s}
 .success-modal-button:hover{background:#1e7e34}
+.error-tooltip{position:relative;display:inline-block}
+.error-tooltip::after{content:attr(data-error);position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:#ff6b6b;color:white;padding:8px 12px;border-radius:4px;font-size:12px;white-space:nowrap;margin-bottom:5px;z-index:1000;opacity:0;transition:opacity 0.3s}
+.error-tooltip::before{content:'';position:absolute;bottom:100%;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:#ff6b6b;margin-bottom:-5px;z-index:1000;opacity:0;transition:opacity 0.3s}
+.error-tooltip.show::after,.error-tooltip.show::before{opacity:1}
 </style>
 </head>
 <body>
@@ -282,6 +288,23 @@ function showError(t,m){
     alert(`${t}\n\n${m}`);
 }
 
+function showValidationError(inputId, message) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    
+    // 입력 필드에 오류 스타일 추가
+    input.classList.add('error');
+    input.focus();
+    
+    // 알림 메시지 표시
+    alert(`⚠️ 입력 확인\n\n${message}`);
+    
+    // 3초 후 오류 스타일 제거
+    setTimeout(() => {
+        input.classList.remove('error');
+    }, 3000);
+}
+
 function formatPrice(p){
     return p?p.replace(/₩(\d)/,'₩ $1'):p;
 }
@@ -289,7 +312,7 @@ function formatPrice(p){
 async function analyzeProduct(){
     const u=document.getElementById('productUrl').value.trim();
     if(!u){
-        showError('입력 오류','상품 URL을 입력해주세요.');
+        showValidationError('productUrl', '상품 URL을 입력해주세요.');
         return;
     }
     
@@ -437,18 +460,22 @@ async function saveProduct(){
     const keyword=document.getElementById('keyword').value.trim();
     const productUrl=document.getElementById('productUrl').value.trim();
     
+    // 키워드 필수 입력 검사
     if(!keyword){
-        showError('입력 오류','키워드를 입력해주세요.');
+        showValidationError('keyword', '키워드를 입력해주세요.\n\n키워드는 상품을 분류하고 검색하는데 필요한 필수 정보입니다.');
         return;
     }
     
+    // 상품 URL 필수 입력 검사
     if(!productUrl){
-        showError('입력 오류','상품 URL을 입력해주세요.');
+        showValidationError('productUrl', '상품 URL을 입력해주세요.');
         return;
     }
     
+    // 상품 분석 완료 여부 검사
     if(!currentProductData){
-        showError('분석 오류','먼저 상품을 분석해주세요.');
+        alert('⚠️ 분석 필요\n\n먼저 상품을 분석해주세요.\n\n"🔍 분석" 버튼을 클릭하여 상품 정보를 불러온 후 저장할 수 있습니다.');
+        document.getElementById('productUrl').focus();
         return;
     }
     
@@ -503,6 +530,11 @@ function resetForm(){
      'usage_location','usage_frequency','target_users','usage_method',
      'advantage1','advantage2','advantage3','precautions'].forEach(id=>{
         document.getElementById(id).value='';
+    });
+    
+    // 오류 스타일 제거
+    document.querySelectorAll('.error').forEach(el => {
+        el.classList.remove('error');
     });
     
     currentProductData=null;
