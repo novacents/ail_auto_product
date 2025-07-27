@@ -842,8 +842,8 @@ function exportToExcel(){
     selectedData.forEach(product=>{
         const row=[];
         
-        // 기본 정보
-        row.push(product.id || '');
+        // 기본 정보 - ID를 텍스트로 강제 처리
+        row.push(product.id ? `="${product.id}"` : '');
         row.push(product.keyword || '');
         row.push((product.product_data && product.product_data.title) || '');
         row.push((product.product_data && product.product_data.price) || '');
