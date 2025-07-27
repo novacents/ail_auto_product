@@ -21,21 +21,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .header-section{padding:30px;border-bottom:1px solid #e0e0e0;background:linear-gradient(135deg,#2196F3 0%,#1976D2 100%);color:white}
 .header-section h1{margin:0 0 10px 0;font-size:28px}
 .header-section .subtitle{margin:0 0 20px 0;opacity:0.9}
-.stats-row{display:grid;grid-template-columns:1fr 1fr 2fr;gap:20px;margin-top:20px}
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;margin-top:20px}
 .stat-card{background:rgba(255,255,255,0.1);padding:20px;border-radius:8px;text-align:center}
-.stat-card.small{padding:15px}
 .stat-number{font-size:32px;font-weight:bold;margin-bottom:5px}
-.stat-number.small{font-size:24px}
 .stat-label{font-size:14px;opacity:0.9}
-.stat-label.small{font-size:12px}
-.keyword-overview-card{background:rgba(255,255,255,0.1);padding:20px;border-radius:8px}
-.keyword-overview-card h3{margin:0 0 15px 0;font-size:18px;font-weight:600}
-.keyword-quick-info{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px}
-.keyword-quick-stat{text-align:center}
-.keyword-quick-number{font-size:20px;font-weight:bold;margin-bottom:3px}
-.keyword-quick-label{font-size:11px;opacity:0.9}
-.keyword-toggle-header{background:rgba(255,255,255,0.2);color:white;border:none;padding:6px 12px;border-radius:4px;font-size:11px;cursor:pointer;transition:background 0.3s;width:100%}
-.keyword-toggle-header:hover{background:rgba(255,255,255,0.3)}
 .nav-links{display:flex;gap:10px;margin-top:20px;align-items:center}
 .nav-link{background:rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:4px;text-decoration:none;font-size:14px;transition:all 0.3s}
 .nav-link:hover{background:rgba(255,255,255,0.3);color:white}
@@ -176,31 +165,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <div class="alert alert-error"><?php echo esc_html($error_message);?></div>
 <?php endif;?>
 <div class="stats-row">
-<div class="stat-card small">
-<div class="stat-number small" id="totalCount">0</div>
-<div class="stat-label small">전체 상품</div>
+<div class="stat-card">
+<div class="stat-number" id="totalCount">0</div>
+<div class="stat-label">전체 상품</div>
 </div>
-<div class="stat-card small">
-<div class="stat-number small" id="keywordCount">0</div>
-<div class="stat-label small">키워드 수</div>
+<div class="stat-card">
+<div class="stat-number" id="keywordCount">0</div>
+<div class="stat-label">키워드 수</div>
 </div>
-<div class="keyword-overview-card">
-<h3>🏷️ 키워드 현황</h3>
-<div class="keyword-quick-info">
-<div class="keyword-quick-stat">
-<div class="keyword-quick-number" id="topKeywordName">-</div>
-<div class="keyword-quick-label">최다 키워드</div>
-</div>
-<div class="keyword-quick-stat">
-<div class="keyword-quick-number" id="topKeywordCount">0</div>
-<div class="keyword-quick-label">상품수</div>
-</div>
-<div class="keyword-quick-stat">
-<div class="keyword-quick-number" id="avgProductsPerKeyword">0</div>
-<div class="keyword-quick-label">평균 상품수</div>
-</div>
-</div>
-<button class="keyword-toggle-header" id="keywordToggleHeader" onclick="toggleKeywordListFromHeader()">키워드 목록 보기</button>
+<div class="stat-card">
+<div class="stat-number" id="todayCount">0</div>
+<div class="stat-label">오늘 저장</div>
 </div>
 </div>
 <div class="nav-links">
@@ -360,11 +335,16 @@ function updateStats(){
     document.getElementById('totalCount').textContent=products.length;
     
     const keywords=new Set();
+    let todayCount=0;
+    const today=new Date().toDateString();
+    
     products.forEach(p=>{
         if(p.keyword) keywords.add(p.keyword);
+        if(new Date(p.created_at).toDateString()===today)todayCount++;
     });
     
     document.getElementById('keywordCount').textContent=keywords.size;
+    document.getElementById('todayCount').textContent=todayCount;
 }
 
 function updateKeywordOverview(){
@@ -395,32 +375,8 @@ function updateKeywordOverview(){
         }
     });
     
-    // 상단 키워드 현황 업데이트
-    updateHeaderKeywordStats();
-    
     // 키워드 목록 업데이트
     renderKeywordList();
-}
-
-function updateHeaderKeywordStats(){
-    const keywordCount=Object.keys(keywordStats).length;
-    const totalProducts=Object.values(keywordStats).reduce((sum,stat)=>sum+stat.count,0);
-    const avgProducts=keywordCount>0?Math.round(totalProducts/keywordCount):0;
-    
-    // 최다 상품 키워드 찾기
-    let maxKeyword='-';
-    let maxCount=0;
-    Object.entries(keywordStats).forEach(([keyword,stat])=>{
-        if(stat.count>maxCount){
-            maxCount=stat.count;
-            maxKeyword=keyword;
-        }
-    });
-    
-    // 헤더 통계 업데이트
-    document.getElementById('topKeywordName').textContent=maxKeyword.length>8?maxKeyword.substring(0,8)+'...':maxKeyword;
-    document.getElementById('topKeywordCount').textContent=maxCount;
-    document.getElementById('avgProductsPerKeyword').textContent=avgProducts;
 }
 
 function renderKeywordList(){
@@ -470,25 +426,17 @@ function sortKeywordList(){
     renderKeywordList();
 }
 
-function toggleKeywordListFromHeader(){
+function toggleKeywordList(){
     const section=document.getElementById('keywordOverviewSection');
-    const toggle=document.getElementById('keywordToggleHeader');
+    const toggle=document.getElementById('keywordToggle');
     
     if(section.style.display==='none'){
         section.style.display='block';
-        toggle.textContent='키워드 목록 숨기기';
+        toggle.textContent='키워드 목록 접기';
     }else{
         section.style.display='none';
-        toggle.textContent='키워드 목록 보기';
+        toggle.textContent='키워드 목록 펼치기';
     }
-}
-
-function toggleKeywordList(){
-    const section=document.getElementById('keywordOverviewSection');
-    const toggle=document.getElementById('keywordToggleHeader');
-    
-    section.style.display='none';
-    toggle.textContent='키워드 목록 보기';
 }
 
 function filterByKeyword(keyword){
@@ -714,7 +662,7 @@ function renderPagination(){
     const endPage=Math.min(totalPages,currentPage+2);
     
     for(let i=startPage;i<=endPage;i++){
-        html+=`<button onclick="changePage(${i})" class="${i===currentPage?'active':''}\">${i}</button>`;
+        html+=`<button onclick="changePage(${i})" class="${i===currentPage?'active':''}">${i}</button>`;
     }
     
     // 다음 버튼
