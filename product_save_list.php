@@ -230,6 +230,22 @@ let currentSort={field:null,direction:'asc'};
 let currentPage=1;
 const itemsPerPage=20;
 
+// URL 정규화 함수 - 이중 슬래시 제거
+function normalizeUrl(url) {
+    if (!url) return '';
+    
+    // 프로토콜 부분은 보존하고 나머지 부분의 이중 슬래시 제거
+    return url.replace(/([^:]\/)\/+/g, '$1');
+}
+
+// HTML 이스케이프 함수
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 document.addEventListener('DOMContentLoaded',function(){
     loadProducts();
     
@@ -309,7 +325,10 @@ function renderTable(){
     
     tbody.innerHTML=pageProducts.map(p=>{
         // URL 우선순위: 사용자 입력 원본(product_url) → 분석 결과(product_data.url) → 기타
-        const productUrl = p.product_url || p.product_data?.url || p.url || '';
+        let productUrl = p.product_url || p.product_data?.url || p.url || '';
+        
+        // URL 정규화 (이중 슬래시 제거)
+        productUrl = normalizeUrl(productUrl);
         
         // 디버그 정보 출력
         console.log('Product URL data:', {
@@ -317,36 +336,36 @@ function renderTable(){
             product_url: p.product_url,
             product_data_url: p.product_data?.url,
             url: p.url,
-            final_url: productUrl
+            normalized_url: productUrl
         });
         
         return `
         <tr>
             <td class="checkbox-col">
-                <input type="checkbox" value="${p.id}" onchange="toggleProductSelection('${p.id}')" ${selectedProducts.has(p.id)?'checked':''}>
+                <input type="checkbox" value="${escapeHtml(p.id)}" onchange="toggleProductSelection('${escapeHtml(p.id)}')" ${selectedProducts.has(p.id)?'checked':''}>
             </td>
             <td class="image-col">
-                <img src="${p.product_data.image_url||'/tools/images/no-image.png'}" alt="${p.product_data.title||'상품 이미지'}" class="product-image" onclick="previewProduct('${p.id}')" onerror="this.src='/tools/images/no-image.png'">
+                <img src="${escapeHtml(p.product_data?.image_url||'/tools/images/no-image.png')}" alt="${escapeHtml(p.product_data?.title||'상품 이미지')}" class="product-image" onclick="previewProduct('${escapeHtml(p.id)}')" onerror="this.src='/tools/images/no-image.png'">
             </td>
             <td class="title-col">
                 <div class="product-title">
-                    <a href="${productUrl}" target="_blank">${p.product_data.title||'제목 없음'}</a>
+                    <a href="${escapeHtml(productUrl)}" target="_blank">${escapeHtml(p.product_data?.title||'제목 없음')}</a>
                 </div>
             </td>
             <td class="price-col">
-                <div class="product-price">${p.product_data.price||'가격 정보 없음'}</div>
+                <div class="product-price">${escapeHtml(p.product_data?.price||'가격 정보 없음')}</div>
             </td>
             <td class="keyword-col">
-                <span class="product-keyword">${p.keyword}</span>
+                <span class="product-keyword">${escapeHtml(p.keyword)}</span>
             </td>
             <td class="date-col">
                 <div class="created-date">${formatDate(p.created_at)}</div>
             </td>
             <td class="actions-col">
                 <div class="product-actions">
-                    <button class="btn btn-small btn-primary" onclick="previewProduct('${p.id}')" title="미리보기">👁️</button>
-                    <button class="btn btn-small btn-warning" onclick="editProduct('${p.id}')" title="수정">✏️</button>
-                    <button class="btn btn-small btn-danger" onclick="deleteProduct('${p.id}')" title="삭제">🗑️</button>
+                    <button class="btn btn-small btn-primary" onclick="previewProduct('${escapeHtml(p.id)}')" title="미리보기">👁️</button>
+                    <button class="btn btn-small btn-warning" onclick="editProduct('${escapeHtml(p.id)}')" title="수정">✏️</button>
+                    <button class="btn btn-small btn-danger" onclick="deleteProduct('${escapeHtml(p.id)}')" title="삭제">🗑️</button>
                 </div>
             </td>
         </tr>
@@ -533,15 +552,16 @@ function previewProduct(id){
     if(!product)return;
     
     // URL 우선순위: 사용자 입력 원본(product_url) → 분석 결과(product_data.url) → 기타
-    const productUrl = product.product_url || product.product_data?.url || product.url || '';
+    let productUrl = product.product_url || product.product_data?.url || product.url || '';
+    productUrl = normalizeUrl(productUrl);
     
     const content=document.getElementById('previewContent');
     content.innerHTML=`
         <div style="margin-bottom:20px;">
-            <h4>${product.product_data.title||'제목 없음'}</h4>
-            <p><strong>키워드:</strong> ${product.keyword}</p>
-            <p><strong>가격:</strong> ${product.product_data.price||'가격 정보 없음'}</p>
-            <p><strong>URL:</strong> <a href="${productUrl}" target="_blank">${productUrl||'URL 없음'}</a></p>
+            <h4>${escapeHtml(product.product_data?.title||'제목 없음')}</h4>
+            <p><strong>키워드:</strong> ${escapeHtml(product.keyword)}</p>
+            <p><strong>가격:</strong> ${escapeHtml(product.product_data?.price||'가격 정보 없음')}</p>
+            <p><strong>URL:</strong> <a href="${escapeHtml(productUrl)}" target="_blank">${escapeHtml(productUrl||'URL 없음')}</a></p>
             <p><strong>저장일:</strong> ${formatDate(product.created_at)}</p>
         </div>
         <div style="max-height:400px;overflow-y:auto;">
@@ -723,18 +743,19 @@ function exportToExcel(){
         const row=[];
         
         // URL 우선순위: 사용자 입력 원본(product_url) → 분석 결과(product_data.url) → 기타
-        const productUrl = product.product_url || product.product_data?.url || product.url || '';
+        let productUrl = product.product_url || product.product_data?.url || product.url || '';
+        productUrl = normalizeUrl(productUrl);
         
         // 기본 정보
         row.push(product.id);
         row.push(product.keyword);
-        row.push(product.product_data.title||'');
-        row.push(product.product_data.price||'');
-        row.push(product.product_data.rating_display||'');
-        row.push(product.product_data.lastest_volume||'');
-        row.push(product.product_data.image_url||'');
+        row.push(product.product_data?.title||'');
+        row.push(product.product_data?.price||'');
+        row.push(product.product_data?.rating_display||'');
+        row.push(product.product_data?.lastest_volume||'');
+        row.push(product.product_data?.image_url||'');
         row.push(productUrl);
-        row.push(product.product_data.affiliate_link||'');
+        row.push(product.product_data?.affiliate_link||'');
         row.push(product.created_at||'');
         
         // 기능/스펙
