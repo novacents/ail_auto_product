@@ -31,6 +31,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .main-content{padding:30px}
 .keyword-overview{margin-bottom:30px;padding:25px;background:#f8f9fa;border-radius:12px;border:1px solid #e0e0e0}
 .keyword-overview h3{margin:0 0 20px 0;color:#333;font-size:18px;display:flex;align-items:center;gap:8px}
+.keyword-stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:15px;margin-bottom:20px}
+.keyword-stat-card{background:white;padding:15px;border-radius:8px;text-align:center;border:1px solid #e9ecef}
+.keyword-stat-number{font-size:24px;font-weight:bold;color:#007bff;margin-bottom:5px}
+.keyword-stat-label{font-size:12px;color:#666}
 .keyword-controls{display:flex;gap:10px;margin-bottom:15px;align-items:center}
 .keyword-sort{padding:6px 12px;border:1px solid #ddd;border-radius:6px;font-size:12px;background:white;cursor:pointer}
 .keyword-toggle{background:#007bff;color:white;border:none;padding:8px 16px;border-radius:6px;font-size:12px;cursor:pointer;transition:background 0.3s}
@@ -185,8 +189,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 </div>
 </div>
 <div class="main-content">
-<div class="keyword-overview" id="keywordOverviewSection" style="display:none;">
-<h3>🏷️ 키워드 상세 목록</h3>
+<div class="keyword-overview">
+<h3>🏷️ 키워드 현황</h3>
+<div class="keyword-stats-grid">
+<div class="keyword-stat-card">
+<div class="keyword-stat-number" id="uniqueKeywords">0</div>
+<div class="keyword-stat-label">고유 키워드</div>
+</div>
+<div class="keyword-stat-card">
+<div class="keyword-stat-number" id="avgProductsPerKeyword">0</div>
+<div class="keyword-stat-label">평균 상품수</div>
+</div>
+<div class="keyword-stat-card">
+<div class="keyword-stat-number" id="topKeywordName">-</div>
+<div class="keyword-stat-label">최다 상품 키워드</div>
+</div>
+<div class="keyword-stat-card">
+<div class="keyword-stat-number" id="topKeywordCount">0</div>
+<div class="keyword-stat-label">최다 상품수</div>
+</div>
+</div>
 <div class="keyword-controls">
 <select class="keyword-sort" id="keywordSort" onchange="sortKeywordList()">
 <option value="name_asc">키워드명 오름차순</option>
@@ -375,8 +397,33 @@ function updateKeywordOverview(){
         }
     });
     
+    // 키워드 현황 통계 업데이트
+    updateKeywordStatsDisplay();
+    
     // 키워드 목록 업데이트
     renderKeywordList();
+}
+
+function updateKeywordStatsDisplay(){
+    const keywordCount=Object.keys(keywordStats).length;
+    const totalProducts=Object.values(keywordStats).reduce((sum,stat)=>sum+stat.count,0);
+    const avgProducts=keywordCount>0?Math.round(totalProducts/keywordCount):0;
+    
+    // 최다 상품 키워드 찾기
+    let maxKeyword='-';
+    let maxCount=0;
+    Object.entries(keywordStats).forEach(([keyword,stat])=>{
+        if(stat.count>maxCount){
+            maxCount=stat.count;
+            maxKeyword=keyword;
+        }
+    });
+    
+    // 통계 디스플레이 업데이트
+    document.getElementById('uniqueKeywords').textContent=keywordCount;
+    document.getElementById('avgProductsPerKeyword').textContent=avgProducts;
+    document.getElementById('topKeywordName').textContent=maxKeyword.length>10?maxKeyword.substring(0,10)+'...':maxKeyword;
+    document.getElementById('topKeywordCount').textContent=maxCount;
 }
 
 function renderKeywordList(){
@@ -427,15 +474,17 @@ function sortKeywordList(){
 }
 
 function toggleKeywordList(){
-    const section=document.getElementById('keywordOverviewSection');
+    const list=document.getElementById('keywordList');
     const toggle=document.getElementById('keywordToggle');
     
-    if(section.style.display==='none'){
-        section.style.display='block';
+    if(list.style.display==='none'){
+        list.style.display='block';
         toggle.textContent='키워드 목록 접기';
+        toggle.classList.remove('collapsed');
     }else{
-        section.style.display='none';
+        list.style.display='none';
         toggle.textContent='키워드 목록 펼치기';
+        toggle.classList.add('collapsed');
     }
 }
 
@@ -445,9 +494,6 @@ function filterByKeyword(keyword){
     
     // 검색 실행
     searchProducts();
-    
-    // 키워드 목록 접기
-    toggleKeywordList();
 }
 
 function searchProducts(){
