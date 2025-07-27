@@ -31,8 +31,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .main-content{padding:30px}
 .controls-section{margin-bottom:30px;padding:20px;background:#f8f9fa;border-radius:8px}
 .controls-row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:15px}
-.search-group{display:flex;gap:10px;align-items:center}
-.search-group input{padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;width:300px}
+.search-group{display:flex;gap:10px;align-items:center;flex:1;max-width:600px}
+.search-group input{padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;flex:1}
 .action-group{display:flex;gap:10px}
 .btn{padding:10px 16px;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;transition:all 0.3s;text-decoration:none;display:inline-block}
 .btn-primary{background:#007bff;color:white}.btn-primary:hover{background:#0056b3}
@@ -42,6 +42,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .btn-warning{background:#ffc107;color:#212529}.btn-warning:hover{background:#e0a800}
 .btn-info{background:#17a2b8;color:white}.btn-info:hover{background:#138496}
 .btn-small{padding:6px 12px;font-size:12px}
+.search-mode-toggle{display:flex;gap:5px;align-items:center;margin-bottom:15px}
+.search-mode-toggle label{font-size:14px;color:#666}
+.search-mode-toggle input[type="checkbox"]{margin-left:5px}
+.active-searches{margin-top:15px;padding:15px;background:#e3f2fd;border:1px solid #2196F3;border-radius:6px;display:none}
+.active-searches.show{display:block}
+.search-tag{display:inline-block;background:#2196F3;color:white;padding:4px 12px;border-radius:16px;font-size:13px;margin:4px;position:relative}
+.search-tag .remove{margin-left:8px;cursor:pointer;font-weight:bold}
+.search-tag .remove:hover{color:#ff6b6b}
 .products-table{width:100%;border-collapse:collapse;margin-top:20px;background:white;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
 .products-table th,.products-table td{padding:15px;text-align:left;border-bottom:1px solid #e0e0e0}
 .products-table th{background:#f8f9fa;font-weight:600;color:#333;position:sticky;top:0;z-index:10}
@@ -52,6 +60,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .product-title a:hover{text-decoration:underline}
 .product-price{font-size:18px;font-weight:bold;color:#e91e63}
 .product-keyword{background:#e3f2fd;color:#1976d2;padding:4px 8px;border-radius:4px;font-size:12px;display:inline-block}
+.product-keyword.highlighted{background:#ffc107;color:#212529;font-weight:bold}
 .product-actions{display:flex;gap:5px}
 .created-date{color:#666;font-size:12px}
 .checkbox-col{width:50px;text-align:center}
@@ -95,6 +104,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .sheets-actions{margin-top:20px;text-align:center;padding:20px;background:#f0f8ff;border-radius:8px;border:1px solid #b3d9ff}
 .sheets-actions h4{margin:0 0 15px 0;color:#0066cc}
 .debug-info{display:none;padding:10px;background:#f0f0f0;border:1px solid #ddd;margin-top:10px;font-size:12px;font-family:monospace}
+.search-info{margin-bottom:10px;padding:10px;background:#e8f5e9;border:1px solid #4caf50;border-radius:4px;font-size:14px;color:#2e7d32}
 </style>
 </head>
 <body>
@@ -170,10 +180,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <button class="btn btn-success" onclick="syncAllToSheets()">전체 데이터 동기화</button>
 </div>
 <div class="controls-section">
+<div class="search-mode-toggle">
+<label>
+<input type="checkbox" id="multiSearchMode" onchange="toggleMultiSearchMode()">
+다중 키워드 검색 모드 (여러 키워드 결과를 누적해서 보기)
+</label>
+</div>
 <div class="controls-row">
 <div class="search-group">
 <input type="text" id="searchInput" placeholder="키워드나 상품명으로 검색...">
 <button class="btn btn-primary" onclick="searchProducts()">🔍 검색</button>
+<button class="btn btn-warning" onclick="addToSearch()" id="addSearchBtn" style="display:none;">➕ 추가</button>
 <button class="btn btn-secondary" onclick="clearSearch()">초기화</button>
 </div>
 <div class="action-group">
@@ -181,6 +198,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <button class="btn btn-success" onclick="exportSelected()" id="exportBtn" disabled>📊 구글 시트로 내보내기</button>
 <button class="btn btn-danger" onclick="deleteSelected()" id="deleteBtn" disabled>🗑️ 삭제</button>
 </div>
+</div>
+<div class="active-searches" id="activeSearches">
+<strong>활성 검색어:</strong>
+<div id="searchTags"></div>
 </div>
 <div class="bulk-actions" id="bulkActions">
 <strong>선택된 항목:</strong> <span id="selectedCount">0</span>개 |
@@ -195,6 +216,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <p>데이터를 불러오는 중...</p>
 </div>
 <div id="productsSection" style="display:none;">
+<div id="searchInfo" class="search-info" style="display:none;"></div>
 <table class="products-table">
 <thead>
 <tr>
@@ -229,13 +251,16 @@ let selectedProducts=new Set();
 let currentSort={field:null,direction:'asc'};
 let currentPage=1;
 const itemsPerPage=20;
+let multiSearchMode=false;
+let activeSearches=new Set();
+let multiSearchResults=new Map();
 
 // URL 정규화 함수 - 이중 슬래시 제거
 function normalizeUrl(url) {
     if (!url) return '';
     
     // 프로토콜 부분은 보존하고 나머지 부분의 이중 슬래시 제거
-    return url.replace(/([^:]\/)\/+/g, '$1');
+    return url.replace(/([^:]\/)\\/+/g, '$1');
 }
 
 // HTML 이스케이프 함수
@@ -251,7 +276,13 @@ document.addEventListener('DOMContentLoaded',function(){
     
     // 검색 엔터키 처리
     document.getElementById('searchInput').addEventListener('keypress',function(e){
-        if(e.key==='Enter')searchProducts();
+        if(e.key==='Enter'){
+            if(multiSearchMode && activeSearches.size > 0){
+                addToSearch();
+            }else{
+                searchProducts();
+            }
+        }
     });
     
     // 모달 외부 클릭 시 닫기
@@ -311,6 +342,140 @@ function updateStats(){
     document.getElementById('todayCount').textContent=todayCount;
 }
 
+function toggleMultiSearchMode(){
+    multiSearchMode=document.getElementById('multiSearchMode').checked;
+    document.getElementById('addSearchBtn').style.display=multiSearchMode?'inline-block':'none';
+    
+    if(!multiSearchMode){
+        activeSearches.clear();
+        multiSearchResults.clear();
+        document.getElementById('activeSearches').classList.remove('show');
+        document.getElementById('searchTags').innerHTML='';
+        filteredProducts=[...products];
+        renderTable();
+    }
+}
+
+function searchProducts(){
+    const query=document.getElementById('searchInput').value.toLowerCase().trim();
+    
+    if(!query){
+        if(!multiSearchMode){
+            filteredProducts=[...products];
+        }
+    }else{
+        if(multiSearchMode){
+            // 다중 검색 모드: 기존 검색 결과 초기화하고 새로 시작
+            activeSearches.clear();
+            multiSearchResults.clear();
+            activeSearches.add(query);
+            
+            const results=products.filter(p=>
+                p.keyword.toLowerCase().includes(query)||
+                (p.product_data.title&&p.product_data.title.toLowerCase().includes(query))
+            );
+            
+            multiSearchResults.set(query,new Set(results.map(p=>p.id)));
+            updateMultiSearchResults();
+        }else{
+            // 단일 검색 모드
+            filteredProducts=products.filter(p=>
+                p.keyword.toLowerCase().includes(query)||
+                (p.product_data.title&&p.product_data.title.toLowerCase().includes(query))
+            );
+        }
+    }
+    
+    currentPage=1;
+    renderTable();
+    
+    if(multiSearchMode)updateSearchTags();
+}
+
+function addToSearch(){
+    const query=document.getElementById('searchInput').value.toLowerCase().trim();
+    
+    if(!query||activeSearches.has(query)){
+        if(activeSearches.has(query)){
+            alert('이미 검색된 키워드입니다.');
+        }
+        return;
+    }
+    
+    activeSearches.add(query);
+    
+    const results=products.filter(p=>
+        p.keyword.toLowerCase().includes(query)||
+        (p.product_data.title&&p.product_data.title.toLowerCase().includes(query))
+    );
+    
+    multiSearchResults.set(query,new Set(results.map(p=>p.id)));
+    updateMultiSearchResults();
+    updateSearchTags();
+    
+    document.getElementById('searchInput').value='';
+}
+
+function updateMultiSearchResults(){
+    // 모든 검색 결과의 합집합 계산
+    const allResultIds=new Set();
+    multiSearchResults.forEach(resultSet=>{
+        resultSet.forEach(id=>allResultIds.add(id));
+    });
+    
+    filteredProducts=products.filter(p=>allResultIds.has(p.id));
+    
+    // 검색 정보 표시
+    const searchInfo=document.getElementById('searchInfo');
+    if(activeSearches.size>0){
+        searchInfo.innerHTML=`🔍 ${activeSearches.size}개의 검색어로 총 ${filteredProducts.length}개의 상품을 찾았습니다.`;
+        searchInfo.style.display='block';
+    }else{
+        searchInfo.style.display='none';
+    }
+}
+
+function updateSearchTags(){
+    const container=document.getElementById('searchTags');
+    container.innerHTML='';
+    
+    activeSearches.forEach(search=>{
+        const tag=document.createElement('span');
+        tag.className='search-tag';
+        tag.innerHTML=`${escapeHtml(search)}<span class="remove" onclick="removeSearch('${escapeHtml(search)}')">&times;</span>`;
+        container.appendChild(tag);
+    });
+    
+    document.getElementById('activeSearches').classList.toggle('show',activeSearches.size>0);
+}
+
+function removeSearch(search){
+    activeSearches.delete(search);
+    multiSearchResults.delete(search);
+    
+    if(activeSearches.size===0){
+        filteredProducts=[...products];
+        document.getElementById('searchInfo').style.display='none';
+    }else{
+        updateMultiSearchResults();
+    }
+    
+    updateSearchTags();
+    currentPage=1;
+    renderTable();
+}
+
+function clearSearch(){
+    document.getElementById('searchInput').value='';
+    activeSearches.clear();
+    multiSearchResults.clear();
+    filteredProducts=[...products];
+    currentPage=1;
+    renderTable();
+    updateSearchTags();
+    document.getElementById('searchInfo').style.display='none';
+}
+
 function renderTable(){
     const tbody=document.getElementById('productsTableBody');
     const startIndex=(currentPage-1)*itemsPerPage;
@@ -330,6 +495,17 @@ function renderTable(){
         // URL 정규화 (이중 슬래시 제거)
         productUrl = normalizeUrl(productUrl);
         
+        // 키워드가 검색어와 일치하는지 확인
+        let keywordClass = 'product-keyword';
+        if(multiSearchMode && activeSearches.size > 0){
+            for(let search of activeSearches){
+                if(p.keyword.toLowerCase().includes(search)){
+                    keywordClass = 'product-keyword highlighted';
+                    break;
+                }
+            }
+        }
+        
         return `
         <tr>
             <td class="checkbox-col">
@@ -347,7 +523,7 @@ function renderTable(){
                 <div class="product-price">${escapeHtml(p.product_data?.price||'가격 정보 없음')}</div>
             </td>
             <td class="keyword-col">
-                <span class="product-keyword">${escapeHtml(p.keyword||'키워드 없음')}</span>
+                <span class="${keywordClass}">${escapeHtml(p.keyword||'키워드 없음')}</span>
             </td>
             <td class="date-col">
                 <div class="created-date">${formatDate(p.created_at)}</div>
@@ -411,29 +587,6 @@ function formatDate(dateString){
         hour:'2-digit',
         minute:'2-digit'
     });
-}
-
-function searchProducts(){
-    const query=document.getElementById('searchInput').value.toLowerCase().trim();
-    
-    if(!query){
-        filteredProducts=[...products];
-    }else{
-        filteredProducts=products.filter(p=>
-            p.keyword.toLowerCase().includes(query)||
-            (p.product_data.title&&p.product_data.title.toLowerCase().includes(query))
-        );
-    }
-    
-    currentPage=1;
-    renderTable();
-}
-
-function clearSearch(){
-    document.getElementById('searchInput').value='';
-    filteredProducts=[...products];
-    currentPage=1;
-    renderTable();
 }
 
 function sortTable(field){
