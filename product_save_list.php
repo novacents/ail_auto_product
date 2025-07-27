@@ -31,23 +31,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .main-content{padding:30px}
 .keyword-overview{margin-bottom:30px;padding:25px;background:#f8f9fa;border-radius:12px;border:1px solid #e0e0e0}
 .keyword-overview h3{margin:0 0 20px 0;color:#333;font-size:18px;display:flex;align-items:center;gap:8px}
-.keyword-stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:15px;margin-bottom:20px}
-.keyword-stat-card{background:white;padding:15px;border-radius:8px;text-align:center;border:1px solid #e9ecef}
-.keyword-stat-number{font-size:24px;font-weight:bold;color:#007bff;margin-bottom:5px}
-.keyword-stat-label{font-size:12px;color:#666}
 .keyword-controls{display:flex;gap:10px;margin-bottom:15px;align-items:center}
 .keyword-sort{padding:6px 12px;border:1px solid #ddd;border-radius:6px;font-size:12px;background:white;cursor:pointer}
 .keyword-toggle{background:#007bff;color:white;border:none;padding:8px 16px;border-radius:6px;font-size:12px;cursor:pointer;transition:background 0.3s}
 .keyword-toggle:hover{background:#0056b3}
 .keyword-toggle.collapsed{background:#6c757d}
-.keyword-list{max-height:200px;overflow-y:auto;background:white;border-radius:8px;border:1px solid #e9ecef}
+.keyword-list{max-height:400px;overflow-y:auto;background:white;border-radius:8px;border:1px solid #e9ecef}
 .keyword-list-header{background:#f8f9fa;padding:10px 15px;border-bottom:1px solid #e9ecef;font-weight:600;color:#333;position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;align-items:center}
-.keyword-item{display:flex;justify-content:space-between;align-items:center;padding:8px 15px;border-bottom:1px solid #f0f0f0;transition:background 0.2s}
+.keyword-item{display:flex;justify-content:space-between;align-items:center;padding:10px 15px;border-bottom:1px solid #f0f0f0;transition:background 0.2s}
 .keyword-item:hover{background:#f8f9fa;cursor:pointer}
 .keyword-item:last-child{border-bottom:none}
-.keyword-name{font-weight:500;color:#333;flex:1;display:flex;align-items:center;gap:5px}
-.keyword-count{background:#007bff;color:white;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;min-width:20px;text-align:center}
-.keyword-new-badge{background:#28a745;color:white;padding:1px 4px;border-radius:8px;font-size:9px;font-weight:600}
+.keyword-name{font-weight:500;color:#333;flex:1;display:flex;align-items:center;gap:8px}
+.keyword-count{background:#007bff;color:white;padding:4px 10px;border-radius:12px;font-size:12px;font-weight:600;min-width:25px;text-align:center}
+.keyword-new-badge{background:#28a745;color:white;padding:2px 6px;border-radius:8px;font-size:9px;font-weight:600}
 .controls-section{margin-bottom:30px;padding:20px;background:#f8f9fa;border-radius:8px}
 .controls-row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:15px}
 .search-group{display:flex;gap:10px;align-items:center;flex:1;max-width:600px}
@@ -191,24 +187,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <div class="main-content">
 <div class="keyword-overview">
 <h3>🏷️ 키워드 현황</h3>
-<div class="keyword-stats-grid">
-<div class="keyword-stat-card">
-<div class="keyword-stat-number" id="uniqueKeywords">0</div>
-<div class="keyword-stat-label">고유 키워드</div>
-</div>
-<div class="keyword-stat-card">
-<div class="keyword-stat-number" id="avgProductsPerKeyword">0</div>
-<div class="keyword-stat-label">평균 상품수</div>
-</div>
-<div class="keyword-stat-card">
-<div class="keyword-stat-number" id="topKeywordName">-</div>
-<div class="keyword-stat-label">최다 상품 키워드</div>
-</div>
-<div class="keyword-stat-card">
-<div class="keyword-stat-number" id="topKeywordCount">0</div>
-<div class="keyword-stat-label">최다 상품수</div>
-</div>
-</div>
 <div class="keyword-controls">
 <select class="keyword-sort" id="keywordSort" onchange="sortKeywordList()">
 <option value="name_asc">키워드명 오름차순</option>
@@ -397,33 +375,8 @@ function updateKeywordOverview(){
         }
     });
     
-    // 키워드 현황 통계 업데이트
-    updateKeywordStatsDisplay();
-    
     // 키워드 목록 업데이트
     renderKeywordList();
-}
-
-function updateKeywordStatsDisplay(){
-    const keywordCount=Object.keys(keywordStats).length;
-    const totalProducts=Object.values(keywordStats).reduce((sum,stat)=>sum+stat.count,0);
-    const avgProducts=keywordCount>0?Math.round(totalProducts/keywordCount):0;
-    
-    // 최다 상품 키워드 찾기
-    let maxKeyword='-';
-    let maxCount=0;
-    Object.entries(keywordStats).forEach(([keyword,stat])=>{
-        if(stat.count>maxCount){
-            maxCount=stat.count;
-            maxKeyword=keyword;
-        }
-    });
-    
-    // 통계 디스플레이 업데이트
-    document.getElementById('uniqueKeywords').textContent=keywordCount;
-    document.getElementById('avgProductsPerKeyword').textContent=avgProducts;
-    document.getElementById('topKeywordName').textContent=maxKeyword.length>10?maxKeyword.substring(0,10)+'...':maxKeyword;
-    document.getElementById('topKeywordCount').textContent=maxCount;
 }
 
 function renderKeywordList(){
