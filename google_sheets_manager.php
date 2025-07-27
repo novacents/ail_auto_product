@@ -527,9 +527,18 @@ PYTHON;
      * 단일 상품 데이터 추가
      */
     public function addProduct($productData) {
-        // 데이터 변환
+        // 데이터 변환 (JSON 이스케이프 없이)
         $row = $this->convertProductToRow($productData);
-        $row_json = json_encode($row);
+        
+        // URL 이스케이프 해제 처리
+        foreach ($row as &$value) {
+            if (is_string($value)) {
+                $value = str_replace(['\/', '\\'], ['/', '\\'], $value);
+            }
+        }
+        
+        // Python 리스트로 직접 변환 (JSON 이스케이프 방지)
+        $row_str = $this->arrayToPythonList($row);
         
         $script = <<<PYTHON
 import json
@@ -583,7 +592,7 @@ try:
     next_row = len(values) + 1
     
     # 데이터 추가
-    row_data = {$row_json}
+    row_data = {$row_str}
     
     sheets_service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
@@ -616,9 +625,18 @@ PYTHON;
         // 데이터 변환
         $rows = [];
         foreach ($productsData as $productData) {
-            $rows[] = $this->convertProductToRow($productData);
+            $row = $this->convertProductToRow($productData);
+            // URL 이스케이프 해제 처리
+            foreach ($row as &$value) {
+                if (is_string($value)) {
+                    $value = str_replace(['\/', '\\'], ['/', '\\'], $value);
+                }
+            }
+            $rows[] = $row;
         }
-        $rows_json = json_encode($rows);
+        
+        // Python 리스트로 직접 변환 (JSON 이스케이프 방지)
+        $rows_str = $this->arrayToPythonList($rows);
         
         $script = <<<PYTHON
 import json
@@ -672,7 +690,7 @@ try:
     next_row = len(values) + 1
     
     # 데이터 일괄 추가
-    rows_data = {$rows_json}
+    rows_data = {$rows_str}
     end_row = next_row + len(rows_data) - 1
     
     sheets_service.spreadsheets().values().update(
@@ -699,6 +717,33 @@ except Exception as e:
 PYTHON;
 
         return $this->executePythonScript($script);
+    }
+    
+    /**
+     * PHP 배열을 Python 리스트 문자열로 변환 (URL 이스케이프 방지)
+     */
+    private function arrayToPythonList($array) {
+        if (is_array($array) && array_keys($array) === range(0, count($array) - 1)) {
+            // 일차원 배열인 경우
+            $items = [];
+            foreach ($array as $item) {
+                if (is_string($item)) {
+                    // 작은따옴표를 이스케이프하고 문자열을 따옴표로 감쌈
+                    $escaped = str_replace("'", "\\'", $item);
+                    $items[] = "'" . $escaped . "'";
+                } else {
+                    $items[] = $this->arrayToPythonList($item);
+                }
+            }
+            return '[' . implode(', ', $items) . ']';
+        } else {
+            // 다차원 배열인 경우
+            $items = [];
+            foreach ($array as $item) {
+                $items[] = $this->arrayToPythonList($item);
+            }
+            return '[' . implode(', ', $items) . ']';
+        }
     }
     
     /**
