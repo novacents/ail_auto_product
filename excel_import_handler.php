@@ -111,6 +111,7 @@ function parseCSVFile($filePath) {
         // 기본 정보
         $product['keyword'] = $row[$headerMap['키워드']] ?? '';
         $product['product_url'] = $row[$headerMap['상품URL']] ?? '';
+        $product['product_name'] = $row[$headerMap['상품명']] ?? '';
         
         // 빈 행 스킵
         if (empty($product['keyword']) || empty($product['product_url'])) {
@@ -209,11 +210,13 @@ function convertToKeywordStructure($data) {
         
         $keywordIndex = $keywordMap[$keywordName];
         
-        // 상품 정보 구성
+        // affiliate_editor.php의 processExcelData에서 기대하는 형식으로 상품 정보 구성
         $productData = [
             'id' => time() . '_' . rand(1000, 9999),
-            'url' => $product['product_url'],
-            'name' => '상품 ' . (count($keywords[$keywordIndex]['products']) + 1),
+            'keyword' => $keywordName,
+            'url' => $product['product_url'], // processExcelData에서 찾는 필드
+            'product_detail' => $product['product_name'] ?? ('상품 ' . (count($keywords[$keywordIndex]['products']) + 1)), // processExcelData에서 찾는 필드
+            'name' => $product['product_name'] ?? ('상품 ' . (count($keywords[$keywordIndex]['products']) + 1)),
             'status' => 'empty',
             'analysisData' => null,
             'userData' => [
