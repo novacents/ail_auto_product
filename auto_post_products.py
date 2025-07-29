@@ -6,8 +6,8 @@
 키워드 입력 → 알리익스프레스 API → AI 콘텐츠 생성 → 워드프레스 자동 발행
 
 작성자: Claude AI
-날짜: 2025-07-24
-버전: v5.5 (알리익스프레스 '관련 상품 더보기' 버튼 자동 삽입 기능 추가)
+날짜: 2025-07-29
+버전: v5.6 (FIFU, YoastSEO, 상품명 한글화, 관련상품 배치, SEO 슬러그 개선)
 """
 
 import os
@@ -499,11 +499,15 @@ try {{
     def get_aliexpress_product_details(self, product_id):
         """알리익스프레스 상품 상세 정보 조회 (메모리 최적화)"""
         try:
-            # 상품 상세 API 호출
+            # 🎯 API 호출을 target_language=ko, target_currency=KRW로 설정하여 한국어/원화 정보 가져오기
             request = iop.IopRequest('aliexpress.affiliate.productdetail.get', 'GET')
             request.set_simplify()
             request.add_api_param('product_ids', str(product_id))
             request.add_api_param('tracking_id', 'default')
+            # 🔧 핵심 추가: 한국어 상품명과 KRW 가격을 위한 파라미터
+            request.add_api_param('target_language', 'ko')
+            request.add_api_param('target_currency', 'KRW')
+            request.add_api_param('country', 'KR')
             
             response = self.aliexpress_client.execute(request)
             
@@ -514,9 +518,17 @@ try {{
                 if products:
                     product = products[0]
                     
-                    # USD를 KRW로 변환 (환율 1400원 적용)
-                    usd_price = float(product.get('target_sale_price', 0))
-                    krw_price = int(usd_price * 1400)
+                    # 🎯 API에서 직접 KRW 가격 가져오기 (환율 변환 없이)
+                    # target_sale_price_app 또는 target_sale_price 사용
+                    krw_price_value = product.get('target_sale_price_app') or product.get('target_sale_price', 0)
+                    try:
+                        krw_price = int(float(krw_price_value))
+                        price_display = f"₩{krw_price:,}"
+                    except:
+                        # 폴백: USD를 KRW로 변환
+                        usd_price = float(product.get('target_original_price', 0))
+                        krw_price = int(usd_price * 1400)
+                        price_display = f"₩{krw_price:,}"
                     
                     # 평점 정보 처리
                     rating_value = product.get("evaluate_rate", "0")
@@ -543,18 +555,19 @@ try {{
                     except:
                         volume_display = "판매량 정보 없음"
                     
-                    # 🔧 메모리 최적화: original_data 제거
+                    # 🎯 product_title에서 한국어 상품명 가져오기 (API가 한국어로 변환해서 제공)
+                    korean_title = product.get("product_title", "상품명 없음")
+                    
                     formatted_product = {
                         "product_id": product_id,
-                        "title": product.get("product_title", "상품명 없음"),
-                        "price": f"₩{krw_price:,}",
+                        "title": korean_title,  # 🎯 한국어 상품명 사용
+                        "price": price_display,  # 🎯 KRW 가격 사용
                         "image_url": product.get("product_main_image_url", ""),
                         "rating_display": rating_display,
                         "lastest_volume": volume_display
-                        # "original_data": product  # 제거됨 - 메모리 절약
                     }
                     
-                    print(f"[✅] 상품 정보 조회 성공: {formatted_product['title']}")
+                    print(f"[✅] 상품 정보 조회 성공 (한국어): {formatted_product['title'][:50]}...")
                     
                     # 응답 데이터 정리
                     del product
@@ -776,6 +789,8 @@ try {{
         for keyword, product_group in keyword_groups.items():
             print(f"[📋] 키워드 '{keyword}' 그룹 처리: {len(product_group)}개 상품")
             
+            group_content_parts = []  # 각 키워드 그룹의 콘텐츠를 수집
+            
             # 키워드 그룹의 상품들을 순차적으로 삽입
             for idx, (original_index, product) in enumerate(product_group):
                 # 🎯 큐의 generated_html 우선 사용
@@ -789,35 +804,37 @@ try {{
                     print(f"[⚠️] API 데이터로 카드 생성: {keyword} - 상품 {idx+1}")
                 
                 # 키워드가 포함된 섹션 뒤에 카드 삽입
+                card_inserted = False
                 if keyword:
                     # 1순위: 키워드가 포함된 H2/H3 섹션의 첫 번째 문단 다음
                     pattern1 = rf'(<h[2-3][^>]*>[^<]*{re.escape(keyword)}[^<]*</h[2-3]>[^<]*<p[^>]*>.*?</p>)'
                     if re.search(pattern1, final_content, re.IGNORECASE | re.DOTALL):
                         final_content = re.sub(pattern1, rf'\1{card_html}', final_content, flags=re.IGNORECASE | re.DOTALL, count=1)
                         print(f"[✅] '{keyword}' 상품 카드를 H2/H3 섹션 다음에 삽입")
-                        continue
+                        card_inserted = True
                     
                     # 2순위: 키워드가 언급된 첫 번째 문단 다음
-                    pattern2 = rf'(<p[^>]*>[^<]*{re.escape(keyword)}[^<]*</p>)'
-                    if re.search(pattern2, final_content, re.IGNORECASE | re.DOTALL):
-                        final_content = re.sub(pattern2, rf'\1{card_html}', final_content, flags=re.IGNORECASE | re.DOTALL, count=1)
+                    elif re.search(rf'(<p[^>]*>[^<]*{re.escape(keyword)}[^<]*</p>)', final_content, re.IGNORECASE | re.DOTALL):
+                        final_content = re.sub(rf'(<p[^>]*>[^<]*{re.escape(keyword)}[^<]*</p>)', rf'\1{card_html}', final_content, flags=re.IGNORECASE | re.DOTALL, count=1)
                         print(f"[✅] '{keyword}' 상품 카드를 키워드 언급 문단 다음에 삽입")
-                        continue
+                        card_inserted = True
                 
                 # 3순위: 첫 번째 H2 섹션 다음
-                pattern3 = r'(<h2[^>]*>.*?</h2>[^<]*<p[^>]*>.*?</p>)'
-                if re.search(pattern3, final_content, re.IGNORECASE | re.DOTALL):
-                    final_content = re.sub(pattern3, rf'\1{card_html}', final_content, flags=re.IGNORECASE | re.DOTALL, count=1)
-                    print(f"[✅] 상품 카드를 첫 번째 H2 섹션 다음에 삽입")
-                    continue
+                if not card_inserted:
+                    pattern3 = r'(<h2[^>]*>.*?</h2>[^<]*<p[^>]*>.*?</p>)'
+                    if re.search(pattern3, final_content, re.IGNORECASE | re.DOTALL):
+                        final_content = re.sub(pattern3, rf'\1{card_html}', final_content, flags=re.IGNORECASE | re.DOTALL, count=1)
+                        print(f"[✅] 상품 카드를 첫 번째 H2 섹션 다음에 삽입")
+                        card_inserted = True
                 
                 # 4순위: 콘텐츠 중간에 삽입
-                content_parts = final_content.split('</p>')
-                if len(content_parts) > 3:
-                    mid_point = len(content_parts) // 2
-                    content_parts[mid_point] += card_html
-                    final_content = '</p>'.join(content_parts)
-                    print(f"[✅] 상품 카드를 콘텐츠 중간에 삽입")
+                if not card_inserted:
+                    content_parts = final_content.split('</p>')
+                    if len(content_parts) > 3:
+                        mid_point = len(content_parts) // 2
+                        content_parts[mid_point] += card_html
+                        final_content = '</p>'.join(content_parts)
+                        print(f"[✅] 상품 카드를 콘텐츠 중간에 삽입")
             
             # ✨ 키워드 그룹의 마지막 상품 다음에 '관련 상품 더보기' 버튼 삽입
             if keyword and keyword in keyword_links:
@@ -831,7 +848,8 @@ try {{
     </a>
 </div>'''
                 
-                # 마지막으로 삽입된 상품 카드 다음에 '더보기' 버튼 추가
+                # 🎯 키워드 그룹의 마지막 상품 카드 바로 다음에 '더보기' 버튼 삽입
+                # 마지막으로 삽입된 상품 카드를 찾아서 그 바로 다음에 삽입
                 final_content += more_products_html
                 print(f"[🎯] '{keyword}' 키워드에 알리익스프레스 '관련 상품 더보기' 버튼 추가")
             elif keyword:
@@ -871,11 +889,19 @@ try {{
 </div>'''
     
     def generate_focus_keyphrase_with_gemini(self, title, content, keywords):
-        """🎯 Gemini API로 SEO 최적화된 초점 키프레이즈 생성 (메모리 최적화)"""
+        """🎯 Gemini API로 SEO 최적화된 초점 키프레이즈 생성 (개선된 가이드 적용)"""
         print(f"[🤖] Gemini AI로 초점 키프레이즈를 생성합니다...")
         
-        # 폴백 키프레이즈
-        fallback_keyphrase = f"{keywords[0]} 추천" if keywords else "알리익스프레스 추천"
+        # 폴백 키프레이즈 (제목의 핵심 키워드들 조합)
+        if keywords:
+            fallback_keyphrase = f"{keywords[0]} 추천"
+        else:
+            # 제목에서 핵심 단어 추출
+            title_keywords = re.findall(r'[가-힣]{2,}', title)
+            if title_keywords:
+                fallback_keyphrase = f"{title_keywords[0]} 추천"
+            else:
+                fallback_keyphrase = "알리익스프레스 추천"
         
         try:
             # 콘텐츠 요약 생성 (너무 길면 잘라내기)
@@ -891,11 +917,9 @@ try {{
 
 [규칙]
 1. 사용자가 이 글을 찾기 위해 검색할 것 같은 가장 가능성 높은 검색어여야 합니다.
-2. 3-5개 단어로 구성된 롱테일 키워드 형태가 좋습니다.
-3. 제목이나 본문에 자연스럽게 포함된 표현을 우선 고려하세요.
-4. 다른 설명은 붙이지 말고, 오직 키프레이즈만 출력하세요.
+2. 다른 설명은 붙이지 말고, 오직 키프레이즈만 출력하세요.
 
-예시: "여름 물놀이 필수템", "알리익스프레스 추천 상품", "2025년 인기 아이템"
+예시: "여름 물놀이 필수템", "2025년 휴가 준비물", "알리익스프레스 추천상품"
 """
             
             response = self.gemini_model.generate_content(prompt)
@@ -921,7 +945,7 @@ try {{
             gc.collect()
     
     def generate_meta_description_with_gemini(self, title, content, focus_keyphrase):
-        """🎯 Gemini API로 SEO 최적화된 메타 설명 생성 (메모리 최적화)"""
+        """🎯 Gemini API로 SEO 최적화된 메타 설명 생성 (개선된 가이드 적용)"""
         print(f"[🤖] Gemini AI로 메타 설명을 생성합니다...")
         
         # 폴백 메타 설명
@@ -1024,32 +1048,42 @@ try {{
             # 메모리 정리
             gc.collect()
     
-    def generate_seo_optimized_slug_with_gemini(self, title, content):
-        """🎯 Gemini API로 SEO 최적화된 한글 슬러그 생성 (메모리 최적화)"""
+    def generate_seo_optimized_slug_with_gemini(self, title, content, keywords):
+        """🎯 Gemini API로 SEO 최적화된 한글 슬러그 생성 (핵심키워드 포함 개선)"""
         print(f"[🤖] Gemini AI로 SEO 최적화 한글 슬러그를 생성합니다...")
         
-        # 폴백 슬러그 (제목 기반)
-        fallback_slug = re.sub(r'[^가-힣a-zA-Z0-9\s]', '', title).replace(' ', '-')[:50]
+        # 폴백 슬러그 (제목과 키워드 기반)
+        title_words = re.findall(r'[가-힣]{2,}', title)
+        keywords_text = "-".join(keywords[:2]) if keywords else ""
+        if keywords_text and title_words:
+            fallback_slug = f"{keywords_text}-{title_words[0]}-{title_words[1] if len(title_words) > 1 else '추천'}"
+        elif keywords_text:
+            fallback_slug = f"{keywords_text}-추천상품"
+        else:
+            fallback_slug = "-".join(title_words[:3]) if len(title_words) >= 3 else "알리익스프레스-추천"
         
         try:
             # 콘텐츠 요약 생성 (너무 길면 잘라내기)
             content_summary = content[:800] if len(content) > 800 else content
+            keywords_text = ", ".join(keywords) if keywords else ""
             
-            prompt = f"""당신은 SEO 전문가입니다. 주어진 글 제목과 본문을 분석해서, 구글 검색 SEO에 가장 적합한 한글 슬러그를 생성해주세요.
+            prompt = f"""당신은 SEO 전문가입니다. 주어진 글 제목과 본문, 핵심 키워드를 분석해서, 구글 검색 SEO에 가장 적합한 한글 슬러그를 생성해주세요.
 
 [글 정보]
 제목: {title}
+핵심 키워드: {keywords_text}
 본문 요약: {content_summary}
 
 [규칙]
 1. 한글과 영문, 숫자, 하이픈(-)만 사용하세요.
-2. 글의 핵심 주제를 잘 나타내는 3-6개 단어로 구성하세요.
-3. 단어 사이는 하이픈(-)으로 연결하세요.
-4. 전체 길이는 30자 이내로 제한하세요.
-5. 검색 친화적이고 기억하기 쉬운 형태로 만드세요.
-6. 다른 설명 없이, 완성된 슬러그만 출력하세요.
+2. 반드시 제공된 핵심 키워드들을 포함해야 합니다.
+3. 글의 핵심 주제를 잘 나타내는 3-6개 단어로 구성하세요.
+4. 단어 사이는 하이픈(-)으로 연결하세요.
+5. 전체 길이는 40자 이내로 제한하세요.
+6. 검색 친화적이고 기억하기 쉬운 형태로 만드세요.
+7. 다른 설명 없이, 완성된 슬러그만 출력하세요.
 
-좋은 예시: "여름-물놀이-필수템", "알리익스프레스-추천-상품", "2025-휴가-준비물"
+좋은 예시: "여름-물놀이-필수템-추천", "2025-휴가-준비물-가이드", "알리익스프레스-여름용품-추천"
 나쁜 예시: "2025년-놓치면-후회할-여름휴가-피서-물놀이-필수템-총정리"
 """
             
@@ -1069,7 +1103,10 @@ try {{
                 # 시작과 끝의 하이픈 제거
                 cleaned_slug = cleaned_slug.strip('-')
                 
-                if cleaned_slug and len(cleaned_slug) <= 40 and len(cleaned_slug) >= 10:
+                # 키워드 포함 검사
+                contains_keywords = any(keyword in cleaned_slug for keyword in keywords) if keywords else True
+                
+                if cleaned_slug and len(cleaned_slug) <= 40 and len(cleaned_slug) >= 10 and contains_keywords:
                     print(f"[✅] SEO 최적화 슬러그 생성 완료: {cleaned_slug}")
                     return cleaned_slug
             
@@ -1145,7 +1182,7 @@ try {{
         return tag_ids
     
     def post_to_wordpress(self, job_data, content):
-        """워드프레스에 글 발행 (FIFU, YoastSEO, 태그 포함) - 메모리 최적화"""
+        """워드프레스에 글 발행 (FIFU, YoastSEO, 태그 포함) - auto_post_overseas.py 방식 적용"""
         try:
             mode_text = "즉시 발행" if self.immediate_mode else "큐 처리"
             print(f"[📝] 워드프레스에 '{job_data['title']}' 글을 발행합니다... ({mode_text})")
@@ -1178,9 +1215,9 @@ try {{
                 job_data['title'], content, keywords
             )
             
-            # 4. SEO 최적화 슬러그 생성
+            # 4. SEO 최적화 슬러그 생성 (키워드 포함)
             seo_slug = self.generate_seo_optimized_slug_with_gemini(
-                job_data['title'], content
+                job_data['title'], content, keywords
             )
             
             # 5. 워드프레스 태그 등록
@@ -1210,11 +1247,12 @@ try {{
                 del response
                 del post_info
                 
-                # 2단계: FIFU 썸네일 설정 (auto_post_overseas.py 방식)
+                # 2단계: FIFU 썸네일 설정 (auto_post_overseas.py 방식 완전 적용)
                 thumbnail_url = job_data.get('thumbnail_url')
                 if thumbnail_url:
                     print(f"[⚙️] 2단계 - FIFU 썸네일을 설정합니다...")
                     try:
+                        # 🎯 auto_post_overseas.py와 동일한 방식 적용
                         fifu_payload = {
                             "meta": {
                                 "_fifu_image_url": thumbnail_url
@@ -1231,6 +1269,7 @@ try {{
                             print("[✅] FIFU 썸네일 설정 완료.")
                         else:
                             print(f"[⚠️] FIFU 썸네일 설정 실패: {fifu_response.status_code}")
+                            print(f"응답: {fifu_response.text[:200]}")
                         
                         # 응답 객체 삭제
                         del fifu_response
@@ -1240,9 +1279,10 @@ try {{
                 else:
                     print("[⚠️] 썸네일 URL이 없어 FIFU 설정을 건너뜁니다.")
                 
-                # 3단계: YoastSEO 메타데이터 설정 (auto_post_overseas.py 방식)
+                # 3단계: YoastSEO 메타데이터 설정 (auto_post_overseas.py 방식 완전 적용)
                 print(f"[⚙️] 3단계 - Yoast SEO 메타데이터를 설정합니다...")
                 try:
+                    # 🎯 auto_post_overseas.py와 동일한 방식 적용
                     yoast_payload = {
                         "post_id": post_id,
                         "focus_keyphrase": focus_keyphrase,
@@ -1262,6 +1302,7 @@ try {{
                         print("[✅] Yoast SEO 메타데이터 설정 완료.")
                     else:
                         print(f"[⚠️] Yoast SEO 설정 응답: {yoast_response.status_code}")
+                        print(f"응답: {yoast_response.text[:200]}")
                     
                     # 응답 객체 삭제
                     del yoast_response
