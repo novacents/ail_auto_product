@@ -1,6 +1,5 @@
 <?php
 session_start();
-require_once __DIR__ . '/check_auth.php';
 
 // JSON 파일 경로
 $json_file = __DIR__ . '/aliexpress_keyword_links.json';
