@@ -1,6 +1,5 @@
 <?php
 session_start();
-require_once __DIR__ . '/check_auth.php';
 
 header('Content-Type: application/json');
 
