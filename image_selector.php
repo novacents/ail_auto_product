@@ -810,12 +810,36 @@
         }
         
         /**
-         * 히스토리 로드
+         * 히스토리 로드 - 기존 데이터 자동 업데이트 기능 추가
          */
         function loadHistory() {
             try {
                 const stored = localStorage.getItem('image_url_history');
                 imageHistory = stored ? JSON.parse(stored) : [];
+                
+                // 기존 데이터의 thumbnailUrl 자동 업데이트
+                let dataUpdated = false;
+                imageHistory = imageHistory.map(item => {
+                    // Google Drive 썸네일 링크인 경우 실제 URL로 교체
+                    if (item.thumbnailUrl && (
+                        item.thumbnailUrl.includes('googleusercontent.com') ||
+                        item.thumbnailUrl.includes('drive.google.com') ||
+                        item.thumbnailUrl.includes('lh3.googleusercontent.com')
+                    )) {
+                        // 실제 URL로 교체
+                        item.thumbnailUrl = item.url;
+                        dataUpdated = true;
+                        console.log(`히스토리 데이터 업데이트: ${item.fileName}`);
+                    }
+                    return item;
+                });
+                
+                // 데이터가 업데이트되었으면 저장
+                if (dataUpdated) {
+                    localStorage.setItem('image_url_history', JSON.stringify(imageHistory));
+                    console.log('히스토리 데이터가 자동 업데이트되었습니다.');
+                }
+                
                 displayHistory();
                 updateHistoryCount();
                 updateHistoryStatus(`총 ${imageHistory.length}개의 히스토리가 있습니다`);
