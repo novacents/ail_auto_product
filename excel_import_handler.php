@@ -121,17 +121,9 @@ function parseCSVFile($filePath) {
         $product['keyword'] = trim($row[$headerMap['키워드']] ?? '');
         $product['product_url'] = trim($row[$headerMap['상품URL']] ?? '');
         
-        // 상품명 - product_save_list.php에서는 '상품명'으로 출력됨
-        $product['product_name'] = trim($row[$headerMap['상품명']] ?? '');
-        
         // 빈 행 스킵 - 키워드와 상품URL이 모두 있어야 함
         if (empty($product['keyword']) || empty($product['product_url'])) {
             continue;
-        }
-        
-        // 상품명이 없으면 기본값 설정
-        if (empty($product['product_name'])) {
-            $product['product_name'] = '상품 정보';
         }
         
         // 상세 정보 - 기능/스펙 (product_save_list.php 헤더 기준)
@@ -173,16 +165,17 @@ function parseCSVFile($filePath) {
 
 /**
  * affiliate_editor.php의 processExcelData에서 기대하는 형식으로 변환
+ * 상품명(product_detail)은 제외하고 키워드, URL, 상세정보만 전달
  */
 function convertToProcessExcelDataFormat($data) {
     $processedData = [];
     
     foreach ($data as $product) {
         // affiliate_editor.php의 processExcelData에서 찾는 필드들
+        // 상품명은 '분석' 버튼으로 API에서 가져올 예정이므로 제외
         $item = [
             'keyword' => $product['keyword'],
             'url' => $product['product_url'], // processExcelData에서 찾는 필드
-            'product_detail' => $product['product_name'], // processExcelData에서 찾는 필드
             
             // 상세 정보를 별도 필드로 추가 (affiliate_editor에서 자동으로 사용자 입력 필드에 채워짐)
             'user_details' => [
