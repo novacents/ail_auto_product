@@ -314,12 +314,24 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            position: relative;
         }
         
         .history-thumbnail img {
             width: 100%;
             height: 100%;
             object-fit: cover;
+        }
+        
+        .history-thumbnail .fallback-icon {
+            font-size: 24px;
+            color: #999;
+            display: none;
+        }
+        
+        .history-thumbnail img[style*="display: none"] ~ .fallback-icon,
+        .history-thumbnail:not(:has(img)) .fallback-icon {
+            display: block;
         }
         
         .history-info {
@@ -731,8 +743,8 @@
                 // 처리 단계 순차적 업데이트
                 await simulateProcessingSteps();
                 
-                // 히스토리에 추가
-                addToHistory(fileName, result.public_url, thumbnailUrl);
+                // 히스토리에 추가 - 실제 공개 URL을 썸네일로 사용
+                addToHistory(fileName, result.public_url, result.public_url);
                 
                 // 성공 시 localStorage에 URL 저장
                 localStorage.setItem('selected_image_url', result.public_url);
@@ -770,12 +782,12 @@
         /**
          * 히스토리에 추가
          */
-        function addToHistory(fileName, url, thumbnailUrl) {
+        function addToHistory(fileName, url, actualImageUrl) {
             const historyItem = {
                 id: Date.now(),
                 fileName: fileName,
                 url: url,
-                thumbnailUrl: thumbnailUrl,
+                thumbnailUrl: actualImageUrl, // 실제 공개 URL 사용
                 createdAt: new Date().toISOString()
             };
             
@@ -857,7 +869,10 @@
             
             div.innerHTML = `
                 <div class="history-thumbnail">
-                    <img src="${item.thumbnailUrl}" alt="${item.fileName}" onerror="this.style.display='none'">
+                    <img src="${item.thumbnailUrl}" alt="${item.fileName}" 
+                         onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
+                         onload="this.nextElementSibling.style.display='none';">
+                    <div class="fallback-icon">🖼️</div>
                 </div>
                 <div class="history-info">
                     <div class="history-filename">${item.fileName}</div>
