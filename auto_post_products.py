@@ -7,7 +7,7 @@
 
 작성자: Claude AI
 날짜: 2025-07-24
-버전: v5.4 (메모리 최적화 + 파일분할 시스템)
+버전: v5.5 (알리익스프레스 '관련 상품 더보기' 버튼 자동 삽입 기능 추가)
 """
 
 import os
@@ -44,6 +44,21 @@ LOG_FILE = "/var/www/auto_post_products.log"
 PUBLISHED_LOG_FILE = "/var/www/published_log.txt"
 POST_DELAY_SECONDS = 30
 # ##############################################################################
+
+def load_aliexpress_keyword_links():
+    """알리익스프레스 키워드 링크 매핑 파일 로드"""
+    keyword_links_path = '/var/www/novacents/tools/aliexpress_keyword_links.json'
+    try:
+        if os.path.exists(keyword_links_path):
+            with open(keyword_links_path, 'r', encoding='utf-8') as f:
+                keyword_links = json.load(f)
+                print(f"[✅] 알리익스프레스 키워드 링크 매핑 로드 성공: {len(keyword_links)}개")
+                return keyword_links
+        else:
+            print(f"[⚠️] 알리익스프레스 키워드 링크 파일이 없습니다: {keyword_links_path}")
+    except Exception as e:
+        print(f"[❌] 키워드 링크 파일 로드 실패: {e}")
+    return {}
 
 class AliExpressPostingSystem:
     def __init__(self):
@@ -737,58 +752,90 @@ try {{
             gc.collect()
     
     def insert_product_cards(self, content, products, job_data):
-        """상품 카드를 콘텐츠에 삽입 (큐의 generated_html 우선 활용)"""
+        """상품 카드를 콘텐츠에 삽입하고 키워드별 '관련 상품 더보기' 버튼 추가"""
         final_content = content
         
         # 큐에서 products_data 정보 추출
         products_data = job_data.get('products_data', [])
         
-        print(f"[🔗] 상품 카드 삽입 시작: API 상품 {len(products)}개, 큐 상품 {len(products_data)}개")
+        # 🔗 알리익스프레스 키워드 링크 매핑 로드
+        keyword_links = load_aliexpress_keyword_links()
         
-        # 각 상품에 대해 카드 생성 및 삽입
+        print(f"[🔗] 상품 카드 삽입 시작: API 상품 {len(products)}개, 큐 상품 {len(products_data)}개")
+        print(f"[🔗] 키워드 링크 매핑: {len(keyword_links)}개")
+        
+        # 키워드별로 상품 그룹화
+        keyword_groups = {}
         for i, product in enumerate(products):
             keyword = product.get('keyword', '')
+            if keyword not in keyword_groups:
+                keyword_groups[keyword] = []
+            keyword_groups[keyword].append((i, product))
+        
+        # 각 키워드 그룹별로 처리
+        for keyword, product_group in keyword_groups.items():
+            print(f"[📋] 키워드 '{keyword}' 그룹 처리: {len(product_group)}개 상품")
             
-            # 🎯 큐의 generated_html 우선 사용
-            card_html = ""
-            if i < len(products_data) and products_data[i].get('generated_html'):
-                card_html = products_data[i]['generated_html']
-                print(f"[✅] 큐의 generated_html 사용: 상품 {i+1}")
-            else:
-                # 폴백: 기존 방식으로 카드 생성
-                card_html = self.generate_product_card_html(product)
-                print(f"[⚠️] API 데이터로 카드 생성: 상품 {i+1}")
-            
-            # 키워드가 포함된 섹션 뒤에 카드 삽입
-            if keyword:
-                # 1순위: 키워드가 포함된 H2/H3 섹션의 첫 번째 문단 다음
-                pattern1 = rf'(<h[2-3][^>]*>[^<]*{re.escape(keyword)}[^<]*</h[2-3]>[^<]*<p[^>]*>.*?</p>)'
-                if re.search(pattern1, final_content, re.IGNORECASE | re.DOTALL):
-                    final_content = re.sub(pattern1, rf'\1{card_html}', final_content, flags=re.IGNORECASE | re.DOTALL, count=1)
-                    print(f"[✅] '{keyword}' 상품 카드를 H2/H3 섹션 다음에 삽입")
+            # 키워드 그룹의 상품들을 순차적으로 삽입
+            for idx, (original_index, product) in enumerate(product_group):
+                # 🎯 큐의 generated_html 우선 사용
+                card_html = ""
+                if original_index < len(products_data) and products_data[original_index].get('generated_html'):
+                    card_html = products_data[original_index]['generated_html']
+                    print(f"[✅] 큐의 generated_html 사용: {keyword} - 상품 {idx+1}")
+                else:
+                    # 폴백: 기존 방식으로 카드 생성
+                    card_html = self.generate_product_card_html(product)
+                    print(f"[⚠️] API 데이터로 카드 생성: {keyword} - 상품 {idx+1}")
+                
+                # 키워드가 포함된 섹션 뒤에 카드 삽입
+                if keyword:
+                    # 1순위: 키워드가 포함된 H2/H3 섹션의 첫 번째 문단 다음
+                    pattern1 = rf'(<h[2-3][^>]*>[^<]*{re.escape(keyword)}[^<]*</h[2-3]>[^<]*<p[^>]*>.*?</p>)'
+                    if re.search(pattern1, final_content, re.IGNORECASE | re.DOTALL):
+                        final_content = re.sub(pattern1, rf'\1{card_html}', final_content, flags=re.IGNORECASE | re.DOTALL, count=1)
+                        print(f"[✅] '{keyword}' 상품 카드를 H2/H3 섹션 다음에 삽입")
+                        continue
+                    
+                    # 2순위: 키워드가 언급된 첫 번째 문단 다음
+                    pattern2 = rf'(<p[^>]*>[^<]*{re.escape(keyword)}[^<]*</p>)'
+                    if re.search(pattern2, final_content, re.IGNORECASE | re.DOTALL):
+                        final_content = re.sub(pattern2, rf'\1{card_html}', final_content, flags=re.IGNORECASE | re.DOTALL, count=1)
+                        print(f"[✅] '{keyword}' 상품 카드를 키워드 언급 문단 다음에 삽입")
+                        continue
+                
+                # 3순위: 첫 번째 H2 섹션 다음
+                pattern3 = r'(<h2[^>]*>.*?</h2>[^<]*<p[^>]*>.*?</p>)'
+                if re.search(pattern3, final_content, re.IGNORECASE | re.DOTALL):
+                    final_content = re.sub(pattern3, rf'\1{card_html}', final_content, flags=re.IGNORECASE | re.DOTALL, count=1)
+                    print(f"[✅] 상품 카드를 첫 번째 H2 섹션 다음에 삽입")
                     continue
                 
-                # 2순위: 키워드가 언급된 첫 번째 문단 다음
-                pattern2 = rf'(<p[^>]*>[^<]*{re.escape(keyword)}[^<]*</p>)'
-                if re.search(pattern2, final_content, re.IGNORECASE | re.DOTALL):
-                    final_content = re.sub(pattern2, rf'\1{card_html}', final_content, flags=re.IGNORECASE | re.DOTALL, count=1)
-                    print(f"[✅] '{keyword}' 상품 카드를 키워드 언급 문단 다음에 삽입")
-                    continue
+                # 4순위: 콘텐츠 중간에 삽입
+                content_parts = final_content.split('</p>')
+                if len(content_parts) > 3:
+                    mid_point = len(content_parts) // 2
+                    content_parts[mid_point] += card_html
+                    final_content = '</p>'.join(content_parts)
+                    print(f"[✅] 상품 카드를 콘텐츠 중간에 삽입")
             
-            # 3순위: 첫 번째 H2 섹션 다음
-            pattern3 = r'(<h2[^>]*>.*?</h2>[^<]*<p[^>]*>.*?</p>)'
-            if re.search(pattern3, final_content, re.IGNORECASE | re.DOTALL):
-                final_content = re.sub(pattern3, rf'\1{card_html}', final_content, flags=re.IGNORECASE | re.DOTALL, count=1)
-                print(f"[✅] 상품 카드를 첫 번째 H2 섹션 다음에 삽입")
-                continue
-            
-            # 4순위: 콘텐츠 중간에 삽입
-            content_parts = final_content.split('</p>')
-            if len(content_parts) > 3:
-                mid_point = len(content_parts) // 2
-                content_parts[mid_point] += card_html
-                final_content = '</p>'.join(content_parts)
-                print(f"[✅] 상품 카드를 콘텐츠 중간에 삽입")
+            # ✨ 키워드 그룹의 마지막 상품 다음에 '관련 상품 더보기' 버튼 삽입
+            if keyword and keyword in keyword_links:
+                more_products_html = f'''
+<div style="text-align: center; margin: 30px 0; padding: 20px 0;">
+    <a href="{keyword_links[keyword]}" target="_blank" rel="noopener noreferrer nofollow" style="display: inline-block; width: 100%; max-width: 800px;">
+        <picture>
+            <source media="(min-width: 1600px)" srcset="https://novacents.com/tools/images/aliexpress-more-products-pc.png">
+            <img src="https://novacents.com/tools/images/aliexpress-more-products-mobile.png" alt="알리익스프레스 {keyword} 관련 상품 더보기" style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+        </picture>
+    </a>
+</div>'''
+                
+                # 마지막으로 삽입된 상품 카드 다음에 '더보기' 버튼 추가
+                final_content += more_products_html
+                print(f"[🎯] '{keyword}' 키워드에 알리익스프레스 '관련 상품 더보기' 버튼 추가")
+            elif keyword:
+                print(f"[⚠️] '{keyword}' 키워드에 대한 알리익스프레스 링크 매핑이 없음")
         
         return final_content
     
@@ -802,13 +849,13 @@ try {{
                 <img src="{product['image_url']}" alt="{product['title']}" style="max-width: 400px; height: auto; border-radius: 8px; border: 1px solid #ddd;">
             </div>'''
         
-        # 어필리에이트 버튼 HTML (반응형)
+        # 어필리에이트 버튼 HTML (반응형 - 1600px 기준)
         button_html = f'''
         <div class="affiliate-button-container" style="width: 100%; max-width: 800px; margin: 15px auto; text-align: center;">
             <a href="{product['affiliate_url']}" target="_blank" rel="noopener" style="display: inline-block; width: 100%;">
                 <picture>
-                    <source media="(max-width: 768px)" srcset="https://novacents.com/tools/images/aliexpress-button-mobile.png">
-                    <img src="https://novacents.com/tools/images/aliexpress-button-pc.png" alt="알리익스프레스에서 {product.get('keyword', '상품')} 구매하기" style="width: 100%; height: auto; max-width: 800px; border-radius: 8px;">
+                    <source media="(min-width: 1600px)" srcset="https://novacents.com/tools/images/aliexpress-button-pc.png">
+                    <img src="https://novacents.com/tools/images/aliexpress-button-mobile.png" alt="알리익스프레스에서 {product.get('keyword', '상품')} 구매하기" style="width: 100%; height: auto; max-width: 800px; border-radius: 8px;">
                 </picture>
             </a>
         </div>'''
