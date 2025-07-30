@@ -5,7 +5,7 @@
  * 워드프레스 환경에 전혀 종속되지 않으며, 순수 PHP로만 작동합니다.
  *
  * 파일 위치: /var/www/novacents/tools/keyword_processor.php
- * 버전: v4.7 (즉시 발행 시에도 큐 저장 지원)
+ * 버전: v4.8 (즉시 발행 패턴 매칭 오류 수정)
  */
 
 // 1. 초기 에러 리포팅 설정 (스크립트 시작 시점부터 에러를 잡기 위함)
@@ -870,8 +870,8 @@ function parse_python_output($output) {
         return ['success' => false, 'error' => 'Python 스크립트에서 출력이 없습니다.'];
     }
     
-    // 성공 패턴 찾기
-    if (preg_match('/워드프레스 발행 성공: (https?:\/\/[^\s]+)/', $output, $matches)) {
+    // 🔧 수정된 성공 패턴 - Python의 실제 출력에 맞게 변경
+    if (preg_match('/즉시 발행 완료: (https?:\/\/[^\s]+)/', $output, $matches)) {
         $post_url = $matches[1];
         debug_log("parse_python_output: Success detected. Post URL: " . $post_url);
         return [
@@ -879,6 +879,25 @@ function parse_python_output($output) {
             'post_url' => $post_url,
             'output' => $output
         ];
+    }
+    
+    // 🔧 추가적인 성공 패턴들도 포함 (호환성을 위해)
+    $success_patterns = [
+        '/워드프레스 발행 성공: (https?:\/\/[^\s]+)/',
+        '/✅ 즉시 발행 완료: (https?:\/\/[^\s]+)/',
+        '/✅ 상품 발행 완료: (https?:\/\/[^\s]+)/'
+    ];
+    
+    foreach ($success_patterns as $pattern) {
+        if (preg_match($pattern, $output, $matches)) {
+            $post_url = $matches[1];
+            debug_log("parse_python_output: Success detected with pattern: " . $pattern . ". Post URL: " . $post_url);
+            return [
+                'success' => true,
+                'post_url' => $post_url,
+                'output' => $output
+            ];
+        }
     }
     
     // 에러 패턴 찾기
