@@ -60,6 +60,27 @@ def load_aliexpress_keyword_links():
         print(f"[❌] 키워드 링크 파일 로드 실패: {e}")
     return {}
 
+def normalize_url(url):
+    """URL 정규화 함수 - 매칭 정확도 향상을 위해"""
+    if not url:
+        return ""
+    
+    # URL에서 상품 ID만 추출
+    patterns = [
+        r'/item/(\d+)\.html',
+        r'/item/(\d+)$',
+        r'productId=(\d+)',
+        r'/(\d+)\.html',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    
+    # 패턴이 맞지 않으면 쿼리 파라미터 제거한 URL 반환
+    return url.split('?')[0].strip()
+
 class AliExpressPostingSystem:
     def __init__(self):
         self.config = None
@@ -579,7 +600,7 @@ try {{
             gc.collect()
     
     def process_aliexpress_products(self, job_data):
-        """알리익스프레스 상품 처리 (큐 데이터 우선 사용 + 메모리 최적화)"""
+        """알리익스프레스 상품 처리 (큐 데이터 강제 우선 사용 + 디버깅 강화)"""
         print("[🌏] 알리익스프레스 상품 처리를 시작합니다...")
         
         processed_products = []
@@ -590,19 +611,45 @@ try {{
             # 🔧 키워드별 products_data 올바르게 접근
             products_data = keyword_data.get("products_data", [])
             
-            print(f"[📋] 키워드 '{keyword}' 처리 중... (큐 데이터: {len(products_data)}개)")
+            print(f"[📋] 키워드 '{keyword}' 처리 중...")
+            print(f"[🔍] 알리익스프레스 링크: {len(aliexpress_links)}개")
+            print(f"[🔍] 큐 products_data: {len(products_data)}개")
             
-            # 🚀 큐에 저장된 완성된 상품 데이터 우선 사용
+            # 디버깅: 큐 데이터 구조 확인
+            if products_data:
+                for i, product_data in enumerate(products_data):
+                    print(f"[🔍] 큐 상품 {i+1}: URL={product_data.get('url', 'N/A')[:50]}...")
+                    if product_data.get('analysis_data'):
+                        analysis = product_data['analysis_data']
+                        print(f"[🔍]   제목: {analysis.get('title', 'N/A')[:50]}...")
+                        print(f"[🔍]   가격: {analysis.get('price', 'N/A')}")
+                        print(f"[🔍]   평점: {analysis.get('rating_display', 'N/A')}")
+            
+            # 🚀 큐에 저장된 완성된 상품 데이터 강제 우선 사용
             for i, link in enumerate(aliexpress_links):
                 if link.strip():
-                    # 1순위: 키워드의 products_data에서 해당 상품 데이터 찾기
+                    print(f"[🔍] 처리 중인 링크: {link[:50]}...")
+                    
+                    # 1순위: 키워드의 products_data에서 해당 상품 데이터 찾기 (강화된 매칭)
                     queue_product = None
+                    link_normalized = normalize_url(link.strip())
+                    
                     for product_data in products_data:
-                        if product_data.get('url') and link.strip() in product_data['url']:
+                        queue_url = product_data.get('url', '')
+                        queue_url_normalized = normalize_url(queue_url)
+                        
+                        # URL 정규화 후 매칭 (상품 ID 기반)
+                        if link_normalized and queue_url_normalized and link_normalized == queue_url_normalized:
                             queue_product = product_data
+                            print(f"[✅] 큐 데이터 매칭 성공 (상품 ID: {link_normalized})")
+                            break
+                        # 부분 URL 매칭도 시도
+                        elif link.strip() in queue_url or queue_url in link.strip():
+                            queue_product = product_data
+                            print(f"[✅] 큐 데이터 매칭 성공 (부분 매칭)")
                             break
                     
-                    # 큐 데이터가 있고 analysis_data가 완성된 경우 우선 사용
+                    # 🔒 큐 데이터가 있으면 무조건 사용 (API 호출 차단)
                     if queue_product and queue_product.get('analysis_data'):
                         analysis_data = queue_product['analysis_data']
                         product_info = {
@@ -617,10 +664,32 @@ try {{
                         }
                         processed_products.append(product_info)
                         print(f"[✅] 큐 데이터 사용: {analysis_data.get('title', 'N/A')[:50]}...")
+                        print(f"[✅]   가격: {analysis_data.get('price', 'N/A')}")
+                        print(f"[✅]   평점: {analysis_data.get('rating_display', 'N/A')}")
                         continue
                     
-                    # 2순위: 큐 데이터가 없거나 불완전한 경우 API 호출
-                    print(f"[⚠️] 큐 데이터 불완전, API 호출: {link[:50]}...")
+                    # 🚀 큐에 products_data가 있지만 analysis_data가 없는 경우도 강제로 큐 데이터 활용
+                    elif products_data:
+                        # 첫 번째 큐 상품의 기본 정보라도 사용
+                        first_queue_product = products_data[0]
+                        if first_queue_product.get('analysis_data'):
+                            analysis_data = first_queue_product['analysis_data']
+                            product_info = {
+                                "product_id": analysis_data.get("product_id", ""),
+                                "title": analysis_data.get("title", f"{keyword} 관련 상품"),
+                                "price": analysis_data.get("price", "가격 확인 필요"),
+                                "image_url": analysis_data.get("image_url", ""),
+                                "rating_display": analysis_data.get("rating_display", "평점 정보 없음"),
+                                "lastest_volume": analysis_data.get("lastest_volume", "판매량 정보 없음"),
+                                "affiliate_url": analysis_data.get("affiliate_link", ""),
+                                "keyword": keyword
+                            }
+                            processed_products.append(product_info)
+                            print(f"[⚠️] 매칭 실패로 첫 번째 큐 데이터 사용: {analysis_data.get('title', 'N/A')[:50]}...")
+                            continue
+                    
+                    # 마지막 폴백: API 호출 (큐 데이터가 전혀 없는 경우에만)
+                    print(f"[❌] 큐 데이터 없음, API 호출: {link[:50]}...")
                     affiliate_link = self.convert_aliexpress_to_affiliate_link(link.strip())
                     
                     if affiliate_link:
@@ -654,7 +723,7 @@ try {{
                     # 주기적 메모리 정리
                     gc.collect()
         
-        print(f"[✅] 알리익스프레스 상품 처리 완료: {len(processed_products)}개 (큐 데이터 우선 사용)")
+        print(f"[✅] 알리익스프레스 상품 처리 완료: {len(processed_products)}개 (큐 데이터 강제 우선 사용)")
         return processed_products
     
     def generate_content_with_gemini(self, job_data, products):
