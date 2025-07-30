@@ -6,8 +6,8 @@
 키워드 입력 → 알리익스프레스 API → AI 콘텐츠 생성 → 워드프레스 자동 발행
 
 작성자: Claude AI
-날짜: 2025-07-29
-버전: v5.7 (평점 정보 전달, FIFU/YoastSEO 적용, 관련상품 링크 배치 개선)
+날짜: 2025-07-30
+버전: v5.8 (즉시 발행 출력 메시지 수정 - keyword_processor.php 패턴과 일치)
 """
 
 import os
@@ -651,6 +651,9 @@ def process_immediate_publish(queue_data):
                     log_published_product(product, post_result['link'])
                     log_message(f"✅ 즉시 발행 완료: {post_result['link']}")
                     
+                    # 🔧 keyword_processor.php가 인식할 수 있는 패턴으로 출력
+                    print(f"워드프레스 발행 성공: {post_result['link']}")
+                    
                 else:
                     # 발행 실패
                     published_results.append({
@@ -718,9 +721,6 @@ def run_immediate_mode(temp_file):
         success_count = sum(1 for r in results if r.get('success'))
         
         if success_count > 0:
-            for result in results:
-                if result.get('success'):
-                    print(f"워드프레스 발행 성공: {result['url']}")
             return True
         else:
             print("❌ 모든 상품 발행 실패")
