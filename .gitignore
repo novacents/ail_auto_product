@@ -13,3 +13,9 @@ __pycache__/
 
 # Temporary directory
 temp/
+
+# 큐 관련 파일들 (동적 데이터)
+product_queue.json
+queue_index.json
+queues/
+*.queue
