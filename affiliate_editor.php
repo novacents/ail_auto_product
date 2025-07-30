@@ -285,7 +285,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <option value="professional_analysis">전문 분석형</option>
 <option value="amazing_discovery">놀라움 발견형</option>
 </select>
-<a href="queue_manager.php" class="nav-link" style="margin-left:10px;">📋 저장된 정보 관리</a>
+<a href="queue_manager.php" class="nav-link" style="margin-left:10px;" target="_blank">📋 저장된 정보 관리</a>
 </div>
 </div>
 </div>
