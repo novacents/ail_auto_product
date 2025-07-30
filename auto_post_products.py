@@ -579,20 +579,49 @@ try {{
             gc.collect()
     
     def process_aliexpress_products(self, job_data):
-        """알리익스프레스 상품 처리 (메모리 최적화)"""
+        """알리익스프레스 상품 처리 (큐 데이터 우선 사용 + 메모리 최적화)"""
         print("[🌏] 알리익스프레스 상품 처리를 시작합니다...")
         
         processed_products = []
+        
+        # 큐에서 products_data 정보 추출
+        products_data = job_data.get("products_data", [])
         
         for keyword_data in job_data["keywords"]:
             keyword = keyword_data["name"]
             aliexpress_links = keyword_data.get("aliexpress", [])
             
-            print(f"[📋] 키워드 '{keyword}' 처리 중...")
+            print(f"[📋] 키워드 '{keyword}' 처리 중... (큐 데이터 확인)")
             
-            for link in aliexpress_links:
+            # 🚀 큐에 저장된 완성된 상품 데이터 우선 사용
+            for i, link in enumerate(aliexpress_links):
                 if link.strip():
-                    # 링크를 어필리에이트 링크로 변환
+                    # 1순위: 큐의 products_data에서 해당 상품 데이터 찾기
+                    queue_product = None
+                    for product_data in products_data:
+                        if product_data.get('url') and link.strip() in product_data['url']:
+                            queue_product = product_data
+                            break
+                    
+                    # 큐 데이터가 있고 analysis_data가 완성된 경우 우선 사용
+                    if queue_product and queue_product.get('analysis_data'):
+                        analysis_data = queue_product['analysis_data']
+                        product_info = {
+                            "product_id": analysis_data.get("product_id", ""),
+                            "title": analysis_data.get("title", f"{keyword} 관련 상품"),
+                            "price": analysis_data.get("price", "가격 확인 필요"),
+                            "image_url": analysis_data.get("image_url", ""),
+                            "rating_display": analysis_data.get("rating_display", "평점 정보 없음"),
+                            "lastest_volume": analysis_data.get("lastest_volume", "판매량 정보 없음"),
+                            "affiliate_url": analysis_data.get("affiliate_link", ""),
+                            "keyword": keyword
+                        }
+                        processed_products.append(product_info)
+                        print(f"[✅] 큐 데이터 사용: {analysis_data.get('title', 'N/A')[:50]}...")
+                        continue
+                    
+                    # 2순위: 큐 데이터가 없거나 불완전한 경우 API 호출
+                    print(f"[⚠️] 큐 데이터 불완전, API 호출: {link[:50]}...")
                     affiliate_link = self.convert_aliexpress_to_affiliate_link(link.strip())
                     
                     if affiliate_link:
@@ -620,13 +649,13 @@ try {{
                             }
                             processed_products.append(basic_product)
                     
-                    # API 호출 간 딜레이
+                    # API 호출 간 딜레이 (큐 데이터 사용 시에는 제외)
                     time.sleep(2)
                     
                     # 주기적 메모리 정리
                     gc.collect()
         
-        print(f"[✅] 알리익스프레스 상품 처리 완료: {len(processed_products)}개")
+        print(f"[✅] 알리익스프레스 상품 처리 완료: {len(processed_products)}개 (큐 데이터 우선 사용)")
         return processed_products
     
     def generate_content_with_gemini(self, job_data, products):
@@ -752,7 +781,7 @@ try {{
             gc.collect()
     
     def insert_product_cards(self, content, products, job_data):
-        """상품 카드를 콘텐츠에 삽입하고 키워드별 '관련 상품 더보기' 버튼 추가"""
+        """상품 카드를 콘텐츠에 삽입하고 키워드별 '관련 상품 더보기' 버튼 추가 (큐 HTML 우선 사용)"""
         final_content = content
         
         # 큐에서 products_data 정보 추출
@@ -772,21 +801,50 @@ try {{
                 keyword_groups[keyword] = []
             keyword_groups[keyword].append((i, product))
         
+        # 키워드별 큐 상품 매핑 생성
+        keyword_products_map = {}
+        for product_data in products_data:
+            for keyword_info in job_data.get("keywords", []):
+                keyword = keyword_info["name"]
+                for link in keyword_info.get("aliexpress", []):
+                    if product_data.get('url') and link.strip() in product_data['url']:
+                        if keyword not in keyword_products_map:
+                            keyword_products_map[keyword] = []
+                        keyword_products_map[keyword].append(product_data)
+                        break
+        
         # 각 키워드 그룹별로 처리
         for keyword, product_group in keyword_groups.items():
             print(f"[📋] 키워드 '{keyword}' 그룹 처리: {len(product_group)}개 상품")
             
-            # 키워드 그룹의 상품들을 순차적으로 삽입
+            # 키워드 그룹의 상품들을 순차적으로 삽입 (큐 HTML 우선 사용)
+            queue_products = keyword_products_map.get(keyword, [])
             for idx, (original_index, product) in enumerate(product_group):
-                # 🎯 큐의 generated_html 우선 사용
+                # 🎯 큐의 generated_html 우선 사용 (해당 상품 URL로 매칭)
                 card_html = ""
-                if original_index < len(products_data) and products_data[original_index].get('generated_html'):
-                    card_html = products_data[original_index]['generated_html']
-                    print(f"[✅] 큐의 generated_html 사용: {keyword} - 상품 {idx+1}")
-                else:
-                    # 폴백: 기존 방식으로 카드 생성
+                queue_html_found = False
+                
+                # 해당 키워드의 큐 데이터에서 매칭되는 HTML 찾기
+                product_title = product.get('title', '')
+                product_url = product.get('affiliate_url', '')
+                
+                for queue_product in queue_products:
+                    if queue_product.get('generated_html'):
+                        # URL 또는 제목으로 매칭 확인
+                        queue_analysis = queue_product.get('analysis_data', {})
+                        if (queue_analysis.get('affiliate_link') and product_url and 
+                            queue_analysis['affiliate_link'] in product_url) or \
+                           (queue_analysis.get('title') and product_title and 
+                            queue_analysis['title'][:30] in product_title):
+                            card_html = queue_product['generated_html']
+                            queue_html_found = True
+                            print(f"[✅] 큐의 generated_html 사용: {keyword} - 상품 {idx+1} ({queue_analysis.get('title', 'N/A')[:30]}...)")
+                            break
+                
+                # 큐 HTML을 찾지 못한 경우 폴백
+                if not queue_html_found:
                     card_html = self.generate_product_card_html(product)
-                    print(f"[⚠️] API 데이터로 카드 생성: {keyword} - 상품 {idx+1}")
+                    print(f"[⚠️] API 데이터로 카드 생성: {keyword} - 상품 {idx+1} ({product_title[:30]}...)")
                 
                 # 키워드가 포함된 섹션 뒤에 카드 삽입
                 if keyword:
@@ -1373,7 +1431,10 @@ try {{
                 self.send_telegram_notification(success_msg)
                 
                 # 🎉 성공 시 워드프레스 발행 성공 메시지 출력 (keyword_processor.php가 파싱)
-                print(f"워드프레스 발행 성공: {post_url}")
+                if self.immediate_mode:
+                    print(f"즉시 발행 완료: {post_url}")
+                else:
+                    print(f"워드프레스 발행 성공: {post_url}")
                 
                 # 작업 완료 후 메모리 정리
                 del products
