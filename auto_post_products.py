@@ -7,7 +7,7 @@
 
 작성자: Claude AI
 날짜: 2025-07-30
-버전: v5.8 (즉시 발행 출력 메시지 수정 - keyword_processor.php 패턴과 일치)
+버전: v5.9 (즉시 발행 출력 메시지 수정 - 로컬 작동 버전과 동일하게 수정)
 """
 
 import os
@@ -639,20 +639,23 @@ def process_immediate_publish(queue_data):
                 )
                 
                 if post_result:
+                    # 🔧 post_url 변수 정의 (로컬 작동 버전과 동일하게)
+                    post_url = post_result['link']
+                    
                     # 발행 성공
                     published_results.append({
                         'success': True,
                         'keyword': product.get('keyword', 'Unknown'),
-                        'url': post_result['link'],
+                        'url': post_url,
                         'title': clean_title
                     })
                     
                     # 발행 성공 로그
-                    log_published_product(product, post_result['link'])
-                    log_message(f"✅ 즉시 발행 완료: {post_result['link']}")
+                    log_published_product(product, post_url)
+                    log_message(f"✅ 즉시 발행 완료: {post_url}")
                     
-                    # 🔧 keyword_processor.php가 인식할 수 있는 패턴으로 출력
-                    print(f"워드프레스 발행 성공: {post_result['link']}")
+                    # 🔧 keyword_processor.php가 인식할 수 있는 패턴으로 출력 (로컬 작동 버전과 동일)
+                    print(f"워드프레스 발행 성공: {post_url}")
                     
                 else:
                     # 발행 실패
