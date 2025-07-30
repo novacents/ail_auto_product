@@ -1339,13 +1339,57 @@ try {{
                 
                 # 2단계: FIFU 썸네일 설정 (auto_post_overseas.py와 동일한 방식)
                 thumbnail_url = job_data.get('thumbnail_url')
+                
+                # 디버깅을 위한 로그 파일 작성
+                debug_log_path = '/var/www/novacents/tools/logs/thumbnail_debug.log'
+                try:
+                    with open(debug_log_path, 'a', encoding='utf-8') as debug_file:
+                        debug_file.write(f"\n========== [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 썸네일 디버깅 ==========\n")
+                        debug_file.write(f"포스트 ID: {post_id}\n")
+                        debug_file.write(f"포스트 제목: {job_data.get('title', 'N/A')}\n")
+                        debug_file.write(f"thumbnail_url 값: {thumbnail_url}\n")
+                        debug_file.write(f"job_data 키 목록: {list(job_data.keys())}\n")
+                except Exception as e:
+                    print(f"[⚠️] 디버그 로그 작성 실패: {e}")
+                
                 if thumbnail_url:
                     print(f"[⚙️] 2단계 - FIFU 썸네일을 설정합니다...")
                     fifu_payload = {"meta": {"_fifu_image_url": thumbnail_url}}
-                    requests.post(f"{self.config['wp_api_base']}/posts/{post_id}", auth=auth, json=fifu_payload, headers=headers, timeout=20)
-                    print("[✅] FIFU 썸네일 설정 완료.")
+                    
+                    try:
+                        fifu_response = requests.post(
+                            f"{self.config['wp_api_base']}/posts/{post_id}", 
+                            auth=auth, 
+                            json=fifu_payload, 
+                            headers=headers, 
+                            timeout=20
+                        )
+                        
+                        # 디버깅 로그에 응답 기록
+                        try:
+                            with open(debug_log_path, 'a', encoding='utf-8') as debug_file:
+                                debug_file.write(f"FIFU API 호출 완료\n")
+                                debug_file.write(f"응답 상태 코드: {fifu_response.status_code}\n")
+                                debug_file.write(f"응답 내용: {fifu_response.text[:500]}...\n")
+                                debug_file.write(f"FIFU 설정 성공 여부: {'성공' if fifu_response.status_code in [200, 201] else '실패'}\n")
+                        except:
+                            pass
+                        
+                        print("[✅] FIFU 썸네일 설정 완료.")
+                    except Exception as e:
+                        print(f"[⚠️] FIFU 썸네일 설정 중 오류: {e}")
+                        try:
+                            with open(debug_log_path, 'a', encoding='utf-8') as debug_file:
+                                debug_file.write(f"FIFU 오류 발생: {str(e)}\n")
+                        except:
+                            pass
                 else:
                     print("[⚠️] 썸네일 URL이 없어 FIFU 설정을 건너뜁니다.")
+                    try:
+                        with open(debug_log_path, 'a', encoding='utf-8') as debug_file:
+                            debug_file.write(f"썸네일 URL이 없음 - thumbnail_url 값: '{thumbnail_url}'\n")
+                    except:
+                        pass
                 
                 # 3단계: YoastSEO 메타데이터 설정 (auto_post_overseas.py 방식)
                 print(f"[⚙️] 3단계 - Yoast SEO 메타데이터를 설정합니다...")
