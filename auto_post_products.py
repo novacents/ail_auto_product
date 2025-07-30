@@ -557,6 +557,24 @@ def process_queue():
         log_message(f"❌ 큐 처리 중 치명적 오류: {str(e)}")
         log_message(f"오류 세부사항: {traceback.format_exc()}")
 
+def load_immediate_job(temp_file):
+    """즉시 발행용 임시 파일 로드"""
+    try:
+        with open(temp_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        # 임시 파일 삭제
+        try:
+            os.remove(temp_file)
+            log_message(f"🗑️ 임시 파일 정리 완료: {temp_file}")
+        except:
+            pass
+            
+        return data.get('job_data', {})
+    except Exception as e:
+        log_message(f"❌ 임시 파일 로드 실패: {str(e)}")
+        return None
+
 def process_immediate_publish(queue_data):
     """즉시 발행 처리 함수"""
     try:
@@ -661,6 +679,60 @@ def process_immediate_publish(queue_data):
     except Exception as e:
         log_message(f"❌ 즉시 발행 처리 중 치명적 오류: {str(e)}")
         return [{'success': False, 'error': f'치명적 오류: {str(e)}'}]
+
+def run_immediate_mode(temp_file):
+    """즉시 발행 모드 실행"""
+    try:
+        log_message(f"🚀 즉시 발행 모드 시작: {temp_file}")
+        
+        # 임시 파일에서 작업 데이터 로드
+        job_data = load_immediate_job(temp_file)
+        if not job_data:
+            log_message("❌ 작업 데이터 로드 실패")
+            return False
+        
+        # 키워드 목록에서 상품 데이터 추출
+        products_to_publish = []
+        if job_data.get('keywords'):
+            for keyword_data in job_data['keywords']:
+                if keyword_data.get('products_data'):
+                    for product_data in keyword_data['products_data']:
+                        if product_data.get('analysis_data'):
+                            # 상품 데이터를 발행 가능한 형태로 변환
+                            product_for_publish = product_data['analysis_data'].copy()
+                            product_for_publish['keyword'] = keyword_data['name']
+                            product_for_publish['category'] = job_data.get('category_name', '우리잇템')
+                            product_for_publish['template_type'] = job_data.get('prompt_type', 'standard')
+                            products_to_publish.append(product_for_publish)
+        
+        if not products_to_publish:
+            log_message("❌ 발행할 상품 데이터가 없습니다")
+            return False
+        
+        log_message(f"📦 즉시 발행할 상품 수: {len(products_to_publish)}")
+        
+        # 즉시 발행 처리
+        results = process_immediate_publish(products_to_publish)
+        
+        # 결과 출력 (JSON 형태)
+        success_count = sum(1 for r in results if r.get('success'))
+        
+        if success_count > 0:
+            for result in results:
+                if result.get('success'):
+                    print(f"워드프레스 발행 성공: {result['url']}")
+            return True
+        else:
+            print("❌ 모든 상품 발행 실패")
+            for result in results:
+                if not result.get('success'):
+                    print(f"❌ 오류: {result.get('error', '알 수 없는 오류')}")
+            return False
+            
+    except Exception as e:
+        log_message(f"❌ 즉시 발행 모드 실행 오류: {str(e)}")
+        print(f"❌ 즉시 발행 오류: {str(e)}")
+        return False
 
 def generate_product_html(product):
     """상품 정보를 HTML로 변환 (발행용)"""
@@ -793,18 +865,14 @@ div[style*="font-size:28px"]{{font-size:24px!important;}}
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='알리익스프레스 어필리에이트 상품 자동 발행')
-    parser.add_argument('--immediate', type=str, help='즉시 발행 (JSON 데이터)')
+    parser.add_argument('--immediate-file', help='즉시 발행용 임시 파일 경로')
     
     args = parser.parse_args()
     
-    if args.immediate:
+    if args.immediate_file:
         # 즉시 발행 모드
-        try:
-            queue_data = json.loads(args.immediate)
-            results = process_immediate_publish(queue_data)
-            print(json.dumps(results, ensure_ascii=False))
-        except Exception as e:
-            print(json.dumps([{'success': False, 'error': f'JSON 파싱 오류: {str(e)}'}], ensure_ascii=False))
+        success = run_immediate_mode(args.immediate_file)
+        sys.exit(0 if success else 1)
     else:
         # 일반 큐 처리 모드
         process_queue()
