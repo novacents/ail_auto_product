@@ -1337,33 +1337,13 @@ try {{
                 del response
                 del post_info
                 
-                # 2단계: FIFU 썸네일 설정 (auto_post_overseas.py 방식)
+                # 2단계: FIFU 썸네일 설정 (auto_post_overseas.py와 동일한 방식)
                 thumbnail_url = job_data.get('thumbnail_url')
                 if thumbnail_url:
                     print(f"[⚙️] 2단계 - FIFU 썸네일을 설정합니다...")
-                    try:
-                        fifu_payload = {
-                            "meta": {
-                                "_fifu_image_url": thumbnail_url
-                            }
-                        }
-                        fifu_response = requests.post(
-                            f"{self.config['wp_api_base']}/posts/{post_id}",
-                            auth=auth,
-                            json=fifu_payload,
-                            headers=headers,
-                            timeout=20
-                        )
-                        if fifu_response.status_code in [200, 201]:
-                            print("[✅] FIFU 썸네일 설정 완료.")
-                        else:
-                            print(f"[⚠️] FIFU 썸네일 설정 실패: {fifu_response.status_code}")
-                        
-                        # 응답 객체 삭제
-                        del fifu_response
-                        
-                    except Exception as e:
-                        print(f"[⚠️] FIFU 썸네일 설정 중 오류: {e}")
+                    fifu_payload = {"meta": {"_fifu_image_url": thumbnail_url}}
+                    requests.post(f"{self.config['wp_api_base']}/posts/{post_id}", auth=auth, json=fifu_payload, headers=headers, timeout=20)
+                    print("[✅] FIFU 썸네일 설정 완료.")
                 else:
                     print("[⚠️] 썸네일 URL이 없어 FIFU 설정을 건너뜁니다.")
                 
