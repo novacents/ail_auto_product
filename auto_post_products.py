@@ -584,19 +584,18 @@ try {{
         
         processed_products = []
         
-        # 큐에서 products_data 정보 추출
-        products_data = job_data.get("products_data", [])
-        
         for keyword_data in job_data["keywords"]:
             keyword = keyword_data["name"]
             aliexpress_links = keyword_data.get("aliexpress", [])
+            # 🔧 키워드별 products_data 올바르게 접근
+            products_data = keyword_data.get("products_data", [])
             
-            print(f"[📋] 키워드 '{keyword}' 처리 중... (큐 데이터 확인)")
+            print(f"[📋] 키워드 '{keyword}' 처리 중... (큐 데이터: {len(products_data)}개)")
             
             # 🚀 큐에 저장된 완성된 상품 데이터 우선 사용
             for i, link in enumerate(aliexpress_links):
                 if link.strip():
-                    # 1순위: 큐의 products_data에서 해당 상품 데이터 찾기
+                    # 1순위: 키워드의 products_data에서 해당 상품 데이터 찾기
                     queue_product = None
                     for product_data in products_data:
                         if product_data.get('url') and link.strip() in product_data['url']:
@@ -672,22 +671,28 @@ try {{
             user_details = job_data.get('user_details', {})
             has_user_details = job_data.get('has_user_details', False)
             
-            # 🎯 큐의 products_data에서 generated_html 정보 추출
-            products_data = job_data.get('products_data', [])
+            # 🎯 키워드별 products_data에서 generated_html 정보 추출
             queue_html_content = ""
-            if products_data:
-                queue_html_content = "\n**큐에 저장된 상품 HTML 정보:**\n"
-                for i, product in enumerate(products_data[:3]):  # 최대 3개만 참고
-                    queue_html_content += f"상품 {i+1}: {product.get('title', 'N/A')}\n"
-                    if product.get('generated_html'):
-                        # HTML 미리보기만 추가 (전체 HTML은 너무 큼)
-                        queue_html_content += f"HTML: {product['generated_html'][:200]}...\n"
+            total_queue_products = 0
+            for keyword_data in job_data.get("keywords", []):
+                products_data = keyword_data.get("products_data", [])
+                total_queue_products += len(products_data)
+                
+                if products_data:
+                    keyword_name = keyword_data.get("name", "")
+                    queue_html_content += f"\n**키워드 '{keyword_name}' 큐 상품 HTML:**\n"
+                    for i, product in enumerate(products_data[:2]):  # 각 키워드당 최대 2개만 참고
+                        if product.get('analysis_data'):
+                            queue_html_content += f"상품 {i+1}: {product['analysis_data'].get('title', 'N/A')}\n"
+                        if product.get('generated_html'):
+                            # HTML 미리보기만 추가 (전체 HTML은 너무 큼)
+                            queue_html_content += f"HTML: {product['generated_html'][:200]}...\n"
             
             mode_text = "즉시 발행" if self.immediate_mode else "큐 처리"
             print(f"[🤖] Gemini AI로 '{title}' 콘텐츠를 생성합니다... ({mode_text})")
             print(f"[🎯] 프롬프트 타입: {prompt_type}")
             print(f"[📝] 사용자 상세 정보: {'포함' if has_user_details else '없음'}")
-            print(f"[🔗] 큐 상품 데이터: {len(products_data)}개")
+            print(f"[🔗] 전체 큐 상품 데이터: {total_queue_products}개")
             
             # 상품 정보 추가 (프롬프트에 포함할 상품 요약)
             product_summaries = []
@@ -698,7 +703,7 @@ try {{
             # 상품 정보를 포함한 상세 정보 구성
             enhanced_user_details = user_details.copy() if user_details else {}
             enhanced_user_details['product_summaries'] = product_summaries
-            enhanced_user_details['queue_products_count'] = len(products_data)
+            enhanced_user_details['queue_products_count'] = total_queue_products
             
             # 🚀 4가지 프롬프트 템플릿 시스템 활용
             prompt = PromptTemplates.get_prompt_by_type(
@@ -784,13 +789,10 @@ try {{
         """상품 카드를 콘텐츠에 삽입하고 키워드별 '관련 상품 더보기' 버튼 추가 (큐 HTML 우선 사용)"""
         final_content = content
         
-        # 큐에서 products_data 정보 추출
-        products_data = job_data.get('products_data', [])
-        
         # 🔗 알리익스프레스 키워드 링크 매핑 로드
         keyword_links = load_aliexpress_keyword_links()
         
-        print(f"[🔗] 상품 카드 삽입 시작: API 상품 {len(products)}개, 큐 상품 {len(products_data)}개")
+        print(f"[🔗] 상품 카드 삽입 시작: API 상품 {len(products)}개")
         print(f"[🔗] 키워드 링크 매핑: {len(keyword_links)}개")
         
         # 키워드별로 상품 그룹화
@@ -801,17 +803,13 @@ try {{
                 keyword_groups[keyword] = []
             keyword_groups[keyword].append((i, product))
         
-        # 키워드별 큐 상품 매핑 생성
+        # 키워드별 큐 상품 매핑 생성 (올바른 구조로 수정)
         keyword_products_map = {}
-        for product_data in products_data:
-            for keyword_info in job_data.get("keywords", []):
-                keyword = keyword_info["name"]
-                for link in keyword_info.get("aliexpress", []):
-                    if product_data.get('url') and link.strip() in product_data['url']:
-                        if keyword not in keyword_products_map:
-                            keyword_products_map[keyword] = []
-                        keyword_products_map[keyword].append(product_data)
-                        break
+        for keyword_data in job_data.get("keywords", []):
+            keyword = keyword_data["name"]
+            products_data = keyword_data.get("products_data", [])
+            if products_data:
+                keyword_products_map[keyword] = products_data
         
         # 각 키워드 그룹별로 처리
         for keyword, product_group in keyword_groups.items():
@@ -819,6 +817,8 @@ try {{
             
             # 키워드 그룹의 상품들을 순차적으로 삽입 (큐 HTML 우선 사용)
             queue_products = keyword_products_map.get(keyword, [])
+            print(f"[🔍] 키워드 '{keyword}'의 큐 상품: {len(queue_products)}개")
+            
             for idx, (original_index, product) in enumerate(product_group):
                 # 🎯 큐의 generated_html 우선 사용 (해당 상품 URL로 매칭)
                 card_html = ""
