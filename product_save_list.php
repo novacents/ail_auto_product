@@ -37,11 +37,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 .keyword-toggle:hover{background:#0056b3}
 .keyword-toggle.collapsed{background:#6c757d}
 .keyword-list{max-height:400px;overflow-y:auto;background:white;border-radius:8px;border:1px solid #e9ecef}
-.keyword-list-header{background:#f8f9fa;padding:10px 15px;border-bottom:1px solid #e9ecef;font-weight:600;color:#333;position:sticky;top:0;z-index:5;display:grid;grid-template-columns:1fr auto;gap:20px;align-items:center}
-.keyword-list-header span:last-child{text-align:right;padding-right:20px}
-.keyword-item{display:grid;grid-template-columns:1fr auto;gap:20px;align-items:center;padding:10px 15px;border-bottom:1px solid #f0f0f0;transition:background 0.2s}
-.keyword-item:hover{background:#f8f9fa;cursor:pointer}
-.keyword-item:last-child{border-bottom:none}
+.keyword-list-header{background:#f8f9fa;padding:10px 15px;border-bottom:1px solid #e9ecef;font-weight:600;color:#333;position:sticky;top:0;z-index:5;display:grid;grid-template-columns:1fr auto 1fr auto;gap:20px;align-items:center}
+.keyword-list-header span:nth-child(even){text-align:right;padding-right:20px}
+.keyword-item-row{display:grid;grid-template-columns:1fr auto 1fr auto;gap:20px;align-items:center;border-bottom:1px solid #f0f0f0}
+.keyword-item{display:flex;align-items:center;padding:10px 15px;transition:background 0.2s;cursor:pointer}
+.keyword-item:hover{background:#f8f9fa}
 .keyword-name{font-weight:500;color:#333;display:flex;align-items:center;gap:8px}
 .keyword-count{background:#007bff;color:white;padding:4px 10px;border-radius:12px;font-size:12px;font-weight:600;min-width:25px;text-align:center;margin-right:20px}
 .keyword-new-badge{background:#28a745;color:white;padding:2px 6px;border-radius:8px;font-size:9px;font-weight:600}
@@ -200,6 +200,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 </div>
 <div class="keyword-list" id="keywordList">
 <div class="keyword-list-header">
+<span>키워드명</span>
+<span>상품수</span>
 <span>키워드명</span>
 <span>상품수</span>
 </div>
@@ -411,16 +413,48 @@ function renderKeywordList(){
             break;
     }
     
-    // 목록 렌더링
-    listBody.innerHTML=keywordArray.map(item=>`
-        <div class="keyword-item" onclick="filterByKeyword('${item.keyword}')">
-            <span class="keyword-name">
-                ${item.keyword}
-                ${item.isToday?'<span class="keyword-new-badge">NEW</span>':''}
-            </span>
-            <span class="keyword-count">${item.count}</span>
-        </div>
-    `).join('');
+    // 목록을 두 열로 나누어 렌더링
+    listBody.innerHTML='';
+    
+    // 두 개씩 묶어서 처리
+    for(let i=0;i<keywordArray.length;i+=2){
+        const row=document.createElement('div');
+        row.className='keyword-item-row';
+        
+        // 첫 번째 항목
+        const item1=keywordArray[i];
+        row.innerHTML+=`
+            <div class="keyword-item" onclick="filterByKeyword('${item1.keyword}')">
+                <span class="keyword-name">
+                    ${item1.keyword}
+                    ${item1.isToday?'<span class="keyword-new-badge">NEW</span>':''}
+                </span>
+            </div>
+            <span class="keyword-count">${item1.count}</span>
+        `;
+        
+        // 두 번째 항목 (있을 경우)
+        if(i+1<keywordArray.length){
+            const item2=keywordArray[i+1];
+            row.innerHTML+=`
+                <div class="keyword-item" onclick="filterByKeyword('${item2.keyword}')">
+                    <span class="keyword-name">
+                        ${item2.keyword}
+                        ${item2.isToday?'<span class="keyword-new-badge">NEW</span>':''}
+                    </span>
+                </div>
+                <span class="keyword-count">${item2.count}</span>
+            `;
+        }else{
+            // 마지막 홀수 항목일 경우 빈 칸 추가
+            row.innerHTML+=`
+                <div></div>
+                <div></div>
+            `;
+        }
+        
+        listBody.appendChild(row);
+    }
 }
 
 function sortKeywordList(){
