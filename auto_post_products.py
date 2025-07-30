@@ -49,873 +49,664 @@ def load_aliexpress_keyword_links():
     """알리익스프레스 키워드 링크 매핑 파일 로드"""
     keyword_links_path = '/var/www/novacents/tools/aliexpress_keyword_links.json'
     try:
-        if os.path.exists(keyword_links_path):
-            with open(keyword_links_path, 'r', encoding='utf-8') as f:
-                keyword_links = json.load(f)
-                print(f"[✅] 알리익스프레스 키워드 링크 매핑 로드 성공: {len(keyword_links)}개")
-                return keyword_links
-        else:
-            print(f"[⚠️] 알리익스프레스 키워드 링크 파일이 없습니다: {keyword_links_path}")
+        with open(keyword_links_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
     except Exception as e:
-        print(f"[❌] 키워드 링크 파일 로드 실패: {e}")
-    return {}
+        print(f"키워드 링크 파일 로드 실패: {e}")
+        return {}
 
-class AliExpressPostingSystem:
-    def __init__(self):
-        self.config = None
-        self.gemini_model = None
-        self.aliexpress_client = None
-        self.immediate_mode = False
+def log_message(message):
+    """로그 메시지 출력 및 파일 저장"""
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    log_entry = f"[{timestamp}] {message}"
+    print(log_entry)
+    
+    try:
+        with open(LOG_FILE, 'a', encoding='utf-8') as f:
+            f.write(log_entry + '\n')
+    except Exception as e:
+        print(f"로그 파일 쓰기 실패: {e}")
+
+def load_env():
+    """환경 변수 로드"""
+    load_dotenv('/home/novacents/.env')
+
+def get_aliexpress_client():
+    """알리익스프레스 API 클라이언트 생성"""
+    client = iop.IopClient('https://api-sg.aliexpress.com/sync', 
+                          os.getenv('ALIEXPRESS_API_KEY'), 
+                          os.getenv('ALIEXPRESS_API_SECRET'))
+    return client
+
+def call_aliexpress_api(client, keyword, page_no=1, page_size=20):
+    """알리익스프레스 API 호출"""
+    try:
+        log_message(f"🔍 알리익스프레스 API 호출: {keyword} (페이지: {page_no})")
         
-    def load_configuration(self):
-        """환경 변수 및 API 키 로드 (알리익스프레스 전용)"""
-        print("[⚙️] 설정을 로드합니다...")
+        request = iop.IopRequest('/aliexpress/affiliate/product/query')
+        request.add_api_param('app_signature', os.getenv('ALIEXPRESS_APP_SIGNATURE'))
+        request.add_api_param('keywords', keyword)
+        request.add_api_param('category_ids', '')
+        request.add_api_param('page_no', str(page_no))
+        request.add_api_param('page_size', str(page_size))
+        request.add_api_param('platform_product_type', 'ALL')
+        request.add_api_param('ship_to_country', 'KR')
+        request.add_api_param('sort', 'SALE_PRICE_ASC') 
+        request.add_api_param('target_currency', 'KRW')
+        request.add_api_param('target_language', 'ko')
+        request.add_api_param('tracking_id', os.getenv('ALIEXPRESS_TRACKING_ID'))
         
-        # .env 파일 로드
-        env_path = "/home/novacents/.env"
-        if os.path.exists(env_path):
-            load_dotenv(env_path)
+        response = client.execute(request, os.getenv('ALIEXPRESS_ACCESS_TOKEN'))
+        return response
+    except Exception as e:
+        log_message(f"❌ 알리익스프레스 API 호출 실패: {str(e)}")
+        return None
+
+def generate_ai_content(product_data, keyword, template_type="standard"):
+    """AI 콘텐츠 생성"""
+    try:
+        genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
+        
+        # 프롬프트 템플릿 로드
+        templates = PromptTemplates()
+        
+        # 평점 정보 추출 및 형식화
+        rating_info = ""
+        if product_data.get('evaluate_rate'):
+            rating_percentage = float(product_data['evaluate_rate']) * 100
+            if rating_percentage >= 90:
+                rating_info = f"⭐⭐⭐⭐⭐ ({rating_percentage:.1f}%)"
+            elif rating_percentage >= 70:
+                rating_info = f"⭐⭐⭐⭐ ({rating_percentage:.1f}%)"
+            elif rating_percentage >= 50:
+                rating_info = f"⭐⭐⭐ ({rating_percentage:.1f}%)"
+            else:
+                rating_info = f"⭐⭐ ({rating_percentage:.1f}%)"
         else:
-            print(f"[❌] .env 파일을 찾을 수 없습니다: {env_path}")
-            return False
-            
-        self.config = {
-            # 알리익스프레스 API
-            "aliexpress_app_key": os.getenv("ALIEXPRESS_APP_KEY"),
-            "aliexpress_app_secret": os.getenv("ALIEXPRESS_APP_SECRET"),
-            
-            # Gemini API
-            "gemini_api_key": os.getenv("GEMINI_API_KEY"),
-            
-            # 워드프레스 API (novacents.com)
-            "wp_user": os.getenv("NOVACENTS_WP_USER"),
-            "wp_app_pass": os.getenv("NOVACENTS_WP_APP_PASS"),
-            "wp_url": os.getenv("NOVACENTS_WP_URL"),
-            "wp_api_base": os.getenv("NOVACENTS_WP_API_BASE"),
-            
-            # 텔레그램 봇
-            "telegram_bot_token": os.getenv("TELEGRAM_BOT_TOKEN"),
-            "telegram_chat_id": os.getenv("TELEGRAM_CHAT_ID"),
+            rating_info = "평점 정보 없음"
+        
+        # 상품 정보 준비
+        product_title = product_data.get('product_title', '제목 없음')
+        original_price = product_data.get('original_price', '0')
+        sale_price = product_data.get('sale_price', '0')
+        lastest_volume = product_data.get('lastest_volume', '0')
+        
+        # 템플릿 타입에 따른 프롬프트 선택
+        if template_type == "review":
+            prompt_text = templates.get_review_template()
+        elif template_type == "comparison":
+            prompt_text = templates.get_comparison_template()
+        elif template_type == "guide":
+            prompt_text = templates.get_guide_template()
+        else:  # standard
+            prompt_text = templates.get_standard_template()
+        
+        # 프롬프트에 실제 데이터 삽입
+        full_prompt = prompt_text.format(
+            keyword=keyword,
+            product_title=product_title,
+            original_price=original_price,
+            sale_price=sale_price,
+            rating_info=rating_info,
+            volume=lastest_volume
+        )
+        
+        log_message(f"🤖 AI 콘텐츠 생성 시작 (템플릿: {template_type})")
+        
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content(full_prompt)
+        
+        content = response.text.strip()
+        log_message(f"✅ AI 콘텐츠 생성 완료 ({len(content)}자)")
+        
+        return content
+        
+    except Exception as e:
+        log_message(f"❌ AI 콘텐츠 생성 실패: {str(e)}")
+        return f"# {keyword}\n\n{product_data.get('product_title', '제품명 없음')}에 대한 상세한 정보를 제공합니다."
+
+def create_wordpress_post(title, content, category_id, tags, product_info):
+    """워드프레스 포스트 생성"""
+    try:
+        # YoastSEO 메타 설정
+        yoast_meta = {
+            '_yoast_wpseo_focuskw': product_info.get('keyword', ''),
+            '_yoast_wpseo_metadesc': f"{product_info.get('keyword', '')}에 대한 상세한 정보와 구매 가이드를 제공합니다. 최저가 상품을 찾아보세요.",
+            '_yoast_wpseo_title': f"{title} - 노바센트",
+            '_yoast_wpseo_canonical': '',
+            '_yoast_wpseo_bctitle': '',
+            '_yoast_wpseo_opengraph_description': f"{product_info.get('keyword', '')} 구매를 위한 완벽한 가이드",
+            '_yoast_wpseo_twitter_description': f"{product_info.get('keyword', '')} 구매를 위한 완벽한 가이드"
         }
         
-        # 필수 환경 변수 확인
-        required_keys = [
-            "aliexpress_app_key", "aliexpress_app_secret",
-            "gemini_api_key", "wp_user", "wp_app_pass",
-            "wp_url", "wp_api_base"
-        ]
+        # FIFU (Featured Image from URL) 설정
+        fifu_meta = {
+            'fifu_image_url': product_info.get('image_url', ''),
+            'fifu_image_alt': title[:100]  # alt 텍스트는 100자 제한
+        }
         
-        missing_keys = [key for key in required_keys if not self.config.get(key)]
-        if missing_keys:
-            print(f"[❌] 필수 환경 변수가 누락되었습니다: {missing_keys}")
-            return False
-            
-        # Gemini API 초기화
-        try:
-            genai.configure(api_key=self.config["gemini_api_key"])
-            self.gemini_model = genai.GenerativeModel('gemini-1.5-pro-latest')
-            print("[✅] Gemini API가 성공적으로 구성되었습니다.")
-        except Exception as e:
-            print(f"[❌] Gemini API 구성 중 오류 발생: {e}")
-            return False
-            
-        # 알리익스프레스 클라이언트 초기화
-        try:
-            self.aliexpress_client = iop.IopClient(
-                'https://api-sg.aliexpress.com/sync',
-                self.config["aliexpress_app_key"], 
-                self.config["aliexpress_app_secret"]
-            )
-            print("[✅] 알리익스프레스 API 클라이언트가 성공적으로 초기화되었습니다.")
-        except Exception as e:
-            print(f"[❌] 알리익스프레스 API 초기화 중 오류 발생: {e}")
-            return False
-            
-        return True
+        # 모든 메타 데이터 통합
+        all_meta = {**yoast_meta, **fifu_meta}
         
-    def send_telegram_notification(self, message):
-        """텔레그램 알림 전송"""
-        if not self.config.get("telegram_bot_token") or not self.config.get("telegram_chat_id"):
-            return
-            
-        try:
-            url = f"https://api.telegram.org/bot{self.config['telegram_bot_token']}/sendMessage"
-            data = {
-                "chat_id": self.config["telegram_chat_id"],
-                "text": message,
-                "parse_mode": "HTML"
-            }
-            response = requests.post(url, data=data, timeout=10)
-            if response.status_code == 200:
-                print(f"[📱] 텔레그램 알림 전송 성공: {message[:50]}...")
-            else:
-                print(f"[❌] 텔레그램 알림 전송 실패: {response.status_code}")
-            # 응답 객체 명시적 삭제
-            del response
-        except Exception as e:
-            print(f"[❌] 텔레그램 알림 전송 중 오류: {e}")
-        finally:
-            # 메모리 정리
-            if 'data' in locals():
-                del data
-            
-    def log_message(self, message):
-        """로그 메시지 저장"""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        log_entry = f"[{timestamp}] {message}\n"
+        post_data = {
+            'title': title,
+            'content': content,
+            'status': 'publish',
+            'categories': [category_id],
+            'tags': [tag['id'] for tag in tags] if tags else [],
+            'meta': all_meta,
+            'slug': ''  # 빈 slug로 설정하면 WordPress가 자동 생성
+        }
         
-        try:
-            with open(LOG_FILE, "a", encoding="utf-8") as f:
-                f.write(log_entry)
-        except Exception as e:
-            print(f"[❌] 로그 저장 중 오류: {e}")
-            
-        print(message)
+        # API 요청
+        url = f"{os.getenv('NOVACENTS_WP_API_BASE')}/posts"
+        headers = {
+            'Authorization': f"Basic {os.getenv('NOVACENTS_WP_AUTH_HEADER')}",
+            'Content-Type': 'application/json'
+        }
         
-    def call_php_function(self, function_name, *args):
-        """PHP queue_utils.php 함수 호출"""
-        try:
-            # PHP 스크립트 경로
-            php_script = "/var/www/queue_utils.php"
-            
-            if not os.path.exists(php_script):
-                print(f"[❌] PHP 스크립트를 찾을 수 없습니다: {php_script}")
-                return None
-            
-            # PHP 함수 호출을 위한 wrapper 스크립트 생성
-            wrapper_code = f"""<?php
-require_once '{php_script}';
-
-$function_name = '{function_name}';
-$args = json_decode('{json.dumps(list(args), ensure_ascii=False)}', true);
-
-try {{
-    $result = call_user_func_array($function_name, $args);
-    echo json_encode($result, JSON_UNESCAPED_UNICODE);
-}} catch (Exception $e) {{
-    echo json_encode(['error' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
-}}
-?>"""
-            
-            # 임시 파일에 wrapper 스크립트 저장
-            temp_file = f"/tmp/php_wrapper_{int(time.time())}.php"
-            with open(temp_file, 'w', encoding='utf-8') as f:
-                f.write(wrapper_code)
-            
-            # PHP 실행
-            result = subprocess.run(
-                ['php', temp_file],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            
-            # 임시 파일 삭제
-            os.unlink(temp_file)
-            
-            if result.returncode == 0:
-                response = json.loads(result.stdout)
-                if isinstance(response, dict) and 'error' in response:
-                    print(f"[❌] PHP 함수 오류: {response['error']}")
-                    return None
-                return response
-            else:
-                print(f"[❌] PHP 실행 오류: {result.stderr}")
-                return None
-                
-        except Exception as e:
-            print(f"[❌] PHP 함수 호출 중 오류: {e}")
-            return None
-        finally:
-            # 메모리 정리
-            gc.collect()
+        response = requests.post(url, json=post_data, headers=headers)
         
-    def load_queue_split(self):
-        """분할 큐 시스템에서 pending 작업 로드"""
-        try:
-            print("[📋] 분할 큐 시스템에서 대기 중인 작업을 로드합니다...")
-            
-            # PHP 함수 호출: get_pending_queues_split($limit)
-            pending_jobs = self.call_php_function('get_pending_queues_split', MAX_POSTS_PER_RUN)
-            
-            if pending_jobs is None:
-                print("[❌] 분할 큐 로드 실패")
-                return []
-            
-            if not isinstance(pending_jobs, list):
-                print(f"[❌] 예상치 못한 응답 형태: {type(pending_jobs)}")
-                return []
-            
-            print(f"[📋] 분할 큐에서 {len(pending_jobs)}개의 대기 중인 작업을 발견했습니다.")
-            return pending_jobs
-            
-        except Exception as e:
-            print(f"[❌] 분할 큐 로드 중 오류 발생: {e}")
-            return []
-        finally:
-            gc.collect()
-            
-    def update_queue_status_split(self, queue_id, status, error_message=None):
-        """분할 큐 시스템에서 작업 상태 업데이트"""
-        try:
-            # PHP 함수 호출: update_queue_status_split($queue_id, $new_status, $error_message)
-            result = self.call_php_function('update_queue_status_split', queue_id, status, error_message)
-            
-            if result:
-                print(f"[✅] 큐 상태 업데이트 성공: {queue_id} -> {status}")
-                return True
-            else:
-                print(f"[❌] 큐 상태 업데이트 실패: {queue_id}")
-                return False
-                
-        except Exception as e:
-            print(f"[❌] 큐 상태 업데이트 중 오류: {e}")
-            return False
-        finally:
-            gc.collect()
-    
-    def remove_job_from_queue_split(self, queue_id):
-        """분할 큐 시스템에서 즉시 발행 후 작업 제거"""
-        try:
-            # pending에서 completed로 이동
-            success = self.update_queue_status_split(queue_id, 'completed')
-            
-            if success:
-                print(f"[🗑️] 작업 ID {queue_id}를 completed로 이동했습니다.")
-                return True
-            else:
-                print(f"[❌] 작업 제거 실패: {queue_id}")
-                return False
-                
-        except Exception as e:
-            print(f"[❌] 분할 큐에서 작업 제거 중 오류: {e}")
-            return False
-        finally:
-            gc.collect()
-    
-    # 레거시 큐 함수들 (호환성 유지)
-    def load_queue(self):
-        """레거시 큐 파일에서 pending 작업 로드 (호환성)"""
-        try:
-            if not os.path.exists(QUEUE_FILE):
-                print(f"[⚠️] 레거시 큐 파일이 없습니다. 분할 시스템을 사용합니다.")
-                return self.load_queue_split()
-                
-            with open(QUEUE_FILE, "r", encoding="utf-8") as f:
-                queue_data = json.load(f)
-                
-            # pending 상태인 작업만 필터링
-            pending_jobs = [job for job in queue_data if job.get("status") == "pending"]
-            
-            print(f"[📋] 레거시 큐에서 {len(pending_jobs)}개의 대기 중인 작업을 발견했습니다.")
-            
-            # 전체 큐 데이터는 메모리에서 제거
-            del queue_data
-            gc.collect()  # 가비지 컬렉션 강제 실행
-            
-            return pending_jobs
-            
-        except Exception as e:
-            print(f"[❌] 레거시 큐 로드 중 오류 발생: {e}")
-            print("[🔄] 분할 시스템으로 전환합니다.")
-            return self.load_queue_split()
-            
-    def save_queue(self, queue_data):
-        """레거시 큐 파일 저장 (호환성)"""
-        try:
-            with open(QUEUE_FILE, "w", encoding="utf-8") as f:
-                json.dump(queue_data, f, ensure_ascii=False, indent=4)
-            print("[✅] 레거시 큐 파일이 성공적으로 저장되었습니다.")
-        except Exception as e:
-            print(f"[❌] 레거시 큐 저장 중 오류 발생: {e}")
-            
-    def update_job_status(self, job_id, status, error_message=None):
-        """작업 상태 업데이트 (분할 시스템 우선)"""
-        # 분할 시스템 먼저 시도
-        success = self.update_queue_status_split(job_id, status, error_message)
-        
-        if success:
-            return True
-        
-        # 레거시 시스템 폴백
-        try:
-            with open(QUEUE_FILE, "r", encoding="utf-8") as f:
-                queue_data = json.load(f)
-                
-            for job in queue_data:
-                if job.get("queue_id") == job_id:
-                    job["status"] = status
-                    job["processed_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    if error_message:
-                        job["last_error"] = error_message
-                        job["attempts"] = job.get("attempts", 0) + 1
-                    break
-                    
-            self.save_queue(queue_data)
-            
-            # 메모리 정리
-            del queue_data
-            gc.collect()
-            
-        except Exception as e:
-            print(f"[❌] 레거시 작업 상태 업데이트 중 오류: {e}")
-    
-    def remove_job_from_queue(self, job_id):
-        """즉시 발행 후 큐에서 작업 제거 (분할 시스템 우선)"""
-        # 분할 시스템 먼저 시도
-        success = self.remove_job_from_queue_split(job_id)
-        
-        if success:
-            return True
-        
-        # 레거시 시스템 폴백
-        try:
-            with open(QUEUE_FILE, "r", encoding="utf-8") as f:
-                queue_data = json.load(f)
-            
-            # 해당 job_id를 가진 항목 제거
-            queue_data = [job for job in queue_data if job.get("queue_id") != job_id]
-            
-            self.save_queue(queue_data)
-            print(f"[🗑️] 레거시 큐에서 작업 ID {job_id}를 제거했습니다.")
-            
-            # 메모리 정리
-            del queue_data
-            gc.collect()
-            
-        except Exception as e:
-            print(f"[❌] 레거시 큐에서 작업 제거 중 오류: {e}")
-    
-    # 🚀 즉시 발행 전용 함수들
-    def load_immediate_job(self, temp_file):
-        """즉시 발행용 임시 파일에서 작업 로드"""
-        try:
-            print(f"[📄] 즉시 발행 임시 파일 로드: {temp_file}")
-            
-            if not os.path.exists(temp_file):
-                print(f"[❌] 임시 파일을 찾을 수 없습니다: {temp_file}")
-                return None
-                
-            with open(temp_file, "r", encoding="utf-8") as f:
-                temp_data = json.load(f)
-                
-            # 데이터 구조 검증
-            if temp_data.get('mode') != 'immediate':
-                print(f"[❌] 잘못된 임시 파일 모드: {temp_data.get('mode')}")
-                return None
-                
-            job_data = temp_data.get('job_data')
-            if not job_data:
-                print(f"[❌] 임시 파일에 작업 데이터가 없습니다.")
-                return None
-                
-            print(f"[✅] 즉시 발행 작업 로드 성공: {job_data.get('title', 'N/A')}")
-            
-            # temp_data는 더 이상 필요 없으므로 삭제
-            del temp_data
-            
-            return job_data
-            
-        except Exception as e:
-            print(f"[❌] 즉시 발행 임시 파일 로드 중 오류: {e}")
+        if response.status_code == 201:
+            post_response = response.json()
+            log_message(f"✅ 워드프레스 포스트 발행 성공: {post_response['link']}")
+            return post_response
+        else:
+            log_message(f"❌ 워드프레스 포스트 발행 실패: {response.status_code} - {response.text}")
             return None
             
-    def cleanup_temp_file(self, temp_file):
-        """임시 파일 정리 (선택사항)"""
-        try:
-            if os.path.exists(temp_file):
-                # 임시 파일을 바로 삭제하지 않고 유지 (사용자가 수동 삭제)
-                print(f"[🗂️] 임시 파일 유지: {temp_file}")
-                print(f"[💡] 수동 삭제 필요: rm {temp_file}")
-        except Exception as e:
-            print(f"[❌] 임시 파일 정리 중 오류: {e}")
-    
-    def extract_aliexpress_product_id(self, url):
-        """알리익스프레스 URL에서 상품 ID 추출"""
-        patterns = [
-            r'/item/(\d+)\.html',  # 기본 패턴
-            r'/item/(\d+)$',       # .html 없는 경우
-            r'productId=(\d+)',    # 쿼리 파라미터
-            r'/(\d+)\.html',       # 간단한 형태
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, url)
-            if match:
-                return match.group(1)
-        
+    except Exception as e:
+        log_message(f"❌ 워드프레스 포스트 생성 중 오류: {str(e)}")
         return None
-    
-    def convert_aliexpress_to_affiliate_link(self, product_url):
-        """알리익스프레스 일반 상품 링크를 어필리에이트 링크로 변환"""
-        try:
-            print(f"[🔗] 알리익스프레스 링크 변환: {product_url[:50]}...")
+
+def create_or_get_tag(tag_name):
+    """태그 생성 또는 기존 태그 가져오기"""
+    try:
+        # 기존 태그 검색
+        url = f"{os.getenv('NOVACENTS_WP_API_BASE')}/tags"
+        headers = {
+            'Authorization': f"Basic {os.getenv('NOVACENTS_WP_AUTH_HEADER')}",
+            'Content-Type': 'application/json'
+        }
+        
+        params = {'search': tag_name}
+        response = requests.get(url, headers=headers, params=params)
+        
+        if response.status_code == 200:
+            tags = response.json()
+            if tags:
+                return tags[0]  # 첫 번째 일치 태그 반환
+        
+        # 태그가 없으면 새로 생성
+        tag_data = {'name': tag_name}
+        response = requests.post(url, json=tag_data, headers=headers)
+        
+        if response.status_code == 201:
+            return response.json()
+        else:
+            log_message(f"❌ 태그 생성 실패: {tag_name}")
+            return None
             
-            # URL 정리 (쿼리 파라미터 제거)
-            clean_url = product_url.split('?')[0]
+    except Exception as e:
+        log_message(f"❌ 태그 처리 중 오류: {str(e)}")
+        return None
+
+def get_or_create_category_by_name(category_name, parent_id=0):
+    """카테고리 이름으로 ID 찾기 또는 생성"""
+    try:
+        # 기존 카테고리 검색
+        url = f"{os.getenv('NOVACENTS_WP_API_BASE')}/categories"
+        headers = {
+            'Authorization': f"Basic {os.getenv('NOVACENTS_WP_AUTH_HEADER')}",
+            'Content-Type': 'application/json'
+        }
+        
+        params = {'search': category_name, 'per_page': 100}
+        response = requests.get(url, headers=headers, params=params)
+        
+        if response.status_code == 200:
+            categories = response.json()
+            for cat in categories:
+                if cat['name'] == category_name:
+                    return cat['id']
+        
+        # 카테고리가 없으면 새로 생성
+        category_data = {
+            'name': category_name,
+            'parent': parent_id
+        }
+        
+        response = requests.post(url, json=category_data, headers=headers)
+        
+        if response.status_code == 201:
+            new_category = response.json()
+            log_message(f"✅ 새 카테고리 생성: {category_name} (ID: {new_category['id']})")
+            return new_category['id']
+        else:
+            log_message(f"❌ 카테고리 생성 실패: {category_name}")
+            return 12  # 기본 카테고리 ID
             
-            # 링크 변환 요청 생성
-            request = iop.IopRequest('aliexpress.affiliate.link.generate', 'POST')
-            request.set_simplify()
-            request.add_api_param('source_values', clean_url)
-            request.add_api_param('promotion_link_type', '0')
-            request.add_api_param('tracking_id', 'default')
-            
-            # API 실행
-            response = self.aliexpress_client.execute(request)
-            
-            # 응답 처리
-            if response.body and 'resp_result' in response.body:
-                result = response.body['resp_result'].get('result', {})
-                promotion_links = result.get('promotion_links', [])
+    except Exception as e:
+        log_message(f"❌ 카테고리 처리 중 오류: {str(e)}")
+        return 12  # 기본 카테고리 ID
+
+def load_product_queue():
+    """상품 큐 로드 (분할 큐 지원)"""
+    try:
+        # 새로운 분할 큐 시스템 확인
+        if os.path.exists(QUEUES_DIR):
+            # 가장 최근의 큐 파일 찾기
+            queue_files = glob.glob(os.path.join(QUEUES_DIR, "queue_*.json"))
+            if queue_files:
+                # 파일명의 타임스탬프로 정렬
+                queue_files.sort(reverse=True)
+                latest_queue = queue_files[0]
+                log_message(f"📁 분할 큐 파일 로드: {latest_queue}")
                 
-                if promotion_links:
-                    affiliate_link = promotion_links[0]['promotion_link']
-                    print(f"[✅] 알리익스프레스 링크 변환 성공")
-                    
-                    # 응답 데이터 정리
-                    del response
-                    del result
-                    
-                    return affiliate_link
+                with open(latest_queue, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        
+        # 레거시 큐 파일 확인
+        if os.path.exists(QUEUE_FILE):
+            log_message(f"📁 레거시 큐 파일 로드: {QUEUE_FILE}")
+            with open(QUEUE_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        
+        log_message("⚠️ 큐 파일을 찾을 수 없습니다.")
+        return []
+        
+    except Exception as e:
+        log_message(f"❌ 큐 파일 로드 실패: {str(e)}")
+        return []
+
+def save_product_queue(queue, queue_file_path=None):
+    """상품 큐 저장"""
+    try:
+        # 큐 파일 경로 결정
+        if queue_file_path:
+            file_path = queue_file_path
+        else:
+            # 분할 큐 파일이 있으면 해당 파일 사용, 없으면 레거시 파일 사용
+            if os.path.exists(QUEUES_DIR):
+                queue_files = glob.glob(os.path.join(QUEUES_DIR, "queue_*.json"))
+                if queue_files:
+                    queue_files.sort(reverse=True)
+                    file_path = queue_files[0]
                 else:
-                    print(f"[⚠️] 알리익스프레스 링크 변환 응답에 링크가 없음")
-                    return None
+                    file_path = QUEUE_FILE
             else:
-                print(f"[⚠️] 알리익스프레스 API 응답 오류")
-                return None
+                file_path = QUEUE_FILE
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(queue, f, ensure_ascii=False, indent=2)
+        
+        log_message(f"💾 큐 파일 저장 완료: {file_path}")
+        
+    except Exception as e:
+        log_message(f"❌ 큐 파일 저장 실패: {str(e)}")
+
+def log_published_product(product_info, wordpress_url):
+    """발행된 상품 로그 기록"""
+    try:
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        log_entry = f"[{timestamp}] {product_info.get('keyword', 'Unknown')} - {wordpress_url}\n"
+        
+        with open(PUBLISHED_LOG_FILE, 'a', encoding='utf-8') as f:
+            f.write(log_entry)
+            
+    except Exception as e:
+        log_message(f"❌ 발행 로그 기록 실패: {str(e)}")
+
+def extract_product_keywords(title):
+    """상품 제목에서 키워드 추출"""
+    # 한글, 영문, 숫자만 추출하고 특수문자 제거
+    import re
+    keywords = re.findall(r'[가-힣a-zA-Z0-9]+', title)
+    # 2글자 이상인 키워드만 선택
+    meaningful_keywords = [k for k in keywords if len(k) >= 2]
+    return meaningful_keywords[:5]  # 최대 5개
+
+def clean_title_for_wordpress(title):
+    """워드프레스용 제목 정리"""
+    # 특수문자 제거 및 길이 제한
+    import re
+    # 불필요한 특수문자 제거
+    cleaned = re.sub(r'[^\w\s가-힣-]', '', title)
+    # 연속 공백 제거
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    # 길이 제한 (70자)
+    if len(cleaned) > 70:
+        cleaned = cleaned[:67] + "..."
+    return cleaned
+
+def format_rating_display(evaluate_rate):
+    """평점 정보를 별점 형식으로 변환"""
+    try:
+        if not evaluate_rate or str(evaluate_rate) in ['0', '0.0', '']:
+            return "평점 정보 없음"
+        
+        rating_float = float(evaluate_rate) * 100
+        
+        if rating_float >= 90:
+            return f"⭐⭐⭐⭐⭐ ({rating_float:.1f}%)"
+        elif rating_float >= 70:
+            return f"⭐⭐⭐⭐ ({rating_float:.1f}%)"
+        elif rating_float >= 50:
+            return f"⭐⭐⭐ ({rating_float:.1f}%)"
+        else:
+            return f"⭐⭐ ({rating_float:.1f}%)"
+    except:
+        log_message("❌ 평점 변환 중 오류 발생")
+        return "평점 정보 없음"
+
+def enhance_product_data_with_rating(product):
+    """상품 데이터에 평점 정보 강화"""
+    try:
+        # 원본 평점 데이터 보존
+        rating_raw = product.get('evaluate_rate', 0)
+        
+        # 평점이 문자열로 된 경우 처리
+        if isinstance(rating_raw, str):
+            try:
+                rating_raw = float(rating_raw)
+            except:
+                rating_raw = 0
                 
-        except Exception as e:
-            print(f"[❌] 알리익스프레스 링크 변환 중 오류: {e}")
-            return None
-        finally:
-            # 메모리 정리
-            if 'request' in locals():
-                del request
-            if 'response' in locals():
-                del response
-            gc.collect()
-    
-    def get_aliexpress_product_details(self, product_id):
-        """알리익스프레스 상품 상세 정보 조회 (평점 정보 전달 개선)"""
-        try:
-            # 🎯 API 호출을 target_language=ko, target_currency=KRW로 설정하여 한국어/원화 정보 가져오기
-            request = iop.IopRequest('aliexpress.affiliate.productdetail.get', 'GET')
-            request.set_simplify()
-            request.add_api_param('product_ids', str(product_id))
-            request.add_api_param('tracking_id', 'default')
-            # 🔧 핵심 추가: 한국어 상품명과 KRW 가격을 위한 파라미터
-            request.add_api_param('target_language', 'ko')
-            request.add_api_param('target_currency', 'KRW')
-            request.add_api_param('country', 'KR')
-            
-            response = self.aliexpress_client.execute(request)
-            
-            if response.body and 'resp_result' in response.body:
-                result = response.body['resp_result'].get('result', {})
-                products = result.get('products', [])
-                
-                if products:
-                    product = products[0]
-                    
-                    # 🎯 API에서 직접 KRW 가격 가져오기 (환율 변환 없이)
-                    # target_sale_price_app 또는 target_sale_price 사용
-                    krw_price_value = product.get('target_sale_price_app') or product.get('target_sale_price', 0)
-                    try:
-                        krw_price = int(float(krw_price_value))
-                        price_display = f"₩{krw_price:,}"
-                    except:
-                        # 폴백: USD를 KRW로 변환
-                        usd_price = float(product.get('target_original_price', 0))
-                        krw_price = int(usd_price * 1400)
-                        price_display = f"₩{krw_price:,}"
-                    
-                    # 🔧 평점 정보 처리 개선 - 원본 데이터와 표시용 데이터 분리
-                    rating_value = product.get("evaluate_rate", "0")
-                    rating_raw = rating_value  # 원본 데이터 보존
-                    rating_float = 0
-                    
-                    try:
-                        rating_float = float(rating_value) if rating_value else 0
-                        
-                        # 평점이 0이거나 매우 낮은 경우 기본값 설정
-                        if rating_float <= 0:
-                            # 다른 평점 필드들도 시도
-                            alt_rating = product.get("avg_evaluation_rating", "0")
-                            if alt_rating and str(alt_rating) != "0":
-                                rating_float = float(alt_rating)
-                            else:
-                                # 기본 평점 설정 (70-85% 범위)
-                                rating_float = 75.0
-                        
-                        # 표시용 평점 생성
-                        if rating_float >= 90:
-                            rating_display = f"⭐⭐⭐⭐⭐ ({rating_float}%)"
-                        elif rating_float >= 70:
-                            rating_display = f"⭐⭐⭐⭐ ({rating_float}%)"
-                        elif rating_float >= 50:
-                            rating_display = f"⭐⭐⭐ ({rating_float}%)"
-                        elif rating_float >= 30:
-                            rating_display = f"⭐⭐ ({rating_float}%)"
-                        else:
-                            rating_display = f"⭐⭐⭐⭐ (75%)"  # 기본값
-                    except:
-                        rating_float = 75.0
-                        rating_display = "⭐⭐⭐⭐ (75%)"
-                    
-                    # 판매량 정보 처리
-                    volume = product.get("lastest_volume", "0")
-                    try:
-                        volume_int = int(str(volume))
-                        volume_display = f"{volume_int}개 판매" if volume_int > 0 else "판매량 정보 없음"
-                    except:
-                        volume_display = "판매량 정보 없음"
-                    
-                    # 🎯 product_title에서 한국어 상품명 가져오기 (API가 한국어로 변환해서 제공)
-                    korean_title = product.get("product_title", "상품명 없음")
-                    
-                    formatted_product = {
-                        "product_id": product_id,
-                        "title": korean_title,  # 🎯 한국어 상품명 사용
-                        "price": price_display,  # 🎯 KRW 가격 사용
-                        "image_url": product.get("product_main_image_url", ""),
-                        "rating_display": rating_display,
-                        "rating_raw": rating_raw,  # 🔧 원본 평점 데이터 추가
-                        "rating_float": rating_float,  # 🔧 숫자형 평점 추가
-                        "lastest_volume": volume_display
-                    }
-                    
-                    print(f"[✅] 상품 정보 조회 성공 (한국어): {formatted_product['title'][:50]}...")
-                    print(f"[📊] 평점 정보: 원본={rating_raw}, 표시={rating_display}")
-                    
-                    # 응답 데이터 정리
-                    del product
-                    del products
-                    del result
-                    del response
-                    
-                    return formatted_product
-            
-            print(f"[⚠️] 상품 정보를 찾을 수 없습니다")
-            return None
-            
-        except Exception as e:
-            print(f"[❌] 상품 정보 조회 중 오류: {e}")
-            return None
-        finally:
-            # 메모리 정리
-            if 'request' in locals():
-                del request
-            if 'response' in locals():
-                del response
-            gc.collect()
-    
-    def process_aliexpress_products(self, job_data):
-        """알리익스프레스 상품 처리 (메모리 최적화)"""
-        print("[🌏] 알리익스프레스 상품 처리를 시작합니다...")
+        product['rating_raw'] = rating_raw
         
-        processed_products = []
+        # 평점 백분율 계산
+        if rating_raw and rating_raw > 0:
+            if rating_raw <= 1:  # 0~1 범위인 경우 (예: 0.75)
+                rating_float = rating_raw * 100
+            else:  # 이미 백분율인 경우 (예: 75)
+                rating_float = rating_raw
+        else:
+            rating_float = 0
+            
+        product['rating_float'] = rating_float
         
-        for keyword_data in job_data["keywords"]:
-            keyword = keyword_data["name"]
-            aliexpress_links = keyword_data.get("aliexpress", [])
+        # 별점 표시 생성
+        if rating_float > 0:
+            if rating_float >= 90:
+                rating_display = f"⭐⭐⭐⭐⭐ ({rating_float:.1f}%)"
+            elif rating_float >= 70:
+                rating_display = f"⭐⭐⭐⭐ ({rating_float:.1f}%)"
+            elif rating_float >= 50:
+                rating_display = f"⭐⭐⭐ ({rating_float:.1f}%)"
+            else:
+                rating_display = f"⭐⭐ ({rating_float:.1f}%)"
+        else:
+            rating_display = "평점 정보 없음"
             
-            print(f"[📋] 키워드 '{keyword}' 처리 중...")
-            
-            for link in aliexpress_links:
-                if link.strip():
-                    # 링크를 어필리에이트 링크로 변환
-                    affiliate_link = self.convert_aliexpress_to_affiliate_link(link.strip())
-                    
-                    if affiliate_link:
-                        # 상품 ID 추출
-                        product_id = self.extract_aliexpress_product_id(link.strip())
-                        
-                        if product_id:
-                            # 상품 상세 정보 조회
-                            product_info = self.get_aliexpress_product_details(product_id)
-                            
-                            if product_info:
-                                product_info["affiliate_url"] = affiliate_link
-                                product_info["keyword"] = keyword
-                                processed_products.append(product_info)
-                        else:
-                            # 상품 ID를 찾을 수 없는 경우 기본 정보만
-                            basic_product = {
-                                "title": f"{keyword} 관련 상품",
-                                "price": "가격 확인 필요",
-                                "image_url": "",
-                                "rating_display": "⭐⭐⭐⭐ (75%)",
-                                "rating_raw": "75",
-                                "rating_float": 75.0,
-                                "lastest_volume": "판매량 정보 없음",
-                                "affiliate_url": affiliate_link,
-                                "keyword": keyword
-                            }
-                            processed_products.append(basic_product)
-                    
-                    # API 호출 간 딜레이
-                    time.sleep(2)
-                    
-                    # 주기적 메모리 정리
-                    gc.collect()
+        product['rating_display'] = rating_display
         
-        print(f"[✅] 알리익스프레스 상품 처리 완료: {len(processed_products)}개")
-        return processed_products
-    
-    def generate_content_with_gemini(self, job_data, products):
-        """🚀 Gemini API로 4가지 프롬프트 템플릿 기반 블로그 콘텐츠 생성 (메모리 최적화)"""
-        try:
-            # 프롬프트 타입 추출 (기본값: essential_items)
-            prompt_type = job_data.get('prompt_type', 'essential_items')
-            title = job_data.get('title', '')
-            
-            # 키워드 정보 정리
-            keywords = [kw["name"] for kw in job_data.get("keywords", [])]
-            
-            # 사용자 상세 정보 추출
-            user_details = job_data.get('user_details', {})
-            has_user_details = job_data.get('has_user_details', False)
-            
-            # 🎯 큐의 products_data에서 generated_html 정보 추출
-            products_data = job_data.get('products_data', [])
-            queue_html_content = ""
-            if products_data:
-                queue_html_content = "\n**큐에 저장된 상품 HTML 정보:**\n"
-                for i, product in enumerate(products_data[:3]):  # 최대 3개만 참고
-                    queue_html_content += f"상품 {i+1}: {product.get('title', 'N/A')}\n"
-                    if product.get('generated_html'):
-                        # HTML 미리보기만 추가 (전체 HTML은 너무 큼)
-                        queue_html_content += f"HTML: {product['generated_html'][:200]}...\n"
-            
-            mode_text = "즉시 발행" if self.immediate_mode else "큐 처리"
-            print(f"[🤖] Gemini AI로 '{title}' 콘텐츠를 생성합니다... ({mode_text})")
-            print(f"[🎯] 프롬프트 타입: {prompt_type}")
-            print(f"[📝] 사용자 상세 정보: {'포함' if has_user_details else '없음'}")
-            print(f"[🔗] 큐 상품 데이터: {len(products_data)}개")
-            
-            # 상품 정보 추가 (프롬프트에 포함할 상품 요약)
-            product_summaries = []
-            for product in products:
-                summary = f"- {product['title']} (가격: {product['price']}, 평점: {product['rating_display']}, 판매량: {product['lastest_volume']})"
-                product_summaries.append(summary)
-            
-            # 상품 정보를 포함한 상세 정보 구성
-            enhanced_user_details = user_details.copy() if user_details else {}
-            enhanced_user_details['product_summaries'] = product_summaries
-            enhanced_user_details['queue_products_count'] = len(products_data)
-            
-            # 🚀 4가지 프롬프트 템플릿 시스템 활용
-            prompt = PromptTemplates.get_prompt_by_type(
-                prompt_type=prompt_type,
-                title=title,
-                keywords=keywords,
-                user_details=enhanced_user_details
-            )
-            
-            # 상품 정보를 프롬프트에 추가
-            if product_summaries:
-                prompt += f"\n\n**알리익스프레스 상품 정보:**\n{chr(10).join(product_summaries)}\n\n"
-            
-            # 큐 HTML 정보 추가
-            if queue_html_content:
-                prompt += f"\n{queue_html_content}\n"
-            
-            # 프롬프트 마지막에 공통 요구사항 추가
-            prompt += """
-### ⚠️ 중요한 공통 요구사항 ###
-
-**HTML 포맷팅 필수:**
-- 마크다운 문법(## ###) 사용 절대 금지
-- 반드시 HTML 태그 사용: <h2>, <h3>, <p>
-- 글 길이: 2500-3000자 (충분한 정보 제공)
-- 이모지 적절 활용으로 가독성 향상
-
-**SEO 최적화 필수:**
-- 키워드 자연스럽게 3-5회 배치
-- 키워드 밀도 2-3% 유지
-- 제목 태그와 소제목 활용
-- 구조화된 정보 제공
-
-**큐 데이터 활용:**
-- 위에 제공된 큐의 상품 HTML 정보를 참고하여 내용 작성
-- 상품 카드는 별도로 삽입되므로 본문에서는 자연스러운 언급만
-
-**절대 금지사항:**
-- 상품 링크나 버튼 HTML 코드 포함 금지 (별도 삽입)
-- 허위 정보나 과장된 표현 금지
-- 다른 쇼핑몰 언급 금지 (알리익스프레스 전용)
-
-위 조건을 모두 준수하여 높은 품질의 블로그 글을 작성해주세요.
-"""
-            
-            # Gemini API 호출
-            response = self.gemini_model.generate_content(prompt)
-            base_content = response.text
-            
-            # 응답 객체 즉시 삭제
-            del response
-            
-            if not base_content or len(base_content.strip()) < 1500:
-                print("[❌] Gemini가 충분한 길이의 콘텐츠를 생성하지 못했습니다.")
-                return None
-            
-            # HTML 코드 블록 표시 제거
-            base_content = base_content.replace('```html', '').replace('```', '').strip()
-            
-            # 본문 글자 크기 18px 적용
-            base_content = f'<div style="font-size: 18px; line-height: 1.6;">{base_content}</div>'
-            
-            # 상품 카드 삽입 (큐 데이터 우선 활용)
-            final_content = self.insert_product_cards(base_content, products, job_data)
-            
-            # 불필요한 변수 정리
-            del prompt
-            del enhanced_user_details
-            del product_summaries
-            gc.collect()
-            
-            print(f"[✅] Gemini AI가 {len(base_content)}자의 {prompt_type} 스타일 콘텐츠를 생성했습니다.")
-            return final_content
-            
-        except Exception as e:
-            print(f"[❌] Gemini 콘텐츠 생성 중 오류: {e}")
-            return None
-        finally:
-            # 메모리 정리
-            gc.collect()
-    
-    def insert_product_cards(self, content, products, job_data):
-        """상품 카드를 콘텐츠에 삽입하고 키워드별 '관련 상품 더보기' 버튼 개선된 배치"""
-        final_content = content
+        # 디버그 로그
+        log_message(f"📊 평점 정보 처리: {rating_raw} → {rating_float}% → {rating_display}")
         
-        # 큐에서 products_data 정보 추출
-        products_data = job_data.get('products_data', [])
+        return product
         
-        # 🔗 알리익스프레스 키워드 링크 매핑 로드
+    except Exception as e:
+        log_message(f"❌ 평점 정보 처리 중 오류: {str(e)}")
+        product['rating_display'] = "평점 정보 없음"
+        return product
+
+def process_queue():
+    """큐 처리 메인 함수"""
+    try:
+        log_message("🚀 상품 큐 처리 시작")
+        
+        # 환경 변수 로드
+        load_env()
+        
+        # 큐 로드
+        queue = load_product_queue()
+        if not queue:
+            log_message("📭 처리할 상품이 없습니다.")
+            return
+        
+        log_message(f"📋 큐에서 {len(queue)}개 상품 발견")
+        
+        # 발행할 상품 선택 (큐에서 첫 번째)
+        products_to_publish = queue[:MAX_POSTS_PER_RUN]
+        remaining_queue = queue[MAX_POSTS_PER_RUN:]
+        
+        # 키워드 링크 매핑 로드
         keyword_links = load_aliexpress_keyword_links()
         
-        print(f"[🔗] 상품 카드 삽입 시작: API 상품 {len(products)}개, 큐 상품 {len(products_data)}개")
-        print(f"[🔗] 키워드 링크 매핑: {len(keyword_links)}개")
-        
-        # 키워드별로 상품 그룹화
-        keyword_groups = {}
-        for i, product in enumerate(products):
-            keyword = product.get('keyword', '')
-            if keyword not in keyword_groups:
-                keyword_groups[keyword] = []
-            keyword_groups[keyword].append((i, product))
-        
-        # 🔧 키워드 그룹별 처리 개선
-        keyword_group_positions = {}  # 각 키워드 그룹의 마지막 카드 위치 추적
-        
-        for keyword, product_group in keyword_groups.items():
-            print(f"[📋] 키워드 '{keyword}' 그룹 처리: {len(product_group)}개 상품")
-            
-            last_card_position = len(final_content)  # 마지막 카드 위치 초기화
-            
-            # 키워드 그룹의 상품들을 순차적으로 삽입
-            for idx, (original_index, product) in enumerate(product_group):
-                # 🎯 큐의 generated_html 우선 사용
-                card_html = ""
-                if original_index < len(products_data) and products_data[original_index].get('generated_html'):
-                    card_html = products_data[original_index]['generated_html']
-                    print(f"[✅] 큐의 generated_html 사용: {keyword} - 상품 {idx+1}")
+        for product in products_to_publish:
+            try:
+                log_message(f"📦 상품 처리 시작: {product.get('keyword', 'Unknown')}")
+                
+                # 상품 데이터 평점 정보 강화
+                product = enhance_product_data_with_rating(product)
+                
+                # AI 콘텐츠 생성
+                template_type = product.get('template_type', 'standard')
+                content = generate_ai_content(product, product['keyword'], template_type)
+                
+                # 제목 정리
+                original_title = product.get('product_title', product['keyword'])
+                clean_title = clean_title_for_wordpress(original_title)
+                
+                # 카테고리 처리
+                category_name = product.get('category', '우리잇템')
+                if category_name in ['Today\'s Pick', 'today\'s pick', 'Today Pick']:
+                    category_id = 354
+                elif category_name in ['기발한 잡화점', '기발한잡화점']:
+                    category_id = 355
+                elif category_name in ['스마트 리빙', '스마트리빙']:
+                    category_id = 356
                 else:
-                    # 폴백: 기존 방식으로 카드 생성
-                    card_html = self.generate_product_card_html(product)
-                    print(f"[⚠️] API 데이터로 카드 생성: {keyword} - 상품 {idx+1}")
+                    category_id = 12  # 기본 '우리잇템' 카테고리
                 
-                # 키워드가 포함된 섹션 뒤에 카드 삽입
-                card_inserted = False
-                current_position = len(final_content)
+                # 태그 생성
+                tag_keywords = extract_product_keywords(original_title)
+                tags = []
+                for tag_name in tag_keywords:
+                    tag = create_or_get_tag(tag_name)
+                    if tag:
+                        tags.append(tag)
                 
-                if keyword:
-                    # 1순위: 키워드가 포함된 H2/H3 섹션의 첫 번째 문단 다음
-                    pattern1 = rf'(<h[2-3][^>]*>[^<]*{re.escape(keyword)}[^<]*</h[2-3]>[^<]*<p[^>]*>.*?</p>)'
-                    match1 = re.search(pattern1, final_content, re.IGNORECASE | re.DOTALL)
-                    if match1:
-                        insert_pos = match1.end()
-                        final_content = final_content[:insert_pos] + card_html + final_content[insert_pos:]
-                        last_card_position = insert_pos + len(card_html)
-                        print(f"[✅] '{keyword}' 상품 카드를 H2/H3 섹션 다음에 삽입")
-                        card_inserted = True
+                # 어필리에이트 링크 처리
+                affiliate_url = product.get('affiliate_url', '')
+                if not affiliate_url and product.get('keyword') in keyword_links:
+                    affiliate_url = keyword_links[product['keyword']]
+                    product['affiliate_url'] = affiliate_url
+                    log_message(f"🔗 키워드 링크 매핑 적용: {product['keyword']}")
+                
+                # 워드프레스 포스트 생성
+                post_result = create_wordpress_post(
+                    title=clean_title,
+                    content=content,
+                    category_id=category_id,
+                    tags=tags,
+                    product_info=product
+                )
+                
+                if post_result:
+                    # 발행 성공 로그
+                    log_published_product(product, post_result['link'])
+                    log_message(f"✅ 상품 발행 완료: {post_result['link']}")
                     
-                    # 2순위: 키워드가 언급된 첫 번째 문단 다음
-                    elif re.search(rf'(<p[^>]*>[^<]*{re.escape(keyword)}[^<]*</p>)', final_content, re.IGNORECASE | re.DOTALL):
-                        match2 = re.search(rf'(<p[^>]*>[^<]*{re.escape(keyword)}[^<]*</p>)', final_content, re.IGNORECASE | re.DOTALL)
-                        insert_pos = match2.end()
-                        final_content = final_content[:insert_pos] + card_html + final_content[insert_pos:]
-                        last_card_position = insert_pos + len(card_html)
-                        print(f"[✅] '{keyword}' 상품 카드를 키워드 언급 문단 다음에 삽입")
-                        card_inserted = True
-                
-                # 3순위: 첫 번째 H2 섹션 다음
-                if not card_inserted:
-                    pattern3 = r'(<h2[^>]*>.*?</h2>[^<]*<p[^>]*>.*?</p>)'
-                    match3 = re.search(pattern3, final_content, re.IGNORECASE | re.DOTALL)
-                    if match3:
-                        insert_pos = match3.end()
-                        final_content = final_content[:insert_pos] + card_html + final_content[insert_pos:]
-                        last_card_position = insert_pos + len(card_html)
-                        print(f"[✅] 상품 카드를 첫 번째 H2 섹션 다음에 삽입")
-                        card_inserted = True
-                
-                # 4순위: 콘텐츠 중간에 삽입
-                if not card_inserted:
-                    content_parts = final_content.split('</p>')
-                    if len(content_parts) > 3:
-                        mid_point = len(content_parts) // 2
-                        content_parts[mid_point] += card_html
-                        final_content = '</p>'.join(content_parts)
-                        last_card_position = len(final_content)
-                        print(f"[✅] 상품 카드를 콘텐츠 중간에 삽입")
-            
-            # 🔧 키워드 그룹별 '관련 상품 더보기' 버튼 개선된 배치
-            if keyword and keyword in keyword_links:
-                more_products_html = f'''
-<div style="text-align: center; margin: 30px 0; padding: 20px 0;">
-    <a href="{keyword_links[keyword]}" target="_blank" rel="noopener noreferrer nofollow" style="display: inline-block; width: 100%; max-width: 800px;">
-        <picture>
-            <source media="(min-width: 1600px)" srcset="https://novacents.com/tools/images/aliexpress-more-products-pc.png">
-            <img src="https://novacents.com/tools/images/aliexpress-more-products-mobile.png" alt="알리익스프레스 {keyword} 관련 상품 더보기" style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
-        </picture>
-    </a>
-</div>'''
-                
-                # 🎯 키워드 그룹의 마지막 상품 카드 바로 다음에 삽입
-                final_content = final_content[:last_card_position] + more_products_html + final_content[last_card_position:]
-                print(f"[🎯] '{keyword}' 키워드에 알리익스프레스 '관련 상품 더보기' 버튼 추가 (위치: {last_card_position})")
-            elif keyword:
-                print(f"[⚠️] '{keyword}' 키워드에 대한 알리익스프레스 링크 매핑이 없음")
+                    # 메모리 정리
+                    del content
+                    gc.collect()
+                    
+                    # 발행 간격 대기
+                    if len(products_to_publish) > 1:
+                        log_message(f"⏳ {POST_DELAY_SECONDS}초 대기 중...")
+                        time.sleep(POST_DELAY_SECONDS)
+                else:
+                    log_message(f"❌ 상품 발행 실패: {product.get('keyword', 'Unknown')}")
+                    # 실패한 상품은 큐 뒤로 이동
+                    remaining_queue.append(product)
+                    
+            except Exception as e:
+                log_message(f"❌ 상품 처리 중 오류: {str(e)}")
+                log_message(f"상품 정보: {product.get('keyword', 'Unknown')}")
+                # 오류 발생한 상품도 큐 뒤로 이동
+                remaining_queue.append(product)
         
-        return final_content
-    
-    def generate_product_card_html(self, product):
-        """개별 상품 카드 HTML 생성 (평점 정보 전달 개선)"""
-        # 상품 이미지 처리
-        image_html = ""
-        if product.get('image_url') and product['image_url'].startswith('http'):
-            image_html = f'''
+        # 큐 업데이트
+        save_product_queue(remaining_queue)
+        log_message(f"📋 남은 큐 항목: {len(remaining_queue)}개")
+        
+        log_message("🎉 상품 큐 처리 완료")
+        
+    except Exception as e:
+        log_message(f"❌ 큐 처리 중 치명적 오류: {str(e)}")
+        log_message(f"오류 세부사항: {traceback.format_exc()}")
+
+def process_immediate_publish(queue_data):
+    """즉시 발행 처리 함수"""
+    try:
+        log_message("🚀 즉시 발행 처리 시작")
+        
+        # 환경 변수 로드
+        load_env()
+        
+        # 키워드 링크 매핑 로드
+        keyword_links = load_aliexpress_keyword_links()
+        
+        published_results = []
+        
+        for product in queue_data:
+            try:
+                log_message(f"📦 즉시 발행 상품 처리: {product.get('keyword', 'Unknown')}")
+                
+                # 상품 데이터 평점 정보 강화
+                product = enhance_product_data_with_rating(product)
+                
+                # AI 콘텐츠 생성
+                template_type = product.get('template_type', 'standard')
+                content = generate_ai_content(product, product['keyword'], template_type)
+                
+                # 제목 정리
+                original_title = product.get('product_title', product['keyword'])
+                clean_title = clean_title_for_wordpress(original_title)
+                
+                # 카테고리 처리
+                category_name = product.get('category', '우리잇템')
+                if category_name in ['Today\'s Pick', 'today\'s pick', 'Today Pick']:
+                    category_id = 354
+                elif category_name in ['기발한 잡화점', '기발한잡화점']:
+                    category_id = 355
+                elif category_name in ['스마트 리빙', '스마트리빙']:
+                    category_id = 356
+                else:
+                    category_id = 12  # 기본 '우리잇템' 카테고리
+                
+                # 태그 생성
+                tag_keywords = extract_product_keywords(original_title)
+                tags = []
+                for tag_name in tag_keywords:
+                    tag = create_or_get_tag(tag_name)
+                    if tag:
+                        tags.append(tag)
+                
+                # 어필리에이트 링크 처리
+                affiliate_url = product.get('affiliate_url', '')
+                if not affiliate_url and product.get('keyword') in keyword_links:
+                    affiliate_url = keyword_links[product['keyword']]
+                    product['affiliate_url'] = affiliate_url
+                    log_message(f"🔗 키워드 링크 매핑 적용: {product['keyword']}")
+                
+                # 워드프레스 포스트 생성
+                post_result = create_wordpress_post(
+                    title=clean_title,
+                    content=content,
+                    category_id=category_id,
+                    tags=tags,
+                    product_info=product
+                )
+                
+                if post_result:
+                    # 발행 성공
+                    published_results.append({
+                        'success': True,
+                        'keyword': product.get('keyword', 'Unknown'),
+                        'url': post_result['link'],
+                        'title': clean_title
+                    })
+                    
+                    # 발행 성공 로그
+                    log_published_product(product, post_result['link'])
+                    log_message(f"✅ 즉시 발행 완료: {post_result['link']}")
+                    
+                else:
+                    # 발행 실패
+                    published_results.append({
+                        'success': False,
+                        'keyword': product.get('keyword', 'Unknown'),
+                        'error': '워드프레스 포스트 생성 실패'
+                    })
+                    log_message(f"❌ 즉시 발행 실패: {product.get('keyword', 'Unknown')}")
+                
+                # 메모리 정리
+                del content
+                gc.collect()
+                
+            except Exception as e:
+                # 개별 상품 처리 오류
+                published_results.append({
+                    'success': False,
+                    'keyword': product.get('keyword', 'Unknown'),
+                    'error': str(e)
+                })
+                log_message(f"❌ 즉시 발행 상품 처리 오류: {str(e)}")
+        
+        log_message("🎉 즉시 발행 처리 완료")
+        return published_results
+        
+    except Exception as e:
+        log_message(f"❌ 즉시 발행 처리 중 치명적 오류: {str(e)}")
+        return [{'success': False, 'error': f'치명적 오류: {str(e)}'}]
+
+def generate_product_html(product):
+    """상품 정보를 HTML로 변환 (발행용)"""
+    try:
+        # 상품 기본 정보
+        title = product.get('product_title', '제목 없음')
+        image_url = product.get('product_main_image_url', product.get('image_url', ''))
+        price = product.get('target_sale_price', product.get('sale_price', '0'))
+        affiliate_url = product.get('affiliate_url', '#')
+        
+        # 가격 정보 처리
+        try:
+            if isinstance(price, str):
+                price_display = f"₩ {int(float(price.replace(',', '').replace('₩', '').strip())):,}"
+            else:
+                price_display = f"₩ {int(price):,}"
+        except:
+            price_display = "가격 문의"
+        
+        # 썸네일 이미지 HTML
+        thumbnail_html = ""
+        if image_url:
+            thumbnail_html = f'''
             <div style="text-align: center; margin-bottom: 15px;">
                 <img src="{product['image_url']}" alt="{product['title']}" style="max-width: 400px; height: auto; border-radius: 8px; border: 1px solid #ddd;">
             </div>'''
         
-        # 🔧 평점 표시 개선 - 원본 데이터가 있으면 우선 사용
+        # 🔧 평점 표시 개선 - 큐 파일에 저장된 rating_display를 우선 사용
         rating_display = product.get('rating_display', '⭐⭐⭐⭐ (75%)')
-        if product.get('rating_raw') and str(product.get('rating_raw')) != '0':
-            try:
-                rating_float = float(product.get('rating_float', 75.0))
-                if rating_float >= 90:
-                    rating_display = f"⭐⭐⭐⭐⭐ ({rating_float}%)"
-                elif rating_float >= 70:
-                    rating_display = f"⭐⭐⭐⭐ ({rating_float}%)"
-                elif rating_float >= 50:
-                    rating_display = f"⭐⭐⭐ ({rating_float}%)"
-                else:
-                    rating_display = f"⭐⭐⭐⭐ (75%)"
-            except:
-                rating_display = "⭐⭐⭐⭐ (75%)"
+        
+        # rating_display가 이미 정확히 저장되어 있다면 그대로 사용
+        # 만약 rating_display가 기본값이거나 없다면 계산 로직 사용
+        if rating_display == '⭐⭐⭐⭐ (75%)' or not rating_display or rating_display == '⭐⭐⭐⭐ (75.0%)':
+            if product.get('rating_raw') and str(product.get('rating_raw')) != '0':
+                try:
+                    rating_float = float(product.get('rating_float', 75.0))
+                    if rating_float >= 90:
+                        rating_display = f"⭐⭐⭐⭐⭐ ({rating_float}%)"
+                    elif rating_float >= 70:
+                        rating_display = f"⭐⭐⭐⭐ ({rating_float}%)"
+                    elif rating_float >= 50:
+                        rating_display = f"⭐⭐⭐ ({rating_float}%)"
+                    else:
+                        rating_display = f"⭐⭐⭐⭐ (75%)"
+                except:
+                    rating_display = "⭐⭐⭐⭐ (75%)"
         
         # 어필리에이트 버튼 HTML (반응형 - 1600px 기준)
         button_html = f'''
@@ -928,732 +719,92 @@ try {{
             </a>
         </div>'''
         
-        return f'''
-<div style="border: 2px solid #eee; padding: 25px; margin: 25px 0; border-radius: 15px; background: #f9f9f9; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
-    <h3 style="color: #333; margin-bottom: 15px; font-size: 1.3em;">{product['title']}</h3>
-    {image_html}
-    <p style="color: #e74c3c; font-size: 1.2em; font-weight: bold; margin: 15px 0;"><strong>💰 가격: {product['price']}</strong></p>
-    <p style="margin: 10px 0;"><strong>⭐ 평점: {rating_display}</strong></p>
-    <p style="margin: 10px 0;"><strong>📦 판매량: {product['lastest_volume']}</strong></p>
-    {button_html}
-</div>'''
-    
-    def generate_focus_keyphrase_with_gemini(self, title, content, keywords):
-        """🎯 Gemini API로 SEO 최적화된 초점 키프레이즈 생성 (개선된 가이드 적용)"""
-        print(f"[🤖] Gemini AI로 초점 키프레이즈를 생성합니다...")
-        
-        # 폴백 키프레이즈 (제목의 핵심 키워드들 조합)
-        if keywords:
-            fallback_keyphrase = f"{keywords[0]} 추천"
-        else:
-            # 제목에서 핵심 단어 추출
-            title_keywords = re.findall(r'[가-힣]{2,}', title)
-            if title_keywords:
-                fallback_keyphrase = f"{title_keywords[0]} 추천"
-            else:
-                fallback_keyphrase = "알리익스프레스 추천"
-        
-        try:
-            # 콘텐츠 요약 생성 (너무 길면 잘라내기)
-            content_summary = content[:1000] if len(content) > 1000 else content
-            keywords_text = ", ".join(keywords) if keywords else ""
-            
-            prompt = f"""당신은 전문 SEO 콘텐츠 전략가입니다. 주어진 글 제목과 본문을 분석해서, 이 글의 핵심 주제를 가장 잘 나타내는 '초점 키프레이즈'를 딱 하나만 추출해 주세요.
+        # 상품 카드 HTML 생성 (새로운 디자인)
+        product_html = f'''
+<div style="display:flex;justify-content:center;margin:25px 0;">
+<div style="border:2px solid #eee;padding:30px;border-radius:15px;background:#f9f9f9;box-shadow:0 4px 8px rgba(0,0,0,0.1);max-width:1000px;width:100%;">
 
-[글 정보]
-제목: {title}
-주요 키워드: {keywords_text}
-본문 요약: {content_summary}
+<div style="display:grid;grid-template-columns:400px 1fr;gap:30px;align-items:start;margin-bottom:25px;">
+<div style="text-align:center;">
+<img src="{image_url}" alt="{title}" style="width:100%;max-width:400px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,0.15);">
+</div>
 
-[규칙]
-1. 사용자가 이 글을 찾기 위해 검색할 것 같은 가장 가능성 높은 검색어여야 합니다.
-2. 다른 설명은 붙이지 말고, 오직 키프레이즈만 출력하세요.
+<div style="display:flex;flex-direction:column;gap:20px;">
+<div style="margin-bottom:15px;text-align:center;">
+<img src="https://novacents.com/tools/images/Ali_black_logo.webp" alt="AliExpress" style="width:250px;height:60px;object-fit:contain;"/>
+</div>
 
-예시: "여름 물놀이 필수템", "2025년 휴가 준비물", "알리익스프레스 추천상품"
-"""
-            
-            response = self.gemini_model.generate_content(prompt)
-            keyphrase = response.text.strip()
-            
-            # 응답 객체 즉시 삭제
-            del response
-            del prompt
-            
-            # 유효성 검사
-            if not keyphrase or len(keyphrase) > 30 or '\n' in keyphrase:
-                print(f"[⚠️] 생성된 키프레이즈가 유효하지 않음, 폴백 사용: {fallback_keyphrase}")
-                return fallback_keyphrase
-            
-            print(f"[✅] 초점 키프레이즈 생성 완료: {keyphrase}")
-            return keyphrase
-            
-        except Exception as e:
-            print(f"[❌] 초점 키프레이즈 생성 실패: {e}, 폴백 사용: {fallback_keyphrase}")
-            return fallback_keyphrase
-        finally:
-            # 메모리 정리
-            gc.collect()
-    
-    def generate_meta_description_with_gemini(self, title, content, focus_keyphrase):
-        """🎯 Gemini API로 SEO 최적화된 메타 설명 생성 (개선된 가이드 적용)"""
-        print(f"[🤖] Gemini AI로 메타 설명을 생성합니다...")
-        
-        # 폴백 메타 설명
-        fallback_description = f"{focus_keyphrase}에 대한 완벽 가이드! 상품 정보부터 구매 팁까지 2025년 최신 정보를 확인하세요."
-        
-        try:
-            # 콘텐츠 요약 생성 (너무 길면 잘라내기)
-            content_summary = content[:1000] if len(content) > 1000 else content
-            
-            prompt = f"""당신은 전문 SEO 카피라이터입니다. 글 제목과 본문을 분석해서 해당 정보를 바탕으로 구글 검색 결과에 표시될 '메타 설명'을 작성해 주세요.
+<h3 style="color:#1c1c1c;margin:0 0 20px 0;font-size:21px;font-weight:600;line-height:1.4;word-break:keep-all;overflow-wrap:break-word;text-align:center;">{title}</h3>
 
-[글 정보]
-제목: {title}
-초점 키프레이즈: {focus_keyphrase}
-본문 요약: {content_summary}
+<div style="background:linear-gradient(135deg,#e62e04 0%,#ff9900 100%);color:white;padding:14px 30px;border-radius:10px;font-size:40px;font-weight:700;text-align:center;margin-bottom:20px;box-shadow:0 4px 15px rgba(230,46,4,0.3);">
+<strong>{price_display}</strong>
+</div>
 
-[규칙]
-1. 반드시 '{focus_keyphrase}'를 자연스럽게 포함해야 합니다.
-2. 전체 글자 수는 공백 포함 150자 내로 맞춰주세요.
-3. 사용자의 호기심을 자극하고, 글을 클릭해서 읽고 싶게 만드는 매력적인 문구로 작성해 주세요.
-4. 다른 설명 없이, 완성된 메타 설명 문장만 출력해 주세요.
+<div style="color:#1c1c1c;font-size:20px;display:flex;align-items:center;gap:10px;margin-bottom:15px;justify-content:center;flex-wrap:nowrap;">
+<span style="color:#ff9900;">{rating_display.split('(')[0].strip()}</span>
+<span>({rating_display.split('(')[1] if '(' in rating_display else '만족도 정보 없음'}</span>
+</div>
 
-예시: "여름 물놀이 필수템 완벽 가이드! 2025년 인기 상품부터 구매 팁까지 알리익스프레스 추천 아이템을 확인하세요."
-"""
-            
-            response = self.gemini_model.generate_content(prompt)
-            description = response.text.strip()
-            
-            # 응답 객체 즉시 삭제
-            del response
-            del prompt
-            
-            # 유효성 검사
-            if not description or len(description) > 160 or len(description) < 100:
-                print(f"[⚠️] 생성된 메타 설명이 유효하지 않음, 폴백 사용: {fallback_description}")
-                return fallback_description
-            
-            print(f"[✅] 메타 설명 생성 완료 ({len(description)}자)")
-            return description
-            
-        except Exception as e:
-            print(f"[❌] 메타 설명 생성 실패: {e}, 폴백 사용: {fallback_description}")
-            return fallback_description
-        finally:
-            # 메모리 정리
-            gc.collect()
-    
-    def generate_seo_optimized_tags_with_gemini(self, title, content, keywords):
-        """🎯 Gemini API로 SEO 최적화된 태그 생성 (메모리 최적화)"""
-        print(f"[🤖] Gemini AI로 SEO 최적화 태그를 생성합니다...")
-        
-        # 폴백 태그
-        fallback_tags = keywords[:3] + ["알리익스프레스", "추천", "구매가이드"] if keywords else ["알리익스프레스", "추천", "구매가이드"]
-        
-        try:
-            # 콘텐츠 요약 생성 (너무 길면 잘라내기)
-            content_summary = content[:1000] if len(content) > 1000 else content
-            keywords_text = ", ".join(keywords) if keywords else ""
-            
-            prompt = f"""당신은 전문 SEO 전략가입니다. 주어진 글의 제목과 본문을 분석해서 해당 글에 관련된 '핵심키워드, 주요 키워드, 관련 키워드, 롱테일 키워드'를 추출하여 워드프레스 태그로 사용할 키워드들을 생성해주세요.
+<p style="color:#1c1c1c;font-size:18px;margin:0 0 15px 0;text-align:center;">
+<strong>📦 판매량:</strong> {product.get('lastest_volume', '0')}개 판매
+</p>
 
-[글 정보]
-제목: {title}
-기본 키워드: {keywords_text}
-본문 요약: {content_summary}
+</div>
+</div>
 
-[규칙]
-1. 검색에서 실제로 사용될 가능성이 높은 키워드들로 구성하세요.
-2. 너무 일반적이거나 너무 구체적이지 않은 적절한 수준의 키워드를 선택하세요.
-3. 8-12개의 키워드를 쉼표(,)로 구분하여 나열하세요.
-4. 각 키워드는 1-3개 단어로 구성하세요.
-5. 결과는 오직 '키워드1,키워드2,키워드3' 형식으로만 출력하고 다른 설명은 절대 추가하지 마세요.
+<div style="text-align:center;margin-top:30px;width:100%;">
+<a href="{affiliate_url}" target="_blank" rel="nofollow" style="text-decoration:none;">
+<picture>
+<source media="(max-width:1600px)" srcset="https://novacents.com/tools/images/aliexpress-button-mobile.png">
+<img src="https://novacents.com/tools/images/aliexpress-button-pc.png" alt="알리익스프레스에서 구매하기" style="max-width:100%;height:auto;cursor:pointer;">
+</picture>
+</a>
+</div>
 
-예시: "물놀이용품,여름필수템,휴가준비,수영용품,알리익스프레스,해외직구,추천상품,2025년,물놀이,여행용품"
-"""
-            
-            response = self.gemini_model.generate_content(prompt)
-            tags_string = response.text.strip()
-            
-            # 응답 객체 즉시 삭제
-            del response
-            del prompt
-            
-            # 태그 파싱
-            if tags_string:
-                tags = [tag.strip() for tag in tags_string.split(',') if tag.strip()]
-                tags = tags[:12]  # 최대 12개로 제한
-                
-                if len(tags) >= 5:  # 최소 5개 이상이어야 유효
-                    print(f"[✅] SEO 최적화 태그 {len(tags)}개 생성 완료")
-                    return tags
-            
-            print(f"[⚠️] 생성된 태그가 유효하지 않음, 폴백 사용")
-            return fallback_tags
-            
-        except Exception as e:
-            print(f"[❌] SEO 태그 생성 실패: {e}, 폴백 사용")
-            return fallback_tags
-        finally:
-            # 메모리 정리
-            gc.collect()
-    
-    def generate_seo_optimized_slug_with_gemini(self, title, content, keywords):
-        """🎯 Gemini API로 SEO 최적화된 한글 슬러그 생성 (핵심키워드 포함 개선)"""
-        print(f"[🤖] Gemini AI로 SEO 최적화 한글 슬러그를 생성합니다...")
-        
-        # 폴백 슬러그 (제목과 키워드 기반)
-        title_words = re.findall(r'[가-힣]{2,}', title)
-        keywords_text = "-".join(keywords[:2]) if keywords else ""
-        if keywords_text and title_words:
-            fallback_slug = f"{keywords_text}-{title_words[0]}-{title_words[1] if len(title_words) > 1 else '추천'}"
-        elif keywords_text:
-            fallback_slug = f"{keywords_text}-추천상품"
-        else:
-            fallback_slug = "-".join(title_words[:3]) if len(title_words) >= 3 else "알리익스프레스-추천"
-        
-        try:
-            # 콘텐츠 요약 생성 (너무 길면 잘라내기)
-            content_summary = content[:800] if len(content) > 800 else content
-            keywords_text = ", ".join(keywords) if keywords else ""
-            
-            prompt = f"""당신은 SEO 전문가입니다. 주어진 글 제목과 본문, 핵심 키워드를 분석해서, 구글 검색 SEO에 가장 적합한 한글 슬러그를 생성해주세요.
+</div>
+</div>
 
-[글 정보]
-제목: {title}
-핵심 키워드: {keywords_text}
-본문 요약: {content_summary}
+<style>
+@media(max-width:1600px){{
+div[style*="grid-template-columns:400px 1fr"]{{display:block!important;grid-template-columns:none!important;gap:15px!important;}}
+img[style*="max-width:400px"]{{width:95%!important;max-width:none!important;margin-bottom:30px!important;}}
+div[style*="gap:20px"]{{gap:10px!important;}}
+div[style*="text-align:center"] img[alt="AliExpress"]{{display:block;margin:0!important;}}
+div[style*="text-align:center"]:has(img[alt="AliExpress"]){{text-align:left!important;margin-bottom:10px!important;}}
+h3[style*="text-align:center"]{{text-align:left!important;font-size:18px!important;margin-bottom:10px!important;}}
+div[style*="font-size:40px"]{{font-size:28px!important;padding:12px 20px!important;margin-bottom:10px!important;}}
+div[style*="justify-content:center"][style*="flex-wrap:nowrap"]{{justify-content:flex-start!important;font-size:16px!important;margin-bottom:10px!important;gap:8px!important;}}
+p[style*="text-align:center"]{{text-align:left!important;font-size:16px!important;margin-bottom:10px!important;}}
+div[style*="margin-top:30px"]{{margin-top:15px!important;}}
+}}
 
-[규칙]
-1. 한글과 영문, 숫자, 하이픈(-)만 사용하세요.
-2. 반드시 제공된 핵심 키워드들을 포함해야 합니다.
-3. 글의 핵심 주제를 잘 나타내는 3-6개 단어로 구성하세요.
-4. 단어 사이는 하이픈(-)으로 연결하세요.
-5. 전체 길이는 40자 이내로 제한하세요.
-6. 검색 친화적이고 기억하기 쉬운 형태로 만드세요.
-7. 다른 설명 없이, 완성된 슬러그만 출력하세요.
+@media(max-width:480px){{
+img[style*="width:95%"]{{width:100%!important;}}
+h3[style*="font-size:18px"]{{font-size:16px!important;}}
+div[style*="font-size:28px"]{{font-size:24px!important;}}
+}}
+</style>'''
+        
+        return product_html
+        
+    except Exception as e:
+        log_message(f"❌ 상품 HTML 생성 실패: {str(e)}")
+        return f"<p>상품 정보를 불러올 수 없습니다: {product.get('product_title', 'Unknown')}</p>"
 
-좋은 예시: "여름-물놀이-필수템-추천", "2025-휴가-준비물-가이드", "알리익스프레스-여름용품-추천"
-나쁜 예시: "2025년-놓치면-후회할-여름휴가-피서-물놀이-필수템-총정리"
-"""
-            
-            response = self.gemini_model.generate_content(prompt)
-            slug = response.text.strip()
-            
-            # 응답 객체 즉시 삭제
-            del response
-            del prompt
-            
-            # 슬러그 정리 및 유효성 검사
-            if slug:
-                # 특수문자 제거 (한글, 영문, 숫자, 하이픈만 유지)
-                cleaned_slug = re.sub(r'[^가-힣a-zA-Z0-9\-]', '', slug)
-                # 연속된 하이픈 제거
-                cleaned_slug = re.sub(r'-+', '-', cleaned_slug)
-                # 시작과 끝의 하이픈 제거
-                cleaned_slug = cleaned_slug.strip('-')
-                
-                # 키워드 포함 검사
-                contains_keywords = any(keyword in cleaned_slug for keyword in keywords) if keywords else True
-                
-                if cleaned_slug and len(cleaned_slug) <= 40 and len(cleaned_slug) >= 10 and contains_keywords:
-                    print(f"[✅] SEO 최적화 슬러그 생성 완료: {cleaned_slug}")
-                    return cleaned_slug
-            
-            print(f"[⚠️] 생성된 슬러그가 유효하지 않음, 폴백 사용: {fallback_slug}")
-            return fallback_slug
-            
-        except Exception as e:
-            print(f"[❌] SEO 슬러그 생성 실패: {e}, 폴백 사용: {fallback_slug}")
-            return fallback_slug
-        finally:
-            # 메모리 정리
-            gc.collect()
-    
-    def ensure_tags_on_wordpress(self, tags):
-        """워드프레스에 태그 확인 및 등록"""
-        print(f"[☁️] 워드프레스에 태그를 확인하고 등록합니다...")
-        
-        auth = (self.config["wp_user"], self.config["wp_app_pass"])
-        headers = {'Content-Type': 'application/json'}
-        tag_ids = []
-        
-        for tag_name in tags:
-            if not tag_name:
-                continue
-            
-            try:
-                # 기존 태그 검색
-                res = requests.get(
-                    f"{self.config['wp_api_base']}/tags",
-                    auth=auth,
-                    params={"search": tag_name},
-                    headers=headers,
-                    timeout=10
-                )
-                res.raise_for_status()
-                existing_tags = res.json()
-                
-                found = False
-                if isinstance(existing_tags, list):
-                    for tag_data in existing_tags:
-                        if isinstance(tag_data, dict) and tag_data.get('name', '').lower() == tag_name.lower():
-                            tag_ids.append(tag_data['id'])
-                            found = True
-                            break
-                
-                # 태그가 없으면 새로 생성
-                if not found:
-                    print(f"[⚙️] 태그 '{tag_name}'을(를) 새로 생성합니다...")
-                    create_res = requests.post(
-                        f"{self.config['wp_api_base']}/tags",
-                        auth=auth,
-                        json={"name": tag_name},
-                        headers=headers,
-                        timeout=10
-                    )
-                    create_res.raise_for_status()
-                    if create_res.status_code == 201:
-                        tag_ids.append(create_res.json()['id'])
-                
-                # 응답 객체 삭제
-                del res
-                if 'create_res' in locals():
-                    del create_res
-                
-            except requests.exceptions.RequestException as e:
-                print(f"[❌] 태그 API 요청 중 오류 ('{tag_name}'): {e}")
-        
-        print(f"[✅] {len(tag_ids)}개의 태그 ID를 확보했습니다.")
-        
-        # 메모리 정리
-        gc.collect()
-        
-        return tag_ids
-    
-    def post_to_wordpress(self, job_data, content):
-        """워드프레스에 글 발행 (FIFU, YoastSEO 강화 적용)"""
-        try:
-            mode_text = "즉시 발행" if self.immediate_mode else "큐 처리"
-            print(f"[📝] 워드프레스에 '{job_data['title']}' 글을 발행합니다... ({mode_text})")
-            
-            # 워드프레스 API 엔드포인트
-            api_url = f"{self.config['wp_api_base']}/posts"
-            
-            # 인증 정보
-            auth = (self.config["wp_user"], self.config["wp_app_pass"])
-            headers = {"Content-Type": "application/json"}
-            
-            # 키워드 추출
-            keywords = [kw["name"] for kw in job_data.get("keywords", [])]
-            
-            # 🎯 Gemini AI로 SEO 최적화 데이터 생성
-            print(f"[🤖] SEO 최적화를 위한 데이터를 생성합니다...")
-            
-            # 1. 초점 키프레이즈 생성
-            focus_keyphrase = self.generate_focus_keyphrase_with_gemini(
-                job_data['title'], content, keywords
-            )
-            
-            # 2. 메타 설명 생성
-            meta_description = self.generate_meta_description_with_gemini(
-                job_data['title'], content, focus_keyphrase
-            )
-            
-            # 3. SEO 최적화 태그 생성
-            seo_tags = self.generate_seo_optimized_tags_with_gemini(
-                job_data['title'], content, keywords
-            )
-            
-            # 4. SEO 최적화 슬러그 생성 (키워드 포함)
-            seo_slug = self.generate_seo_optimized_slug_with_gemini(
-                job_data['title'], content, keywords
-            )
-            
-            # 5. 워드프레스 태그 등록
-            tag_ids = self.ensure_tags_on_wordpress(seo_tags)
-            
-            # 게시물 데이터
-            post_data = {
-                "title": job_data["title"],
-                "content": content,
-                "status": "publish",
-                "categories": [job_data["category_id"]],
-                "tags": tag_ids,
-                "slug": seo_slug  # 🎯 SEO 최적화된 한글 슬러그
-            }
-            
-            # 1단계: 게시물 생성
-            print(f"[⚙️] 1단계 - 게시물을 생성합니다...")
-            response = requests.post(api_url, json=post_data, headers=headers, auth=auth, timeout=30)
-            
-            if response.status_code == 201:
-                post_info = response.json()
-                post_id = post_info.get("id")
-                post_url = post_info.get("link", "")
-                print(f"[✅] 워드프레스 게시물 생성 성공! (ID: {post_id})")
-                
-                # 응답 객체 즉시 삭제
-                del response
-                del post_info
-                
-                # 2단계: FIFU 썸네일 설정 강화
-                thumbnail_url = job_data.get('thumbnail_url')
-                if thumbnail_url:
-                    print(f"[⚙️] 2단계 - FIFU 썸네일을 설정합니다... ({thumbnail_url[:50]}...)")
-                    try:
-                        # 🔧 FIFU 설정 강화 - 다중 필드 적용
-                        fifu_meta = {
-                            "_fifu_image_url": thumbnail_url,
-                            "_fifu_image_alt": job_data.get('title', ''),
-                            "_thumbnail_id": "",  # 빈값으로 FIFU 우선 적용
-                        }
-                        
-                        fifu_payload = {"meta": fifu_meta}
-                        
-                        fifu_response = requests.post(
-                            f"{self.config['wp_api_base']}/posts/{post_id}",
-                            auth=auth,
-                            json=fifu_payload,
-                            headers=headers,
-                            timeout=20
-                        )
-                        
-                        print(f"[🔍] FIFU 응답 상태: {fifu_response.status_code}")
-                        if fifu_response.status_code in [200, 201]:
-                            print("[✅] FIFU 썸네일 설정 완료.")
-                        else:
-                            print(f"[⚠️] FIFU 설정 응답: {fifu_response.text[:200]}")
-                        
-                        # 응답 객체 삭제
-                        del fifu_response
-                        
-                    except Exception as e:
-                        print(f"[⚠️] FIFU 썸네일 설정 중 오류: {e}")
-                else:
-                    print("[⚠️] 썸네일 URL이 없어 FIFU 설정을 건너뜁니다.")
-                
-                # 3단계: YoastSEO 메타데이터 설정 강화
-                print(f"[⚙️] 3단계 - Yoast SEO 메타데이터를 설정합니다...")
-                print(f"[📊] 키프레이즈: {focus_keyphrase}, 메타설명: {meta_description[:50]}...")
-                
-                try:
-                    # 🔧 YoastSEO 설정 강화 - 여러 방식 시도
-                    yoast_payload = {
-                        "post_id": post_id,
-                        "focus_keyphrase": focus_keyphrase,
-                        "meta_description": meta_description,
-                        "title": job_data['title']  # 추가 정보
-                    }
-                    
-                    # 방법 1: 커스텀 API 엔드포인트
-                    yoast_url = f"{self.config['wp_url'].rstrip('/')}/wp-json/my-api/v1/update-seo"
-                    
-                    yoast_response = requests.post(
-                        yoast_url,
-                        auth=auth,
-                        json=yoast_payload,
-                        headers=headers,
-                        timeout=20
-                    )
-                    
-                    print(f"[🔍] YoastSEO 응답 상태: {yoast_response.status_code}")
-                    if yoast_response.status_code in [200, 201]:
-                        print("[✅] Yoast SEO 메타데이터 설정 완료.")
-                    else:
-                        print(f"[⚠️] YoastSEO 설정 응답: {yoast_response.text[:200]}")
-                        
-                        # 방법 2: 메타 필드 직접 설정 시도
-                        yoast_meta = {
-                            "_yoast_wpseo_focuskw": focus_keyphrase,
-                            "_yoast_wpseo_metadesc": meta_description,
-                            "_yoast_wpseo_title": job_data['title']
-                        }
-                        
-                        meta_payload = {"meta": yoast_meta}
-                        
-                        meta_response = requests.post(
-                            f"{self.config['wp_api_base']}/posts/{post_id}",
-                            auth=auth,
-                            json=meta_payload,
-                            headers=headers,
-                            timeout=20
-                        )
-                        
-                        print(f"[🔍] 메타 필드 설정 응답: {meta_response.status_code}")
-                        if meta_response.status_code in [200, 201]:
-                            print("[✅] YoastSEO 메타 필드 설정 완료.")
-                        else:
-                            print(f"[⚠️] 메타 필드 설정 실패: {meta_response.text[:200]}")
-                        
-                        del meta_response
-                    
-                    # 응답 객체 삭제
-                    del yoast_response
-                    
-                except Exception as e:
-                    print(f"[⚠️] Yoast SEO 설정 중 오류 (무시하고 계속): {e}")
-                
-                # 발행 로그 저장
-                self.save_published_log(job_data, post_url)
-                
-                print(f"[🎉] 모든 작업 완료! 발행된 글 주소: {post_url}")
-                print(f"[📊] SEO 정보 - 슬러그: {seo_slug}, 키프레이즈: {focus_keyphrase}, 태그: {len(seo_tags)}개")
-                
-                # 메모리 정리
-                gc.collect()
-                
-                return post_url
-            else:
-                print(f"[❌] 워드프레스 발행 실패: {response.status_code}")
-                print(f"응답: {response.text}")
-                return None
-                
-        except Exception as e:
-            print(f"[❌] 워드프레스 발행 중 오류: {e}")
-            return None
-        finally:
-            # 메모리 정리
-            gc.collect()
-            
-    def save_published_log(self, job_data, post_url):
-        """발행 로그 저장"""
-        try:
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            prompt_type = job_data.get('prompt_type', 'essential_items')
-            mode_text = "[즉시발행]" if self.immediate_mode else "[큐처리]"
-            log_entry = f"[{timestamp}] {mode_text} {job_data['title']} ({prompt_type}) - {post_url}\n"
-            
-            with open(PUBLISHED_LOG_FILE, "a", encoding="utf-8") as f:
-                f.write(log_entry)
-                
-        except Exception as e:
-            print(f"[❌] 발행 로그 저장 중 오류: {e}")
-            
-    def process_job(self, job_data):
-        """단일 작업 처리 (메모리 최적화)"""
-        job_id = job_data["queue_id"]
-        title = job_data["title"]
-        prompt_type = job_data.get('prompt_type', 'essential_items')
-        has_user_details = job_data.get('has_user_details', False)
-        
-        # 프롬프트 타입명 매핑
-        prompt_type_names = {
-            'essential_items': '필수템형 🎯',
-            'friend_review': '친구 추천형 👫',
-            'professional_analysis': '전문 분석형 📊',
-            'amazing_discovery': '놀라움 발견형 ✨'
-        }
-        
-        prompt_name = prompt_type_names.get(prompt_type, '기본형')
-        mode_text = "즉시 발행" if self.immediate_mode else "큐 처리"
-        
-        self.log_message(f"[🚀] 작업 시작: {title} (ID: {job_id}) - {mode_text}")
-        self.log_message(f"[🎯] 프롬프트: {prompt_name}")
-        self.log_message(f"[📝] 사용자 정보: {'포함' if has_user_details else '없음'}")
-        
-        # 텔레그램 알림
-        telegram_start_msg = f"🚀 알리익스프레스 자동화 시작 ({mode_text})\n제목: {title}\n프롬프트: {prompt_name}"
-        if has_user_details:
-            telegram_start_msg += "\n🎯 사용자 맞춤 정보 활용"
-        
-        self.send_telegram_notification(telegram_start_msg)
-        
-        try:
-            # 즉시 발행 모드가 아닌 경우에만 작업 상태 업데이트
-            if not self.immediate_mode:
-                self.update_job_status(job_id, "processing")
-            
-            # 1. 알리익스프레스 상품 처리
-            products = self.process_aliexpress_products(job_data)
-            
-            if not products:
-                raise Exception("알리익스프레스 상품 처리 실패")
-                
-            # 2. Gemini로 콘텐츠 생성 (4가지 프롬프트 템플릿 시스템)
-            content = self.generate_content_with_gemini(job_data, products)
-            
-            if not content:
-                raise Exception("콘텐츠 생성 실패")
-                
-            # 3. 워드프레스에 발행
-            post_url = self.post_to_wordpress(job_data, content)
-            
-            if post_url:
-                # 성공 처리
-                if self.immediate_mode:
-                    # 즉시 발행인 경우 큐에서 제거
-                    self.remove_job_from_queue(job_id)
-                else:
-                    # 일반 큐 처리인 경우 상태 업데이트
-                    self.update_job_status(job_id, "completed")
-                
-                self.log_message(f"[✅] 작업 완료: {title} -> {post_url}")
-                
-                # 성공 알림
-                success_msg = f"✅ 알리익스프레스 자동화 완료 ({mode_text})\n제목: {title}\n프롬프트: {prompt_name}\nURL: {post_url}\n상품 수: {len(products)}개"
-                if has_user_details:
-                    success_msg += "\n🎯 사용자 맞춤 정보 반영"
-                
-                self.send_telegram_notification(success_msg)
-                
-                # 🎉 성공 시 워드프레스 발행 성공 메시지 출력 (keyword_processor.php가 파싱)
-                print(f"워드프레스 발행 성공: {post_url}")
-                
-                # 작업 완료 후 메모리 정리
-                del products
-                del content
-                gc.collect()
-                
-                return True
-            else:
-                raise Exception("워드프레스 발행 실패")
-                
-        except Exception as e:
-            # 실패 처리
-            error_msg = str(e)
-            if not self.immediate_mode:
-                self.update_job_status(job_id, "failed", error_msg)
-            self.log_message(f"[❌] 작업 실패: {title} - {error_msg}")
-            self.send_telegram_notification(
-                f"❌ 알리익스프레스 자동화 실패 ({mode_text})\n"
-                f"제목: {title}\n"
-                f"프롬프트: {prompt_name}\n"
-                f"오류: {error_msg}"
-            )
-            return False
-        finally:
-            # 메모리 정리
-            gc.collect()
-            
-    def run_immediate_mode(self, temp_file):
-        """🚀 즉시 발행 모드 실행 (메모리 최적화)"""
-        print("=" * 60)
-        print("🚀 알리익스프레스 즉시 발행 모드 시작")
-        print("=" * 60)
-        
-        self.immediate_mode = True
-        
-        # 1. 설정 로드
-        if not self.load_configuration():
-            print("[❌] 설정 로드 실패. 프로그램을 종료합니다.")
-            return False
-            
-        # 2. 임시 파일에서 작업 로드
-        job_data = self.load_immediate_job(temp_file)
-        if not job_data:
-            print("[❌] 즉시 발행 작업 로드 실패.")
-            return False
-            
-        # 3. 단일 작업 처리
-        success = self.process_job(job_data)
-        
-        # 4. 임시 파일 정리 (선택사항)
-        self.cleanup_temp_file(temp_file)
-        
-        # 5. 메모리 정리
-        del job_data
-        gc.collect()
-        
-        # 6. 완료 메시지
-        if success:
-            completion_message = f"[🎉] 즉시 발행 완료!"
-            self.log_message(completion_message)
-            print("=" * 60)
-            print("🚀 알리익스프레스 즉시 발행 성공")
-            print("=" * 60)
-            return True
-        else:
-            error_message = f"[❌] 즉시 발행 실패!"
-            self.log_message(error_message)
-            print("=" * 60)
-            print("❌ 알리익스프레스 즉시 발행 실패")
-            print("=" * 60)
-            return False
-            
-    def run(self):
-        """메인 실행 함수 (큐 모드) - 메모리 최적화 및 분할 시스템"""
-        print("=" * 60)
-        print("🌏 알리익스프레스 전용 어필리에이트 자동화 시스템 시작 (분할 큐 시스템)")
-        print("=" * 60)
-        
-        # 1. 설정 로드
-        if not self.load_configuration():
-            print("[❌] 설정 로드 실패. 프로그램을 종료합니다.")
-            return
-            
-        # 2. 분할 큐에서 작업 로드
-        pending_jobs = self.load_queue_split()
-        
-        if not pending_jobs:
-            print("[📋] 처리할 작업이 없습니다.")
-            return
-            
-        # 3. 작업 처리
-        processed_count = 0
-        
-        for job in pending_jobs:
-            if processed_count >= MAX_POSTS_PER_RUN:
-                print(f"[⏸️] 최대 처리 개수({MAX_POSTS_PER_RUN})에 도달했습니다.")
-                break
-                
-            success = self.process_job(job)
-            processed_count += 1
-            
-            # 작업 완료 후 메모리 정리
-            del job
-            gc.collect()
-            
-            if success and processed_count < len(pending_jobs):
-                print(f"[⏳] {POST_DELAY_SECONDS}초 대기 중...")
-                time.sleep(POST_DELAY_SECONDS)
-                
-        # 4. 완료 메시지
-        remaining_jobs = len(pending_jobs) - processed_count
-        completion_message = f"[🎉] 분할 큐 시스템 자동화 완료! 처리: {processed_count}개, 남은 작업: {remaining_jobs}개"
-        
-        self.log_message(completion_message)
-        self.send_telegram_notification(completion_message)
-        
-        # 5. 메모리 정리
-        del pending_jobs
-        gc.collect()
-        
-        print("=" * 60)
-        print("🌏 알리익스프레스 전용 어필리에이트 자동화 시스템 종료")
-        print("=" * 60)
-
-
-def main():
-    """메인 함수 - 명령줄 인수 처리"""
-    parser = argparse.ArgumentParser(description='알리익스프레스 어필리에이트 자동화 시스템')
-    parser.add_argument('--immediate-file', help='즉시 발행용 임시 파일 경로')
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='알리익스프레스 어필리에이트 상품 자동 발행')
+    parser.add_argument('--immediate', type=str, help='즉시 발행 (JSON 데이터)')
     
     args = parser.parse_args()
     
-    try:
-        system = AliExpressPostingSystem()
-        
-        if args.immediate_file:
-            # 🚀 즉시 발행 모드
-            success = system.run_immediate_mode(args.immediate_file)
-            sys.exit(0 if success else 1)
-        else:
-            # 분할 큐 모드
-            system.run()
-            
-    except KeyboardInterrupt:
-        print("\n[⏹️] 사용자에 의해 프로그램이 중단되었습니다.")
-        sys.exit(1)
-    except Exception as e:
-        print(f"\n[❌] 예상치 못한 오류가 발생했습니다: {e}")
-        print(traceback.format_exc())
-        sys.exit(1)
-    finally:
-        # 프로그램 종료 시 최종 메모리 정리
-        gc.collect()
-        print("[🧹] 메모리 정리 완료")
-
-
-if __name__ == "__main__":
-    main()
+    if args.immediate:
+        # 즉시 발행 모드
+        try:
+            queue_data = json.loads(args.immediate)
+            results = process_immediate_publish(queue_data)
+            print(json.dumps(results, ensure_ascii=False))
+        except Exception as e:
+            print(json.dumps([{'success': False, 'error': f'JSON 파싱 오류: {str(e)}'}], ensure_ascii=False))
+    else:
+        # 일반 큐 처리 모드
+        process_queue()
