@@ -5,7 +5,7 @@
  * 워드프레스 환경에 전혀 종속되지 않으며, 순수 PHP로만 작동합니다.
  *
  * 파일 위치: /var/www/novacents/tools/keyword_processor.php
- * 버전: v4.6 (파일 분할 방식 큐 관리 시스템 적용)
+ * 버전: v4.7 (즉시 발행 시에도 큐 저장 지원)
  */
 
 // 1. 초기 에러 리포팅 설정 (스크립트 시작 시점부터 에러를 잡기 위함)
@@ -1073,7 +1073,8 @@ function main_process() {
             'last_error' => null,
             'has_user_details' => ($user_details_data !== null), // 사용자 상세 정보 존재 여부
             'has_product_data' => false, // 🔧 상품 분석 데이터 존재 여부
-            'has_thumbnail_url' => !empty($input_data['thumbnail_url']) // 🔧 썸네일 URL 존재 여부
+            'has_thumbnail_url' => !empty($input_data['thumbnail_url']), // 🔧 썸네일 URL 존재 여부
+            'queue_save_attempted' => false // 🔧 큐 저장 시도 여부 추가
         ];
         
         // 링크 카운트 및 상품 데이터 통계 계산 (안전한 count 사용)
@@ -1100,24 +1101,36 @@ function main_process() {
         debug_log("main_process: Thumbnail URL included: " . ($queue_data['has_thumbnail_url'] ? 'Yes (' . $queue_data['thumbnail_url'] . ')' : 'No'));
         debug_log("main_process: Publish mode: " . $input_data['publish_mode']);
 
-        // 🚀 즉시 발행 vs 큐 저장 분기 처리
+        // 🚀 모든 모드에서 큐에 저장 (즉시 발행 모드일 때도 포함)
+        debug_log("main_process: Adding item to queue (all modes).");
+        
+        if (!add_to_queue($queue_data)) {
+            debug_log("main_process: Failed to add item to split queue system. Check add_queue_split function.");
+            $telegram_msg = "❌ 분할 큐 시스템 저장 실패!\n파일 권한 또는 JSON 인코딩 문제일 수 있습니다.\n\n추가 정보:\n- 큐 디렉토리: /var/www/novacents/tools/queues/\n- 디렉토리 권한 확인 필요";
+            send_telegram_notification($telegram_msg, true);
+            main_log("Failed to add item to split queue system.");
+            
+            if ($input_data['publish_mode'] === 'immediate') {
+                send_json_response(false, [
+                    'message' => '분할 큐 시스템 저장에 실패했습니다. 파일 권한을 확인하거나 관리자에게 문의하세요.',
+                    'error' => 'queue_save_failed'
+                ]);
+            } else {
+                redirect_to_editor(false, ['error' => '분할 큐 시스템 저장에 실패했습니다. 파일 권한을 확인하거나 관리자에게 문의하세요.']);
+            }
+        }
+        
+        debug_log("main_process: Item successfully added to split queue system.");
+        $queue_data['queue_save_attempted'] = true;
+        
+        // 🚀 즉시 발행 vs 일반 큐 분기 처리
         if ($input_data['publish_mode'] === 'immediate') {
-            debug_log("main_process: Processing immediate publish request.");
+            debug_log("main_process: Processing immediate publish request (queue already saved).");
             process_immediate_publish($queue_data);
             // process_immediate_publish() 함수에서 JSON 응답 후 exit 됨
         } else {
-            debug_log("main_process: Processing queue mode request using split system.");
+            debug_log("main_process: Processing queue mode request (item already in split queue system).");
             
-            // Add to split queue system
-            if (!add_to_queue($queue_data)) {
-                debug_log("main_process: Failed to add item to split queue system. Check add_queue_split function.");
-                $telegram_msg = "❌ 분할 큐 시스템 저장 실패!\n파일 권한 또는 JSON 인코딩 문제일 수 있습니다.\n\n추가 정보:\n- 큐 디렉토리: /var/www/novacents/tools/queues/\n- 디렉토리 권한 확인 필요";
-                send_telegram_notification($telegram_msg, true);
-                main_log("Failed to add item to split queue system.");
-                redirect_to_editor(false, ['error' => '분할 큐 시스템 저장에 실패했습니다. 파일 권한을 확인하거나 관리자에게 문의하세요.']);
-            }
-            debug_log("main_process: Item successfully added to split queue system.");
-
             // Get queue statistics for notification
             $stats = get_queue_stats();
             debug_log("main_process: Queue stats retrieved: " . json_encode($stats));
