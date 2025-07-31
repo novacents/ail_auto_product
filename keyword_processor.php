@@ -14,8 +14,8 @@ session_start();
 // - 강화된 오류 처리 및 디버깅
 
 // 디버깅 및 로깅 설정
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
+ini_set('display_errors', 0); // 프로덕션에서는 에러 표시 끄기
+error_reporting(E_ALL & ~E_WARNING); // Warning 제외
 
 // 현재 파일 디렉토리를 기준으로 경로 설정
 $current_dir = dirname(__FILE__);
@@ -51,13 +51,29 @@ foreach ($queue_dirs as $dir) {
 function debug_log($message) {
     $timestamp = date('Y-m-d H:i:s');
     $log_entry = "[{$timestamp}] DEBUG: {$message}" . PHP_EOL;
-    file_put_contents(LOG_FILE, $log_entry, FILE_APPEND | LOCK_EX);
+    
+    // 로그 디렉토리 확인 및 생성
+    $log_dir = dirname(LOG_FILE);
+    if (!is_dir($log_dir)) {
+        @mkdir($log_dir, 0755, true);
+    }
+    
+    // 권한 문제가 있어도 조용히 실패
+    @file_put_contents(LOG_FILE, $log_entry, FILE_APPEND | LOCK_EX);
 }
 
 function main_log($message) {
     $timestamp = date('Y-m-d H:i:s');
     $log_entry = "[{$timestamp}] MAIN: {$message}" . PHP_EOL;
-    file_put_contents(LOG_FILE, $log_entry, FILE_APPEND | LOCK_EX);
+    
+    // 로그 디렉토리 확인 및 생성
+    $log_dir = dirname(LOG_FILE);
+    if (!is_dir($log_dir)) {
+        @mkdir($log_dir, 0755, true);
+    }
+    
+    // 권한 문제가 있어도 조용히 실패
+    @file_put_contents(LOG_FILE, $log_entry, FILE_APPEND | LOCK_EX);
 }
 
 // POST 데이터 상세 디버깅 (메모리 효율성 고려)
@@ -77,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
             if ($decoded !== null) {
                 debug_log("POST[{$key}] (decoded type): " . gettype($decoded));
                 debug_log("POST[{$key}] (decoded count): " . safe_count($decoded));
-                if (is_array($decoded) && !empty($decoded)) {
+                if (is_array($decoded) && !empty($decoded) && isset($decoded[0])) {
                     debug_log("POST[{$key}] (first item): " . json_encode($decoded[0], JSON_UNESCAPED_UNICODE));
                     
                     // 🔧 products_data 확인
