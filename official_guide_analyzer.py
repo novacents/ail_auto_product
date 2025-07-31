@@ -206,107 +206,95 @@ class EnhancedAliexpressAnalyzer:
             # 완벽가이드 핵심 파라미터 적용
             params = {**base_params, **self.perfect_params}
             
-            safe_log(f"📋 확장된 평점 필드로 API 파라미터 설정 완료")
-            
             # 서명 생성
             params['sign'] = self.generate_signature(params)
             
-            # URL 생성 및 호출
+            # URL 인코딩
             query_string = urllib.parse.urlencode(params)
-            full_url = f"{self.gateway_url}?{query_string}"
+            request_url = f"{self.gateway_url}?{query_string}"
             
-            safe_log(f"📡 API 호출")
+            safe_log(f"🌐 API 요청 URL: {request_url[:100]}...")
             
-            req = urllib.request.Request(full_url)
-            with urllib.request.urlopen(req, timeout=15) as response:
-                response_text = response.read().decode('utf-8')
+            # API 호출
+            with urllib.request.urlopen(request_url, timeout=10) as response:
+                response_data = response.read().decode('utf-8')
+                safe_log(f"📥 API 응답 크기: {len(response_data)} bytes")
                 
-                if response.status == 200:
-                    data = json.loads(response_text)
-                    safe_log(f"📨 API 응답 수신 성공")
-                    return self.format_enhanced_response(data, url)
-                else:
-                    raise ValueError(f"HTTP 오류: {response.status}")
-                    
-        except Exception as e:
-            safe_log(f"❌ API 호출 실패: {e}")
-            raise ValueError(f"상품 분석 중 오류가 발생했습니다: {str(e)}")
-
-    def format_enhanced_response(self, data, original_url):
-        """
-        🌟 평점 정보 강화 응답 포맷팅
-        """
-        try:
-            safe_log("🔍 평점 정보 강화 응답 구조 확인...")
+            # JSON 파싱
+            data = json.loads(response_data)
             
-            # 🔧 안전한 응답 구조 파싱
-            product = None
+            if 'error_response' in data:
+                error_info = data['error_response']
+                error_msg = f"API 오류: {error_info.get('msg', 'Unknown error')} (Code: {error_info.get('code', 'N/A')})"
+                safe_log(f"❌ {error_msg}")
+                raise Exception(error_msg)
             
-            if 'aliexpress_affiliate_productdetail_get_response' in data:
-                response_obj = data['aliexpress_affiliate_productdetail_get_response']
-                safe_log(f"표준 응답 구조 발견")
+            # 상품 데이터 추출
+            if 'aliexpress_affiliate_productdetail_get_response' not in data:
+                safe_log("❌ 응답에 상품 상세 정보가 없습니다")
+                safe_log(f"🔍 실제 응답 구조: {list(data.keys())}")
+                raise Exception("응답에 상품 상세 정보가 없습니다")
+            
+            product_detail = data['aliexpress_affiliate_productdetail_get_response']
+            if 'resp_result' not in product_detail:
+                safe_log("❌ resp_result가 응답에 없습니다")
+                raise Exception("resp_result가 응답에 없습니다")
+            
+            resp_result = product_detail['resp_result']
+            if 'result' not in resp_result:
+                safe_log("❌ result가 resp_result에 없습니다")
+                raise Exception("result가 resp_result에 없습니다")
+            
+            result_data = resp_result['result']
+            if 'products' not in result_data or not result_data['products']:
+                safe_log("❌ 상품 목록이 비어있습니다")
+                raise Exception("상품을 찾을 수 없습니다")
                 
-                if 'resp_result' in response_obj:
-                    resp_result = response_obj['resp_result']
-                    
-                    if resp_result and 'result' in resp_result:
-                        result = resp_result['result']
-                        
-                        if result and 'products' in result:
-                            products_data = result['products']
-                            
-                            if 'product' in products_data:
-                                products = products_data['product']
-                                
-                                if isinstance(products, list) and len(products) > 0:
-                                    product = products[0]
-                                elif isinstance(products, dict):
-                                    product = products
-            
-            if not product:
-                safe_log(f"❌ 상품 데이터를 찾을 수 없음")
-                raise ValueError("API 응답에서 상품 데이터를 찾을 수 없습니다.")
-            
-            safe_log("🌟 평점 정보 강화 포맷팅 시작")
+            product = result_data['products'][0]
             safe_log(f"🔍 전체 상품 데이터: {json.dumps(product, ensure_ascii=False, indent=2)}")
             
-            # 🔥 한국어 상품명
-            title = product.get('product_title', '상품명 정보 없음')
-            has_korean = bool(re.search(r'[가-힣]', title))
-            safe_log(f"📝 상품명: {title[:50]}... (한국어: {'✅' if has_korean else '❌'})")
-            
-            # 🔥 가격 처리
-            price_str = product.get('target_sale_price', '0')
-            try:
-                if isinstance(price_str, str) and ',' in price_str:
-                    price_clean = price_str.replace(',', '')
-                else:
-                    price_clean = str(price_str)
-                price_krw = int(float(price_clean))
-                price_display = f"₩{price_krw:,}"
-            except:
-                price_display = "가격 정보 없음"
-            
-            safe_log(f"💰 가격: {price_display}")
-            
-            # 🌟 평점 정보 대폭 강화된 추출
+            # 🌟 강화된 평점 정보 추출
             rating_value = parse_rating_value_enhanced(product)
             rating_display = format_rating_original_style(rating_value)
-            safe_log(f"⭐ 최종 평점 (원래 방식): {rating_display}")
             
-            # 🔥 판매량 처리
-            lastest_volume = product.get('lastest_volume', '')
-            if lastest_volume and str(lastest_volume) != '0':
-                volume_display = f"{lastest_volume}개 판매"
+            # 기본 상품 정보
+            title = product.get('product_title', '')
+            safe_log(f"📝 상품명: {title}")
+            
+            # 가격 정보 (KRW 변환된 값 우선)
+            target_sale_price = product.get('target_sale_price', '')
+            target_original_price = product.get('target_original_price', '')
+            
+            if target_sale_price:
+                # 숫자만 추출하여 천 단위 콤마 추가
+                try:
+                    price_num = float(target_sale_price)
+                    price_display = f"₩ {price_num:,.0f}"
+                except:
+                    price_display = f"₩ {target_sale_price}"
+            else:
+                price_display = "가격 정보 없음"
+                
+            safe_log(f"💰 가격: {price_display}")
+            
+            # 판매량 정보
+            volume = product.get('lastest_volume', '')
+            if volume:
+                try:
+                    volume_num = int(volume)
+                    volume_display = f"{volume_num}개 판매"
+                except:
+                    volume_display = f"{volume}개 판매"
             else:
                 volume_display = "판매량 정보 없음"
-            
+                
             safe_log(f"📦 판매량: {volume_display}")
             
             # 어필리에이트 링크
-            affiliate_link = product.get('promotion_link', original_url)
+            affiliate_link = product.get('promotion_link', '')
+            original_url = url
             
-            # 🌟 최종 결과 (원래 별 방식)
+            # 응답 데이터 구성
             result = {
                 'platform': 'AliExpress',
                 'product_id': product.get('product_id', ''),
@@ -318,34 +306,28 @@ class EnhancedAliexpressAnalyzer:
                 'rating_value': rating_value,           # 🌟 숫자 평점 (0-100)
                 'rating_display': rating_display,       # 🌟 원래 별 방식 (⭐⭐⭐⭐⭐)
                 'lastest_volume': volume_display,
-                'method_used': '평점정보강화_원래별방식',
-                'rating_fields_checked': 10,            # 체크한 평점 필드 수
-                'original_star_style': True             # 원래 별 방식 적용
+                'first_level_category_name': product.get('first_level_category_name', ''),
+                'analyzed_at': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
             
-            safe_log(f"✅ 평점 정보 강화 완료")
-            safe_log(f"  한국어 상품명: {'✅' if has_korean else '❌'}")
-            safe_log(f"  가격: {price_display}")
-            safe_log(f"  평점: {rating_display}")
-            safe_log(f"  판매량: {volume_display}")
-            
+            safe_log(f"✅ 상품 분석 완료: {title[:50]}...")
             return result
-                
+            
         except Exception as e:
-            safe_log(f"❌ 응답 파싱 실패: {e}")
-            raise ValueError(f"응답 파싱 중 오류: {str(e)}")
+            safe_log(f"❌ API 호출 실패: {e}")
+            raise
 
 def main():
     """🌟 평점 정보 강화 메인 함수"""
     if len(sys.argv) != 3:
-        print(json.dumps({"success": False, "message": "인수 개수가 올바르지 않습니다."}, ensure_ascii=False))
+        print(json.dumps({"success": False, "message": "인수 개수가 올바르지 않습니다."}, ensure_ascii=False).replace('\\/', '/'))
         return
 
     platform = sys.argv[1].lower()
     url = sys.argv[2]
     
     if platform != 'aliexpress':
-        print(json.dumps({"success": False, "message": f"지원하지 않는 플랫폼입니다: {platform}"}, ensure_ascii=False))
+        print(json.dumps({"success": False, "message": f"지원하지 않는 플랫폼입니다: {platform}"}, ensure_ascii=False).replace('\\/', '/'))
         return
     
     try:
@@ -357,22 +339,24 @@ def main():
         tracking_id = env_vars.get('ALIEXPRESS_TRACKING_ID', 'blog')
         
         if not app_key or not app_secret:
-            raise ValueError("알리익스프레스 API 키가 설정되지 않았습니다.")
-            
-        safe_log(f"🌟 평점 정보 강화 분석 시작 (조용한 모드: {QUIET_MODE})")
+            raise Exception("AliExpress API 키가 설정되지 않았습니다")
         
-        # 🌟 평점 정보 강화 분석기 사용
+        safe_log(f"🔑 API 키 확인: App Key={app_key[:10]}..., Tracking ID={tracking_id}")
+        
+        # 🌟 평점 정보 강화 분석기 생성
         analyzer = EnhancedAliexpressAnalyzer(app_key, app_secret, tracking_id)
+        
+        # 상품 정보 분석
         product_info = analyzer.get_product_info(url)
         
         # 🎯 성공 시, 순수 JSON만 stdout으로 출력
         result = {"success": True, "data": product_info}
-        print(json.dumps(result, ensure_ascii=False))
+        print(json.dumps(result, ensure_ascii=False).replace('\\/', '/'))
         safe_log(f"✅ 평점 정보 강화 완료: 평점({product_info.get('rating_display', 'N/A')}), 판매량({product_info.get('lastest_volume', 'N/A')})")
 
     except Exception as e:
         safe_log(f"❌ 오류 발생: {e}")
-        print(json.dumps({"success": False, "message": f"상품 분석 중 오류가 발생했습니다: {str(e)}"}, ensure_ascii=False))
+        print(json.dumps({"success": False, "message": f"상품 분석 중 오류가 발생했습니다: {str(e)}"}, ensure_ascii=False).replace('\\/', '/'))
 
 if __name__ == "__main__":
     main()
