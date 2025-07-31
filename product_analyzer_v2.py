@@ -160,7 +160,7 @@ def analyze_aliexpress_product_v2(url):
 
 def main():
     if len(sys.argv) != 3:
-        print(json.dumps({"success": False, "message": "Usage: python3 product_analyzer_v2.py <platform> <url>"}))
+        print(json.dumps({"success": False, "message": "Usage: python3 product_analyzer_v2.py <platform> <url>"}).replace('\\/', '/'))
         sys.exit(1)
     
     platform = sys.argv[1].lower()
@@ -173,7 +173,7 @@ def main():
     else:
         result = {"success": False, "message": "지원하지 않는 플랫폼입니다."}
     
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print(json.dumps(result, ensure_ascii=False, indent=2).replace('\\/', '/'))
 
 if __name__ == "__main__":
     main()
