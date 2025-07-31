@@ -97,7 +97,7 @@ function load_queue_index() {
  * 큐 인덱스 저장
  */
 function save_queue_index($index) {
-    $json_content = json_encode($index, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    $json_content = json_encode($index, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     if ($json_content === false) {
         error_log("Failed to encode queue index to JSON");
         return false;
@@ -161,7 +161,7 @@ function add_queue_split($queue_data) {
     $filepath = $dir . '/' . $filename;
     
     // 개별 큐 파일 저장
-    $json_content = json_encode($queue_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    $json_content = json_encode($queue_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     if ($json_content === false) {
         error_log("Failed to encode queue data to JSON for queue_id: {$queue_id}");
         return false;
@@ -379,7 +379,7 @@ function update_queue_status_split($queue_id, $new_status, $error_message = null
     $new_path = $new_dir . '/' . $old_filename;
     
     // 새 위치에 파일 저장
-    $json_content = json_encode($queue_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    $json_content = json_encode($queue_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     if ($json_content === false) {
         error_log("Failed to encode updated queue data for queue_id: {$queue_id}");
         return false;
@@ -453,7 +453,7 @@ function update_queue_data_split($queue_id, $updated_data) {
     $new_path = $new_dir . '/' . $old_filename;
     
     // 새 데이터로 파일 저장
-    $json_content = json_encode($updated_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    $json_content = json_encode($updated_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     if ($json_content === false) {
         error_log("Failed to encode updated queue data for queue_id: {$queue_id}");
         return false;
@@ -517,7 +517,7 @@ function reorder_queues_split($queue_ids_array) {
                 $dir = get_queue_directory_by_status($status);
                 $filepath = $dir . '/' . $filename;
                 
-                $json_content = json_encode($queue_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+                $json_content = json_encode($queue_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 if ($json_content !== false && file_put_contents($filepath, $json_content, LOCK_EX)) {
                     // 인덱스 업데이트
                     $index[$queue_id]['priority'] = $queue_data['priority'];
@@ -670,7 +670,7 @@ function update_legacy_queue_file() {
         $legacy_format[] = $queue;
     }
     
-    $json_content = json_encode($legacy_format, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    $json_content = json_encode($legacy_format, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     if ($json_content === false) {
         error_log("Failed to encode legacy queue data");
         return false;
