@@ -137,6 +137,19 @@ function clean_input($data) {
     return $data;
 }
 
+// URL 전용 정리 함수 (백슬래시 제거)
+function clean_url($url) {
+    if (empty($url)) {
+        return $url;
+    }
+    
+    $url = trim($url);
+    $url = stripslashes($url); // 매직 쿼트 제거
+    $url = str_replace('\\/', '/', $url); // JSON 이스케이프된 슬래시 제거
+    
+    return $url;
+}
+
 
 // 8. 텔레그램 알림 발송 함수 (cURL 우선, file_get_contents 백업)
 function send_telegram_notification($message, $urgent = false) {
@@ -698,7 +711,7 @@ function clean_affiliate_links($keywords_raw) {
             foreach ($keyword_item['products_data'] as $product_data) {
                 if (is_array($product_data) && !empty($product_data['url'])) {
                     $cleaned_product_data = [
-                        'url' => clean_input($product_data['url']),
+                        'url' => clean_url($product_data['url']),
                         'analysis_data' => $product_data['analysis_data'] ?? null,
                         'generated_html' => $product_data['generated_html'] ?? null,
                         'user_data' => $product_data['user_data'] ?? []
@@ -1057,7 +1070,7 @@ function main_process() {
             'prompt_type_name' => get_prompt_type_name($input_data['prompt_type']),
             'keywords' => $cleaned_keywords, // 🔧 이제 products_data 포함
             'user_details' => $user_details_data,
-            'thumbnail_url' => !empty($input_data['thumbnail_url']) ? $input_data['thumbnail_url'] : null, // 🔧 썸네일 URL 추가
+            'thumbnail_url' => !empty($input_data['thumbnail_url']) ? clean_url($input_data['thumbnail_url']) : null, // 🔧 썸네일 URL 추가
             'processing_mode' => ($input_data['publish_mode'] === 'immediate') ? 'immediate_publish' : 'link_based_with_details_and_prompt_template_and_product_data',
             'link_conversion_required' => true, // 링크 변환 필요 여부
             'conversion_status' => [
