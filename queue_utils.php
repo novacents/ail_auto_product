@@ -14,6 +14,7 @@ define('QUEUE_SPLIT_DIR', QUEUE_BASE_DIR . '/queues');
 define('QUEUE_PENDING_DIR', QUEUE_SPLIT_DIR . '/pending');
 define('QUEUE_PROCESSING_DIR', QUEUE_SPLIT_DIR . '/processing');
 define('QUEUE_COMPLETED_DIR', QUEUE_SPLIT_DIR . '/completed');
+define('QUEUE_FAILED_DIR', QUEUE_SPLIT_DIR . '/failed');
 define('QUEUE_INDEX_FILE', QUEUE_BASE_DIR . '/queue_index.json');
 define('QUEUE_LEGACY_FILE', QUEUE_BASE_DIR . '/product_queue.json');
 
@@ -25,7 +26,8 @@ function initialize_queue_directories() {
         QUEUE_SPLIT_DIR,
         QUEUE_PENDING_DIR,
         QUEUE_PROCESSING_DIR,
-        QUEUE_COMPLETED_DIR
+        QUEUE_COMPLETED_DIR,
+        QUEUE_FAILED_DIR
     ];
     
     foreach ($dirs as $dir) {
@@ -68,8 +70,9 @@ function get_queue_directory_by_status($status) {
         case 'processing':
             return QUEUE_PROCESSING_DIR;
         case 'completed':
-        case 'failed':
             return QUEUE_COMPLETED_DIR;
+        case 'failed':
+            return QUEUE_FAILED_DIR;
         default:
             return QUEUE_PENDING_DIR;
     }
@@ -759,7 +762,8 @@ function debug_queue_split_info() {
             'split' => QUEUE_SPLIT_DIR,
             'pending' => QUEUE_PENDING_DIR,
             'processing' => QUEUE_PROCESSING_DIR,
-            'completed' => QUEUE_COMPLETED_DIR
+            'completed' => QUEUE_COMPLETED_DIR,
+            'failed' => QUEUE_FAILED_DIR
         ],
         'files' => [
             'index' => QUEUE_INDEX_FILE,
