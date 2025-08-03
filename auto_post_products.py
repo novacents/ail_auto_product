@@ -511,6 +511,10 @@ echo json_encode($result);
                 post_info = response.json()
                 post_url = post_info.get('link', '')
                 self.log_message(f"[✅] 워드프레스 발행 성공: {post_url}")
+                
+                # 🎉 keyword_processor.php가 파싱하는 성공 메시지 출력 (백업 파일 패턴 복원)
+                print(f"워드프레스 발행 성공: {post_url}")
+                
                 return post_url
             else:
                 self.log_message(f"[❌] 워드프레스 발행 실패: {response.status_code} - {response.text}")
