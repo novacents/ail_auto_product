@@ -40,7 +40,6 @@ import iop
 MAX_POSTS_PER_RUN = 1
 QUEUE_FILE = "/var/www/product_queue.json"  # 레거시 큐 파일 (백업용)
 QUEUES_DIR = "/var/www/queues"  # 새로운 분할 큐 디렉토리
-
 POST_DELAY_SECONDS = 30
 # ##############################################################################
 
@@ -187,7 +186,7 @@ class AliExpressPostingSystem:
         """PHP queue_utils.php 함수 호출"""
         try:
             # PHP 스크립트 경로
-            php_script = "/var/www/queue_utils.php"
+            php_script = "/var/www/novacents/tools/queue_utils.php"
             
             if not os.path.exists(php_script):
                 print(f"[❌] PHP 스크립트를 찾을 수 없습니다: {php_script}")
