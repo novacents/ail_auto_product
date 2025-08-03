@@ -5,7 +5,7 @@
  * 워드프레스 환경에 전혀 종속되지 않으며, 순수 PHP로만 작동합니다.
  *
  * 파일 위치: /var/www/novacents/tools/keyword_processor.php
- * 버전: v4.6 (파일 분할 방식 큐 관리 시스템 적용)
+ * 버전: v4.7 (queue_manager.php 즉시 발행 지원 추가)
  */
 
 // 1. 초기 에러 리포팅 설정 (스크립트 시작 시점부터 에러를 잡기 위함)
@@ -305,14 +305,15 @@ function clean_affiliate_links($keywords) {
             debug_log("clean_affiliate_links: Keyword '{$cleaned_keyword['name']}' has " . count($cleaned_keyword['products_data']) . " product data entries");
         }
         
-        // 유효한 링크가 있는 키워드만 포함
-        if (!empty($cleaned_keyword['aliexpress']) || !empty($cleaned_keyword['coupang'])) {
+        // 유효한 링크 또는 상품 데이터가 있는 키워드만 포함
+        if (!empty($cleaned_keyword['aliexpress']) || !empty($cleaned_keyword['coupang']) || !empty($cleaned_keyword['products_data'])) {
             $cleaned_keywords[] = $cleaned_keyword;
             debug_log("clean_affiliate_links: Added keyword '{$cleaned_keyword['name']}' with " . 
                      count($cleaned_keyword['aliexpress']) . " AliExpress + " . 
-                     count($cleaned_keyword['coupang']) . " Coupang links");
+                     count($cleaned_keyword['coupang']) . " Coupang links + " .
+                     count($cleaned_keyword['products_data']) . " product data");
         } else {
-            debug_log("clean_affiliate_links: Skipped keyword '{$cleaned_keyword['name']}' - no valid links");
+            debug_log("clean_affiliate_links: Skipped keyword '{$cleaned_keyword['name']}' - no valid links or product data");
         }
     }
     
@@ -432,8 +433,67 @@ function get_queue_stats() {
     return get_queue_stats_split();
 }
 
+// 🆕 20. queue_manager.php에서의 즉시 발행 처리 함수 (시나리오 C)
+// queue_manager_plan.md의 시나리오 C에 따라 큐 상태는 변경하지 않고 임시 파일 기반으로만 처리
+function process_queue_manager_immediate_publish($queue_data) {
+    debug_log("process_queue_manager_immediate_publish: Starting queue manager immediate publish process (Scenario C).");
+    
+    try {
+        // 임시 파일 생성 (큐 레코드는 생성하지 않음)
+        $temp_file = create_temp_file($queue_data);
+        if (!$temp_file) {
+            throw new Exception("임시 파일 생성 실패");
+        }
+        
+        debug_log("process_queue_manager_immediate_publish: Temporary file created: " . $temp_file);
+        
+        // Python 스크립트 실행
+        $result = execute_python_script($temp_file);
+        
+        // 결과 파싱
+        if ($result['success']) {
+            // 성공 알림
+            $telegram_msg = "✅ 큐 관리자 즉시 발행 완료!\n";
+            $telegram_msg .= "제목: " . $queue_data['title'] . "\n";
+            $telegram_msg .= "프롬프트: " . $queue_data['prompt_type_name'] . "\n";
+            $telegram_msg .= "URL: " . $result['post_url'] . "\n";
+            $telegram_msg .= "🗂️ 임시파일: " . basename($temp_file) . "\n";
+            $telegram_msg .= "💡 서버 정리: " . $temp_file;
+            
+            send_telegram_notification($telegram_msg);
+            
+            // JSON 응답
+            send_json_response(true, [
+                'message' => '글이 성공적으로 발행되었습니다!',
+                'post_url' => $result['post_url'],
+                'temp_file' => basename($temp_file),
+                'temp_file_path' => $temp_file,
+                'prompt_type' => $queue_data['prompt_type_name']
+            ]);
+        } else {
+            throw new Exception($result['error'] ?? '글 발행 중 오류 발생');
+        }
+        
+    } catch (Exception $e) {
+        debug_log("process_queue_manager_immediate_publish: Error - " . $e->getMessage());
+        
+        // 실패 알림
+        $telegram_msg = "❌ 큐 관리자 즉시 발행 실패!\n";
+        $telegram_msg .= "제목: " . $queue_data['title'] . "\n";
+        $telegram_msg .= "오류: " . $e->getMessage();
+        send_telegram_notification($telegram_msg, true);
+        
+        // JSON 오류 응답
+        send_json_response(false, [
+            'message' => '글 발행 중 오류가 발생했습니다: ' . $e->getMessage(),
+            'error' => $e->getMessage()
+        ]);
+    }
+}
+
+// 21. affiliate_editor.php에서의 즉시 발행 처리 함수 (시나리오 B)
 function process_immediate_publish($queue_data) {
-    debug_log("process_immediate_publish: Starting immediate publish process.");
+    debug_log("process_immediate_publish: Starting immediate publish process (Scenario B).");
     
     try {
         // 🆕 즉시 발행용 큐 레코드 생성
@@ -624,7 +684,7 @@ function parse_python_output($output) {
     ];
 }
 
-// 20. 메인 프로세스 함수
+// 22. 메인 프로세스 함수
 function main_process($input_data) {
     debug_log("main_process: Starting main processing function");
     debug_log("main_process: Title: " . ($input_data['title'] ?? 'N/A'));
@@ -632,6 +692,11 @@ function main_process($input_data) {
     debug_log("main_process: Prompt type: " . ($input_data['prompt_type'] ?? 'N/A'));
     debug_log("main_process: Keywords count: " . safe_count($input_data['keywords'] ?? []));
     debug_log("main_process: Publish mode: " . ($input_data['publish_mode'] ?? 'queue'));
+    
+    // 🆕 요청 출처 구분 (queue_manager.php vs affiliate_editor.php)
+    $referer = $_SERVER['HTTP_REFERER'] ?? '';
+    $is_from_queue_manager = strpos($referer, 'queue_manager.php') !== false;
+    debug_log("main_process: Request from queue_manager: " . ($is_from_queue_manager ? 'YES' : 'NO'));
     
     try {
         // 🔧 입력 데이터 유효성 검사
@@ -762,8 +827,16 @@ function main_process($input_data) {
         // 🚀 즉시 발행 vs 큐 저장 분기 처리
         if ($input_data['publish_mode'] === 'immediate') {
             debug_log("main_process: Processing immediate publish request.");
-            process_immediate_publish($queue_data);
-            // process_immediate_publish() 함수에서 JSON 응답 후 exit 됨
+            
+            // 🆕 요청 출처에 따른 분기 처리
+            if ($is_from_queue_manager) {
+                debug_log("main_process: Using queue manager immediate publish (Scenario C).");
+                process_queue_manager_immediate_publish($queue_data);
+            } else {
+                debug_log("main_process: Using affiliate editor immediate publish (Scenario B).");
+                process_immediate_publish($queue_data);
+            }
+            // 위 함수들에서 JSON 응답 후 exit 됨
         } else {
             debug_log("main_process: Processing queue mode request using split system.");
             
