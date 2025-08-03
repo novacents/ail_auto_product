@@ -1,86 +1,185 @@
 <?php
 /**
- * 어필리에이트 에디터 키워드 프로세서 - 고급 큐 시스템 적용 버전
- * 버전: v3.0 (파일 분할 시스템 + 상품 분석 데이터)
+ * 어필리에이트 상품 키워드 데이터 처리기 (4가지 프롬프트 템플릿 시스템 + 즉시 발행 지원 + 상품 분석 데이터 저장)
+ * affiliate_editor.php에서 POST로 전송된 데이터를 처리하고 큐 파일에 저장하거나 즉시 발행합니다.
+ * 워드프레스 환경에 전혀 종속되지 않으며, 순수 PHP로만 작동합니다.
+ *
+ * 파일 위치: /var/www/novacents/tools/keyword_processor.php
+ * 버전: v4.6 (파일 분할 방식 큐 관리 시스템 적용)
  */
 
-// WordPress 환경 설정
-if (!defined('ABSPATH')) {
-    require_once($_SERVER['DOCUMENT_ROOT'] . '/wp-config.php');
-}
+// 1. 초기 에러 리포팅 설정 (스크립트 시작 시점부터 에러를 잡기 위함)
+error_reporting(E_ALL); // 모든 PHP 에러를 보고
+ini_set('display_errors', 1); // 웹 브라우저에 에러를 직접 표시
+ini_set('log_errors', 1); // 에러를 웹 서버 에러 로그에 기록
+ini_set('error_log', __DIR__ . '/php_error_log.txt'); // PHP 에러를 특정 파일에 기록
 
-// 큐 관리 함수 포함
+// 2. 파일 경로 상수 정의 (한곳에서 관리)
+define('BASE_PATH', __DIR__); // 현재 파일이 있는 디렉토리
+define('ENV_FILE', '/home/novacents/.env'); // .env 파일은 홈 디렉토리에 고정
+define('DEBUG_LOG_FILE', BASE_PATH . '/debug_processor.txt');
+define('MAIN_LOG_FILE', BASE_PATH . '/processor_log.txt');
+define('QUEUE_FILE', '/var/www/novacents/tools/product_queue.json');
+define('TEMP_DIR', BASE_PATH . '/temp'); // 즉시 발행용 임시 파일 디렉토리
+
+// queue_utils.php 유틸리티 함수 포함
 require_once __DIR__ . '/queue_utils.php';
 
-// 권한 확인
-if (!current_user_can('manage_options')) {
-    wp_die('접근 권한이 없습니다.');
+// 3. 안전한 count 함수
+function safe_count($value) {
+    if (is_array($value) || $value instanceof Countable) {
+        return count($value);
+    }
+    return 0;
 }
 
-// 필요한 상수 정의
-define('TEMP_DIR', '/var/www/novacents/tools/temp');
-define('MAX_EXECUTION_TIME', 300);
-
-// 시간 제한 설정
-set_time_limit(MAX_EXECUTION_TIME);
-
-// 🔧 1. 디버그 로그 함수
+// 4. 디버깅 로그 함수 (스크립트 시작부터 끝까지 모든 흐름 기록)
 function debug_log($message) {
     $timestamp = date('Y-m-d H:i:s');
-    $log_file = '/var/www/novacents/tools/keyword_processor.log';
-    $log_entry = "[{$timestamp}] {$message}" . PHP_EOL;
-    file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
+    $log_entry = "[{$timestamp}] DEBUG: {$message}\n";
+    @file_put_contents(DEBUG_LOG_FILE, $log_entry, FILE_APPEND | LOCK_EX); // @ suppress errors
 }
 
-// 🔧 2. 메인 로그 함수
+// 스크립트 시작 시 즉시 디버그 로그 기록
+debug_log("=== keyword_processor.php 시작 (파일 분할 방식 큐 관리 시스템) ===");
+debug_log("PHP Version: " . phpversion());
+debug_log("Request Method: " . ($_SERVER['REQUEST_METHOD'] ?? 'N/A'));
+debug_log("POST Data Empty: " . (empty($_POST) ? 'YES' : 'NO'));
+debug_log("Script Path: " . __FILE__);
+debug_log("Base Path: " . BASE_PATH);
+
+// 🔧 POST 데이터 상세 로깅 추가
+debug_log("=== POST 데이터 상세 분석 ===");
+if (!empty($_POST)) {
+    foreach ($_POST as $key => $value) {
+        if ($key === 'keywords') {
+            debug_log("POST[{$key}] (raw): " . substr($value, 0, 500) . (strlen($value) > 500 ? '... (truncated)' : ''));
+            
+            // JSON 디코딩 시도
+            $decoded = json_decode($value, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                debug_log("POST[{$key}] (decoded type): " . gettype($decoded));
+                debug_log("POST[{$key}] (decoded count): " . safe_count($decoded));
+                if (is_array($decoded) && !empty($decoded)) {
+                    debug_log("POST[{$key}] (first item): " . json_encode($decoded[0], JSON_UNESCAPED_UNICODE));
+                    
+                    // 🔧 products_data 확인
+                    if (isset($decoded[0]['products_data'])) {
+                        debug_log("POST[{$key}] (first item has products_data): " . safe_count($decoded[0]['products_data']) . " items");
+                        if (!empty($decoded[0]['products_data'])) {
+                            $first_product = $decoded[0]['products_data'][0];
+                            debug_log("POST[{$key}] (first product data keys): " . implode(', ', array_keys($first_product)));
+                            debug_log("POST[{$key}] (first product has analysis_data): " . (isset($first_product['analysis_data']) ? 'YES' : 'NO'));
+                            debug_log("POST[{$key}] (first product has generated_html): " . (isset($first_product['generated_html']) ? 'YES' : 'NO'));
+                        }
+                    }
+                }
+            } else {
+                debug_log("POST[{$key}] JSON decode error: " . json_last_error_msg());
+            }
+        } else {
+            debug_log("POST[{$key}]: " . (is_string($value) ? substr($value, 0, 200) : gettype($value)));
+        }
+    }
+} else {
+    debug_log("No POST data received");
+}
+debug_log("=== POST 데이터 분석 완료 ===");
+
+
+// 5. 환경 변수 로드 함수 (워드프레스 외부에서 .env 파일을 안전하게 로드)
+function load_env_variables() {
+    debug_log("load_env_variables: Loading environment variables from " . ENV_FILE);
+    $env_vars = [];
+    if (!file_exists(ENV_FILE)) {
+        debug_log("load_env_variables: .env file not found at " . ENV_FILE);
+        return $env_vars;
+    }
+
+    try {
+        $lines = file(ENV_FILE, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        if ($lines === false) {
+            debug_log("load_env_variables: Failed to read .env file");
+            return $env_vars;
+        }
+
+        foreach ($lines as $line) {
+            if (strpos($line, '=') !== false && !str_starts_with(trim($line), '#')) {
+                list($name, $value) = explode('=', $line, 2);
+                $name = trim($name);
+                $value = trim($value, " \t\n\r\0\x0B\"'");
+                if (!empty($name)) {
+                    $env_vars[$name] = $value;
+                    debug_log("load_env_variables: Loaded {$name}");
+                }
+            }
+        }
+        debug_log("load_env_variables: Successfully loaded " . count($env_vars) . " environment variables");
+    } catch (Exception $e) {
+        debug_log("load_env_variables: Exception occurred: " . $e->getMessage());
+    }
+
+    return $env_vars;
+}
+
+// 6. 메인 로그 함수 (중요한 작업 로그용)
 function main_log($message) {
     $timestamp = date('Y-m-d H:i:s');
-    $log_file = '/var/www/novacents/tools/main_process.log';
-    $log_entry = "[{$timestamp}] {$message}" . PHP_EOL;
-    file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
+    $log_entry = "[{$timestamp}] MAIN: {$message}\n";
+    @file_put_contents(MAIN_LOG_FILE, $log_entry, FILE_APPEND | LOCK_EX);
 }
 
-// 🔧 3. JSON 응답 함수
-function send_json_response($success, $data = []) {
-    header('Content-Type: application/json; charset=utf-8');
-    echo json_encode([
-        'success' => $success,
-        'data' => $data,
-        'timestamp' => date('Y-m-d H:i:s')
-    ], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-// 🔧 4. 에디터로 리다이렉트 함수
-function redirect_to_editor($success, $data = []) {
-    $query_params = http_build_query(array_merge(['success' => $success ? 1 : 0], $data));
-    $redirect_url = '/tools/affiliate_editor.php?' . $query_params;
-    header('Location: ' . $redirect_url);
-    exit;
-}
-
-// 🔧 5. 텔레그램 알림 함수
-function send_telegram_notification($message, $is_error = false) {
-    $config_file = '/var/www/novacents/tools/telegram_config.json';
-    
-    if (!file_exists($config_file)) {
-        debug_log("Telegram config file not found: {$config_file}");
-        return false;
+// 7. JSON 응답 전송 함수 (AJAX 응답용)
+function send_json_response($success, $data = [], $message = '') {
+    // 헤더 설정 (중복 방지)
+    if (!headers_sent()) {
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-cache, must-revalidate');
+        header('Expires: Mon, 26 Jul 1997 05:00:00 GMT');
     }
     
+    $response = [
+        'success' => $success,
+        'message' => $message,
+        'data' => $data,
+        'timestamp' => date('Y-m-d H:i:s')
+    ];
+    
+    echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    debug_log("send_json_response: JSON response sent. Success: " . ($success ? 'YES' : 'NO') . ", Message: " . $message);
+    exit;
+}
+
+// 8. 리다이렉트 함수 (폼 제출 후 처리용)
+function redirect_to_editor($success, $params = []) {
+    $base_url = '/tools/affiliate_editor.php';
+    $query_params = array_merge(['success' => $success ? '1' : '0'], $params);
+    $redirect_url = $base_url . '?' . http_build_query($query_params);
+    
+    debug_log("redirect_to_editor: Redirecting to " . $redirect_url);
+    if (!headers_sent()) {
+        header('Location: ' . $redirect_url);
+    }
+    exit;
+}
+
+// 9. 텔레그램 알림 함수
+function send_telegram_notification($message, $is_error = false) {
+    debug_log("send_telegram_notification: Attempting to send notification. Is error: " . ($is_error ? 'YES' : 'NO'));
+    
+    $env_vars = load_env_variables();
+    if (!isset($env_vars['TELEGRAM_BOT_TOKEN']) || !isset($env_vars['TELEGRAM_CHAT_ID'])) {
+        debug_log("send_telegram_notification: Telegram credentials not found in environment variables");
+        return false;
+    }
+
+    $bot_token = $env_vars['TELEGRAM_BOT_TOKEN'];
+    $chat_id = $env_vars['TELEGRAM_CHAT_ID'];
+    
+    // 에러인 경우 이모지 추가
+    $formatted_message = $is_error ? "🚨 " . $message : $message;
+    
     try {
-        $config = json_decode(file_get_contents($config_file), true);
-        if (!$config || !isset($config['bot_token']) || !isset($config['chat_id'])) {
-            debug_log("Invalid telegram config format");
-            return false;
-        }
-        
-        $bot_token = $config['bot_token'];
-        $chat_id = $config['chat_id'];
-        
-        // 에러인 경우 이모지 추가
-        $formatted_message = $is_error ? "🚨 " . $message : $message;
-        
         $url = "https://api.telegram.org/bot{$bot_token}/sendMessage";
         $data = [
             'chat_id' => $chat_id,
@@ -88,52 +187,201 @@ function send_telegram_notification($message, $is_error = false) {
             'parse_mode' => 'HTML'
         ];
         
-        $options = [
+        $context = stream_context_create([
             'http' => [
-                'header' => "Content-type: application/x-www-form-urlencoded\r\n",
                 'method' => 'POST',
+                'header' => 'Content-Type: application/x-www-form-urlencoded',
                 'content' => http_build_query($data),
                 'timeout' => 10
             ]
-        ];
+        ]);
         
-        $context = stream_context_create($options);
         $result = file_get_contents($url, false, $context);
-        
-        if ($result === false) {
-            debug_log("Failed to send telegram notification");
+        if ($result !== false) {
+            debug_log("send_telegram_notification: Notification sent successfully");
+            return true;
+        } else {
+            debug_log("send_telegram_notification: Failed to send notification");
             return false;
         }
-        
-        debug_log("Telegram notification sent successfully");
-        return true;
-        
     } catch (Exception $e) {
-        debug_log("Telegram notification error: " . $e->getMessage());
+        debug_log("send_telegram_notification: Exception occurred: " . $e->getMessage());
         return false;
     }
 }
 
-// 🔧 6. 안전한 배열 카운트 함수
-function safe_count($var) {
-    if (is_array($var) || is_countable($var)) {
-        return count($var);
+// 10. 입력 데이터 유효성 검사 함수
+function validate_input_data($data) {
+    debug_log("validate_input_data: Starting validation process");
+    
+    $errors = [];
+    
+    // 제목 검사
+    if (empty($data['title']) || strlen(trim($data['title'])) < 3) {
+        $errors[] = "제목은 3자 이상이어야 합니다";
     }
-    return 0;
+    
+    // 카테고리 검사
+    $valid_categories = ['354', '355', '356', '12'];
+    if (empty($data['category']) || !in_array($data['category'], $valid_categories)) {
+        $errors[] = "올바른 카테고리를 선택해주세요";
+    }
+    
+    // 프롬프트 타입 검사
+    $valid_prompt_types = ['essential_items', 'friend_review', 'professional_analysis', 'amazing_discovery'];
+    if (empty($data['prompt_type']) || !in_array($data['prompt_type'], $valid_prompt_types)) {
+        $errors[] = "올바른 프롬프트 타입을 선택해주세요";
+    }
+    
+    // 키워드 검사
+    if (empty($data['keywords']) || !is_array($data['keywords'])) {
+        $errors[] = "키워드 데이터가 올바르지 않습니다";
+    } else {
+        $valid_keywords = 0;
+        foreach ($data['keywords'] as $keyword) {
+            if (is_array($keyword) && !empty($keyword['name'])) {
+                $valid_keywords++;
+            }
+        }
+        if ($valid_keywords === 0) {
+            $errors[] = "유효한 키워드가 없습니다";
+        }
+    }
+    
+    debug_log("validate_input_data: Validation completed. Errors: " . count($errors));
+    return $errors;
 }
 
-// 🔧 7. 프롬프트 타입 이름 매핑 함수
-function get_prompt_type_name($prompt_type) {
-    $prompt_types = [
-        'essential_items' => '필수템형 🎯',
-        'friend_review' => '친구 추천형 👫',
-        'professional_analysis' => '전문 분석형 📊',
-        'amazing_discovery' => '놀라움 발견형 ✨'
-    ];
-    return $prompt_types[$prompt_type] ?? '기본형';
+// 11. 키워드 데이터 정리 및 링크 검증 함수
+function clean_affiliate_links($keywords) {
+    debug_log("clean_affiliate_links: Starting link cleaning process");
+    
+    $cleaned_keywords = [];
+    $total_links = 0;
+    $valid_links = 0;
+    
+    foreach ($keywords as $keyword_index => $keyword) {
+        if (!is_array($keyword) || empty($keyword['name'])) {
+            debug_log("clean_affiliate_links: Skipping invalid keyword at index {$keyword_index}");
+            continue;
+        }
+        
+        $cleaned_keyword = [
+            'name' => trim($keyword['name']),
+            'aliexpress' => [],
+            'coupang' => [],
+            'products_data' => [] // 🔧 상품 분석 데이터 필드 추가
+        ];
+        
+        // AliExpress 링크 처리
+        if (isset($keyword['aliexpress']) && is_array($keyword['aliexpress'])) {
+            foreach ($keyword['aliexpress'] as $link) {
+                $total_links++;
+                if (is_string($link) && !empty(trim($link)) && strpos($link, 'aliexpress.com') !== false) {
+                    $cleaned_keyword['aliexpress'][] = trim($link);
+                    $valid_links++;
+                }
+            }
+        }
+        
+        // 쿠팡 링크 처리
+        if (isset($keyword['coupang']) && is_array($keyword['coupang'])) {
+            foreach ($keyword['coupang'] as $link) {
+                $total_links++;
+                if (is_string($link) && !empty(trim($link)) && strpos($link, 'coupang.com') !== false) {
+                    $cleaned_keyword['coupang'][] = trim($link);
+                    $valid_links++;
+                }
+            }
+        }
+        
+        // 🔧 상품 분석 데이터 처리
+        if (isset($keyword['products_data']) && is_array($keyword['products_data'])) {
+            foreach ($keyword['products_data'] as $product_data) {
+                if (is_array($product_data) && !empty($product_data)) {
+                    $cleaned_keyword['products_data'][] = $product_data;
+                }
+            }
+            debug_log("clean_affiliate_links: Keyword '{$cleaned_keyword['name']}' has " . count($cleaned_keyword['products_data']) . " product data entries");
+        }
+        
+        // 유효한 링크가 있는 키워드만 포함
+        if (!empty($cleaned_keyword['aliexpress']) || !empty($cleaned_keyword['coupang'])) {
+            $cleaned_keywords[] = $cleaned_keyword;
+            debug_log("clean_affiliate_links: Added keyword '{$cleaned_keyword['name']}' with " . 
+                     count($cleaned_keyword['aliexpress']) . " AliExpress + " . 
+                     count($cleaned_keyword['coupang']) . " Coupang links");
+        } else {
+            debug_log("clean_affiliate_links: Skipped keyword '{$cleaned_keyword['name']}' - no valid links");
+        }
+    }
+    
+    debug_log("clean_affiliate_links: Processed {$total_links} total links, {$valid_links} valid links, " . count($cleaned_keywords) . " valid keywords");
+    return $cleaned_keywords;
 }
 
-// 🔧 8. 카테고리 이름 매핑 함수
+// 12. 사용자 세부 정보 파싱 함수
+function parse_user_details($user_details_json) {
+    debug_log("parse_user_details: Parsing user details data");
+    
+    if (empty($user_details_json)) {
+        debug_log("parse_user_details: No user details provided");
+        return null;
+    }
+    
+    if (is_string($user_details_json)) {
+        $parsed = json_decode($user_details_json, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            debug_log("parse_user_details: JSON parsing failed: " . json_last_error_msg());
+            return null;
+        }
+        $user_details_json = $parsed;
+    }
+    
+    if (!is_array($user_details_json)) {
+        debug_log("parse_user_details: User details is not an array");
+        return null;
+    }
+    
+    debug_log("parse_user_details: Successfully parsed user details with " . count($user_details_json) . " fields");
+    return $user_details_json;
+}
+
+// 13. 사용자 세부 정보 유효성 검사 함수
+function validate_user_details($user_details) {
+    if (!is_array($user_details) || empty($user_details)) {
+        return false;
+    }
+    
+    // 최소한 하나의 유효한 필드가 있는지 확인
+    foreach ($user_details as $key => $value) {
+        if (!empty(trim($value))) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+// 14. 사용자 세부 정보 요약 함수
+function format_user_details_summary($user_details) {
+    if (!is_array($user_details)) {
+        return "없음";
+    }
+    
+    $summary_parts = [];
+    $field_count = 0;
+    
+    foreach ($user_details as $key => $value) {
+        if (!empty(trim($value))) {
+            $field_count++;
+        }
+    }
+    
+    return "{$field_count}개 필드";
+}
+
+// 15. 카테고리 이름 매핑 함수
 function get_category_name($category_id) {
     $categories = [
         '354' => 'Today\'s Pick',
@@ -144,263 +392,46 @@ function get_category_name($category_id) {
     return $categories[$category_id] ?? '알 수 없는 카테고리';
 }
 
-// 🔧 9. 큐 추가 함수 (분할 시스템 사용)
+// 16. 프롬프트 타입 이름 매핑 함수
+function get_prompt_type_name($prompt_type) {
+    $prompt_types = [
+        'essential_items' => '필수템형 🎯',
+        'friend_review' => '친구 추천형 👫',
+        'professional_analysis' => '전문 분석형 📊',
+        'amazing_discovery' => '놀라움 발견형 ✨'
+    ];
+    return $prompt_types[$prompt_type] ?? '기본형';
+}
+
+// 17. URL 정리 함수
+function clean_url($url) {
+    return trim($url);
+}
+
+// 18. 큐 추가 래퍼 함수 (분할 시스템 사용)
 function add_to_queue($queue_data) {
-    debug_log("add_to_queue: Adding to split queue system.");
+    debug_log("add_to_queue: Adding item to split queue system");
     
-    // 분할 시스템 함수 호출
-    $result = add_queue_split($queue_data);
-    
-    if ($result) {
-        debug_log("add_to_queue: Successfully added to split system with ID: " . $result);
-        return true;
-    } else {
-        debug_log("add_to_queue: Failed to add to split system.");
+    try {
+        $queue_id = add_queue_split($queue_data);
+        if ($queue_id) {
+            debug_log("add_to_queue: Successfully added to split queue with ID: " . $queue_id);
+            return $queue_id;
+        } else {
+            debug_log("add_to_queue: Failed to add to split queue");
+            return false;
+        }
+    } catch (Exception $e) {
+        debug_log("add_to_queue: Exception occurred: " . $e->getMessage());
         return false;
     }
 }
 
-// 🔧 10. 큐 통계 조회 함수 (분할 시스템 사용)
+// 19. 큐 통계 조회 래퍼 함수 (분할 시스템 사용)
 function get_queue_stats() {
     return get_queue_stats_split();
 }
 
-// 🔧 11. 입력 데이터 유효성 검사
-function validate_input_data($data) {
-    $required_fields = ['title', 'category', 'prompt_type', 'keywords'];
-    
-    foreach ($required_fields as $field) {
-        if (!isset($data[$field]) || empty($data[$field])) {
-            return "필수 필드가 누락되었습니다: {$field}";
-        }
-    }
-    
-    // 키워드 배열 검사
-    if (!is_array($data['keywords'])) {
-        return "키워드 데이터가 배열 형태가 아닙니다.";
-    }
-    
-    return null; // 유효성 검사 통과
-}
-
-// 🔧 12. 키워드 데이터 정리 함수
-function clean_keywords_data($keywords) {
-    debug_log("clean_keywords_data: Starting keyword data cleaning process.");
-    
-    $cleaned = [];
-    foreach ($keywords as $index => $keyword) {
-        if (!is_array($keyword)) {
-            debug_log("clean_keywords_data: Invalid keyword data at index {$index}, skipping.");
-            continue;
-        }
-        
-        $clean_keyword = [
-            'name' => trim($keyword['name'] ?? ''),
-            'aliexpress' => [],
-            'coupang' => [],
-            'products_data' => [] // 🔧 상품 분석 데이터 필드 추가
-        ];
-        
-        // AliExpress 링크 정리
-        if (isset($keyword['aliexpress']) && is_array($keyword['aliexpress'])) {
-            foreach ($keyword['aliexpress'] as $link) {
-                if (is_string($link) && !empty(trim($link))) {
-                    $clean_keyword['aliexpress'][] = trim($link);
-                }
-            }
-        }
-        
-        // 쿠팡 링크 정리
-        if (isset($keyword['coupang']) && is_array($keyword['coupang'])) {
-            foreach ($keyword['coupang'] as $link) {
-                if (is_string($link) && !empty(trim($link))) {
-                    $clean_keyword['coupang'][] = trim($link);
-                }
-            }
-        }
-        
-        // 🔧 상품 분석 데이터 정리
-        if (isset($keyword['products_data']) && is_array($keyword['products_data'])) {
-            foreach ($keyword['products_data'] as $product_data) {
-                if (is_array($product_data) && !empty($product_data)) {
-                    $clean_keyword['products_data'][] = $product_data;
-                }
-            }
-        }
-        
-        // 빈 키워드는 제외
-        if (!empty($clean_keyword['name'])) {
-            $cleaned[] = $clean_keyword;
-        }
-    }
-    
-    debug_log("clean_keywords_data: Cleaned " . count($cleaned) . " keywords from " . count($keywords) . " original items.");
-    return $cleaned;
-}
-
-// 🔧 13. 사용자 세부사항 정리 함수
-function clean_user_details($user_details) {
-    if (!is_array($user_details)) {
-        return [];
-    }
-    
-    $cleaned = [];
-    foreach ($user_details as $key => $value) {
-        if (!empty(trim($value))) {
-            $cleaned[$key] = trim($value);
-        }
-    }
-    
-    return $cleaned;
-}
-
-// 🔧 14. 큐 ID 생성 함수
-function generate_queue_id() {
-    return date('YmdHis') . '_' . mt_rand(10000, 99999);
-}
-
-// 🔧 15. 메인 프로세스 함수
-function main_process($input_data) {
-    debug_log("main_process: Starting main processing function.");
-    debug_log("main_process: Input data received - Title: " . ($input_data['title'] ?? 'N/A'));
-    
-    // 입력 데이터 유효성 검사
-    $validation_error = validate_input_data($input_data);
-    if ($validation_error) {
-        debug_log("main_process: Validation failed - " . $validation_error);
-        main_log("Validation failed: " . $validation_error);
-        redirect_to_editor(false, ['error' => $validation_error]);
-    }
-    
-    debug_log("main_process: Input validation passed.");
-    
-    // 키워드 데이터 정리
-    $cleaned_keywords = clean_keywords_data($input_data['keywords']);
-    if (empty($cleaned_keywords)) {
-        debug_log("main_process: No valid keywords found after cleaning.");
-        main_log("No valid keywords found after cleaning.");
-        redirect_to_editor(false, ['error' => '유효한 키워드가 없습니다.']);
-    }
-    
-    debug_log("main_process: Keywords cleaned successfully. Count: " . count($cleaned_keywords));
-    
-    // 사용자 세부사항 정리
-    $cleaned_user_details = clean_user_details($input_data['user_details'] ?? []);
-    debug_log("main_process: User details cleaned. Count: " . count($cleaned_user_details));
-    
-    // 큐 데이터 구조 생성
-    $queue_data = [
-        'queue_id' => generate_queue_id(),
-        'title' => trim($input_data['title']),
-        'category_id' => $input_data['category'],
-        'category_name' => get_category_name($input_data['category']),
-        'prompt_type' => $input_data['prompt_type'],
-        'prompt_type_name' => get_prompt_type_name($input_data['prompt_type']),
-        'keywords' => $cleaned_keywords,
-        'user_details' => $cleaned_user_details,
-        'has_user_details' => !empty($cleaned_user_details),
-        'thumbnail_url' => trim($input_data['thumbnail_url'] ?? ''),
-        'has_thumbnail_url' => !empty(trim($input_data['thumbnail_url'] ?? '')),
-        'created_at' => date('Y-m-d H:i:s'),
-        'updated_at' => date('Y-m-d H:i:s'),
-        'status' => 'pending',
-        'attempts' => 0,
-        'priority' => 1,
-        'conversion_status' => [
-            'total_keywords' => count($cleaned_keywords),
-            'coupang_total' => 0,
-            'aliexpress_total' => 0
-        ]
-    ];
-    
-    // 링크 수 계산 및 상품 데이터 확인
-    $coupang_total = 0;
-    $aliexpress_total = 0;
-    $total_product_data = 0;
-    
-    foreach ($cleaned_keywords as $keyword_item) {
-        $coupang_total += safe_count($keyword_item['coupang'] ?? []);
-        $aliexpress_total += safe_count($keyword_item['aliexpress'] ?? []);
-        $total_product_data += safe_count($keyword_item['products_data'] ?? []);
-    }
-    
-    $queue_data['conversion_status']['coupang_total'] = $coupang_total;
-    $queue_data['conversion_status']['aliexpress_total'] = $aliexpress_total;
-    $queue_data['has_product_data'] = ($total_product_data > 0);
-    
-    debug_log("main_process: Queue data structure created. ID: " . $queue_data['queue_id']);
-    debug_log("main_process: Prompt type: " . $input_data['prompt_type'] . " (" . get_prompt_type_name($input_data['prompt_type']) . ")");
-    debug_log("main_process: Link counts - Coupang: {$coupang_total}, AliExpress: {$aliexpress_total}");
-    debug_log("main_process: Product data entries: {$total_product_data}");
-    debug_log("main_process: User details included: " . ($queue_data['has_user_details'] ? 'Yes' : 'No'));
-    debug_log("main_process: Product data included: " . ($queue_data['has_product_data'] ? 'Yes' : 'No'));
-    debug_log("main_process: Thumbnail URL included: " . ($queue_data['has_thumbnail_url'] ? 'Yes (' . $queue_data['thumbnail_url'] . ')' : 'No'));
-    debug_log("main_process: Publish mode: " . $input_data['publish_mode']);
-
-    // 🚀 즉시 발행 vs 큐 저장 분기 처리
-    if ($input_data['publish_mode'] === 'immediate') {
-        debug_log("main_process: Processing immediate publish request.");
-        process_immediate_publish($queue_data);
-        // process_immediate_publish() 함수에서 JSON 응답 후 exit 됨
-    } else {
-        debug_log("main_process: Processing queue mode request using split system.");
-        
-        // Add to split queue system
-        if (!add_to_queue($queue_data)) {
-            debug_log("main_process: Failed to add item to split queue system. Check add_queue_split function.");
-            $telegram_msg = "❌ 분할 큐 시스템 저장 실패!\n파일 권한 또는 JSON 인코딩 문제일 수 있습니다.\n\n추가 정보:\n- 큐 디렉토리: /var/www/novacents/tools/queues/\n- 디렉토리 권한 확인 필요";
-            send_telegram_notification($telegram_msg, true);
-            main_log("Failed to add item to split queue system.");
-            redirect_to_editor(false, ['error' => '분할 큐 시스템 저장에 실패했습니다. 파일 권한을 확인하거나 관리자에게 문의하세요.']);
-        }
-        debug_log("main_process: Item successfully added to split queue system.");
-
-        // Get queue statistics for notification
-        $stats = get_queue_stats();
-        debug_log("main_process: Queue stats retrieved: " . json_encode($stats));
-
-        $telegram_success_msg = "✅ 새 작업이 분할 큐 시스템에 추가되었습니다!\n\n";
-        $telegram_success_msg .= "📋 <b>작업 정보</b>\n";
-        $telegram_success_msg .= "• 제목: " . $input_data['title'] . "\n";
-        $telegram_success_msg .= "• 카테고리: " . $queue_data['category_name'] . "\n";
-        $telegram_success_msg .= "• 프롬프트 타입: " . $queue_data['prompt_type_name'] . "\n";
-        $telegram_success_msg .= "• 키워드 수: " . safe_count($cleaned_keywords) . "개\n";
-        $telegram_success_msg .= "• 처리 모드: 파일 분할 방식 + 상품 분석 데이터\n";
-        $telegram_success_msg .= "• 쿠팡 링크: " . $coupang_total . "개\n";
-        $telegram_success_msg .= "• 알리익스프레스 링크: " . $aliexpress_total . "개\n";
-        
-        // 🔧 상품 분석 데이터 정보 추가
-        if ($queue_data['has_product_data']) {
-            $telegram_success_msg .= "• " . format_products_data_summary($cleaned_keywords) . "\n";
-        }
-        
-        $telegram_success_msg .= "\n📊 <b>큐 현황</b>\n";
-        $telegram_success_msg .= "• 전체: " . ($stats['total'] ?? 0) . "개\n";
-        $telegram_success_msg .= "• 대기: " . ($stats['pending'] ?? 0) . "개\n";
-        $telegram_success_msg .= "• 처리중: " . ($stats['processing'] ?? 0) . "개\n";
-        $telegram_success_msg .= "• 완료: " . ($stats['completed'] ?? 0) . "개\n";
-        $telegram_success_msg .= "• 실패: " . ($stats['failed'] ?? 0) . "개";
-        
-        send_telegram_notification($telegram_success_msg);
-        debug_log("main_process: Telegram success notification sent.");
-        main_log("New item added to split queue system successfully. Queue ID: " . $queue_data['queue_id']);
-        
-        // 성공 리다이렉트
-        redirect_to_editor(true, [
-            'message' => '작업이 분할 큐 시스템에 성공적으로 추가되었습니다.',
-            'queue_id' => $queue_data['queue_id'],
-            'title' => $queue_data['title'],
-            'category' => $queue_data['category_name'],
-            'prompt_type' => $queue_data['prompt_type_name'],
-            'keywords_count' => count($cleaned_keywords),
-            'coupang_links' => $coupang_total,
-            'aliexpress_links' => $aliexpress_total,
-            'queue_stats' => $stats
-        ]);
-    }
-}
-
-// 🚀 16. 즉시 발행 전용 함수들
 function process_immediate_publish($queue_data) {
     debug_log("process_immediate_publish: Starting immediate publish process.");
     
@@ -593,118 +624,337 @@ function parse_python_output($output) {
     ];
 }
 
-// 🔧 17. 상품 분석 데이터 요약 함수 (새로 추가)
-function format_products_data_summary($keywords) {
-    $total_products = 0;
-    $products_with_analysis = 0;
-    $products_with_html = 0;
+// 20. 메인 프로세스 함수
+function main_process($input_data) {
+    debug_log("main_process: Starting main processing function");
+    debug_log("main_process: Title: " . ($input_data['title'] ?? 'N/A'));
+    debug_log("main_process: Category: " . ($input_data['category'] ?? 'N/A'));
+    debug_log("main_process: Prompt type: " . ($input_data['prompt_type'] ?? 'N/A'));
+    debug_log("main_process: Keywords count: " . safe_count($input_data['keywords'] ?? []));
+    debug_log("main_process: Publish mode: " . ($input_data['publish_mode'] ?? 'queue'));
     
-    foreach ($keywords as $keyword) {
-        if (isset($keyword['products_data']) && is_array($keyword['products_data'])) {
-            $total_products += safe_count($keyword['products_data']);
+    try {
+        // 🔧 입력 데이터 유효성 검사
+        $validation_errors = validate_input_data($input_data);
+        if (!empty($validation_errors)) {
+            debug_log("main_process: Validation failed. Errors: " . implode(', ', $validation_errors));
             
-            foreach ($keyword['products_data'] as $product_data) {
-                if (!empty($product_data['analysis_data'])) {
-                    $products_with_analysis++;
+            $telegram_msg = "❌ 데이터 검증 실패:\n\n" . implode("\n• ", $validation_errors) . "\n\n입력된 데이터:\n제목: " . $input_data['title'] . "\n카테고리: " . get_category_name($input_data['category']) . "\n프롬프트: " . get_prompt_type_name($input_data['prompt_type']) . "\n키워드 수: " . safe_count($input_data['keywords']) . "개" . (empty($input_data['thumbnail_url']) ? '' : "\n썸네일 URL: 제공됨");
+            send_telegram_notification($telegram_msg, true);
+            main_log("Data validation failed: " . implode(', ', $validation_errors));
+            
+            // 즉시 발행 모드면 JSON 응답, 아니면 리다이렉트
+            if ($input_data['publish_mode'] === 'immediate') {
+                send_json_response(false, [
+                    'message' => '데이터 검증 오류: ' . implode(' | ', $validation_errors),
+                    'errors' => $validation_errors
+                ]);
+            } else {
+                redirect_to_editor(false, ['error' => '데이터 검증 오류: ' . implode(' | ', $validation_errors)]);
+            }
+        }
+        debug_log("main_process: Data validation passed.");
+
+        // 🔧 강화된 상품 링크 정리 (상품 분석 데이터 포함)
+        $cleaned_keywords = clean_affiliate_links($input_data['keywords']);
+        if (empty($cleaned_keywords)) {
+            debug_log("main_process: No valid keywords with links after cleaning.");
+            $telegram_msg = "❌ 유효한 키워드 및 링크 없음:\n유효한 키워드와 상품 링크가 없어서 작업을 진행할 수 없습니다.";
+            send_telegram_notification($telegram_msg, true);
+            main_log("No valid keywords or links found after cleaning.");
+            
+            if ($input_data['publish_mode'] === 'immediate') {
+                send_json_response(false, [
+                    'message' => '유효한 키워드 및 상품 링크를 찾을 수 없습니다.',
+                    'error' => 'no_valid_links'
+                ]);
+            } else {
+                redirect_to_editor(false, ['error' => '유효한 키워드 및 상품 링크를 찾을 수 없습니다.']);
+            }
+        }
+        debug_log("main_process: Product links cleaned. " . safe_count($cleaned_keywords) . " keywords remain.");
+
+        // 사용자 상세 정보 처리 (안전하게)
+        $user_details_data = null;
+        try {
+            if (!empty($input_data['user_details'])) {
+                debug_log("main_process: Processing user details...");
+                $user_details_data = parse_user_details($input_data['user_details']);
+                if ($user_details_data !== null && validate_user_details($user_details_data)) {
+                    debug_log("main_process: User details successfully processed: " . format_user_details_summary($user_details_data));
+                } else {
+                    debug_log("main_process: User details provided but failed validation. Continuing without user details.");
+                    $user_details_data = null;
                 }
-                if (!empty($product_data['generated_html'])) {
-                    $products_with_html++;
+            } else {
+                debug_log("main_process: No user details provided.");
+            }
+        } catch (Exception $e) {
+            debug_log("main_process: Exception while processing user details: " . $e->getMessage());
+            $user_details_data = null;
+        }
+
+        // 🔧 큐 데이터 구조 생성 (분할 시스템 + 상품 분석 데이터 지원)
+        $queue_data = [
+            'title' => trim($input_data['title']),
+            'category_id' => $input_data['category'],
+            'category_name' => get_category_name($input_data['category']),
+            'prompt_type' => $input_data['prompt_type'],
+            'prompt_type_name' => get_prompt_type_name($input_data['prompt_type']),
+            'keywords' => $cleaned_keywords, // 🔧 이제 products_data 포함
+            'user_details' => $user_details_data,
+            'thumbnail_url' => !empty($input_data['thumbnail_url']) ? clean_url($input_data['thumbnail_url']) : null, // 🔧 썸네일 URL 추가
+            'processing_mode' => ($input_data['publish_mode'] === 'immediate') ? 'immediate_publish' : 'link_based_with_details_and_prompt_template_and_product_data',
+            'link_conversion_required' => true, // 링크 변환 필요 여부
+            'conversion_status' => [
+                'coupang_converted' => 0,
+                'coupang_total' => 0,
+                'aliexpress_converted' => 0,
+                'aliexpress_total' => 0
+            ],
+            'created_at' => date('Y-m-d H:i:s'),
+            'status' => ($input_data['publish_mode'] === 'immediate') ? 'immediate' : 'pending',
+            'priority' => ($input_data['publish_mode'] === 'immediate') ? 0 : 1, // 즉시 발행은 최고 우선순위
+            'attempts' => 0,
+            'last_error' => null,
+            'has_user_details' => ($user_details_data !== null), // 사용자 상세 정보 존재 여부
+            'has_product_data' => false, // 🔧 상품 분석 데이터 존재 여부
+            'has_thumbnail_url' => !empty($input_data['thumbnail_url']) // 🔧 썸네일 URL 존재 여부
+        ];
+        
+        // 링크 카운트 및 상품 데이터 통계 계산 (안전한 count 사용)
+        $coupang_total = 0;
+        $aliexpress_total = 0;
+        $total_product_data = 0;
+        $total_analysis_data = 0;
+        $total_generated_html = 0;
+        
+        foreach ($cleaned_keywords as $keyword_item) {
+            $coupang_total += safe_count($keyword_item['coupang'] ?? []);
+            $aliexpress_total += safe_count($keyword_item['aliexpress'] ?? []);
+            
+            // 🔧 상품 분석 데이터 통계
+            if (isset($keyword_item['products_data']) && is_array($keyword_item['products_data'])) {
+                $total_product_data += count($keyword_item['products_data']);
+                foreach ($keyword_item['products_data'] as $product_data) {
+                    if (!empty($product_data['analysis_data'])) {
+                        $total_analysis_data++;
+                    }
+                    if (!empty($product_data['generated_html'])) {
+                        $total_generated_html++;
+                    }
                 }
             }
         }
-    }
-    
-    $summary = [];
-    if ($total_products > 0) {
-        $summary[] = "상품 데이터: {$total_products}개";
-        if ($products_with_analysis > 0) {
-            $summary[] = "분석 완료: {$products_with_analysis}개";
+        
+        $queue_data['conversion_status']['coupang_total'] = $coupang_total;
+        $queue_data['conversion_status']['aliexpress_total'] = $aliexpress_total;
+        $queue_data['has_product_data'] = ($total_product_data > 0);
+        
+        debug_log("main_process: Queue data structure created successfully.");
+        debug_log("main_process: Link counts - Coupang: {$coupang_total}, AliExpress: {$aliexpress_total}");
+        debug_log("main_process: Product data - Total entries: {$total_product_data}, Analysis: {$total_analysis_data}, HTML: {$total_generated_html}");
+        debug_log("main_process: User details included: " . ($queue_data['has_user_details'] ? 'Yes' : 'No'));
+        debug_log("main_process: Product data included: " . ($queue_data['has_product_data'] ? 'Yes' : 'No'));
+        debug_log("main_process: Thumbnail URL included: " . ($queue_data['has_thumbnail_url'] ? 'Yes (' . $queue_data['thumbnail_url'] . ')' : 'No'));
+        debug_log("main_process: Publish mode: " . $input_data['publish_mode']);
+
+        // 🚀 즉시 발행 vs 큐 저장 분기 처리
+        if ($input_data['publish_mode'] === 'immediate') {
+            debug_log("main_process: Processing immediate publish request.");
+            process_immediate_publish($queue_data);
+            // process_immediate_publish() 함수에서 JSON 응답 후 exit 됨
+        } else {
+            debug_log("main_process: Processing queue mode request using split system.");
+            
+            // Add to split queue system
+            if (!add_to_queue($queue_data)) {
+                debug_log("main_process: Failed to add item to split queue system. Check add_queue_split function.");
+                $telegram_msg = "❌ 분할 큐 시스템 저장 실패!\n파일 권한 또는 JSON 인코딩 문제일 수 있습니다.\n\n추가 정보:\n- 큐 디렉토리: /var/www/novacents/tools/queues/\n- 디렉토리 권한 확인 필요";
+                send_telegram_notification($telegram_msg, true);
+                main_log("Failed to add item to split queue system.");
+                redirect_to_editor(false, ['error' => '분할 큐 시스템 저장에 실패했습니다. 파일 권한을 확인하거나 관리자에게 문의하세요.']);
+            }
+            debug_log("main_process: Item successfully added to split queue system.");
+
+            // Get queue statistics for notification
+            $stats = get_queue_stats();
+            debug_log("main_process: Queue stats retrieved: " . json_encode($stats));
+
+            $telegram_success_msg = "✅ 새 작업이 분할 큐 시스템에 추가되었습니다!\n\n";
+            $telegram_success_msg .= "📋 <b>작업 정보</b>\n";
+            $telegram_success_msg .= "• 제목: " . $input_data['title'] . "\n";
+            $telegram_success_msg .= "• 카테고리: " . $queue_data['category_name'] . "\n";
+            $telegram_success_msg .= "• 프롬프트 타입: " . $queue_data['prompt_type_name'] . "\n";
+            $telegram_success_msg .= "• 키워드 수: " . safe_count($cleaned_keywords) . "개\n";
+            $telegram_success_msg .= "• 처리 모드: 파일 분할 방식 + 상품 분석 데이터\n";
+            $telegram_success_msg .= "• 쿠팡 링크: " . $coupang_total . "개\n";
+            $telegram_success_msg .= "• 알리익스프레스 링크: " . $aliexpress_total . "개\n";
+            
+            // 🔧 상품 분석 데이터 정보 추가
+            if ($queue_data['has_product_data']) {
+                $telegram_success_msg .= "• 상품 데이터: {$total_product_data}개 (분석: {$total_analysis_data}개, HTML: {$total_generated_html}개)\n";
+            }
+            
+            if ($queue_data['has_user_details']) {
+                $telegram_success_msg .= "• 사용자 세부사항: " . format_user_details_summary($user_details_data) . "\n";
+            }
+            
+            if ($queue_data['has_thumbnail_url']) {
+                $telegram_success_msg .= "• 썸네일 URL: 포함됨\n";
+            }
+            
+            $telegram_success_msg .= "\n📊 <b>큐 현황</b>\n";
+            $telegram_success_msg .= "• 전체: " . ($stats['total'] ?? 0) . "개\n";
+            $telegram_success_msg .= "• 대기: " . ($stats['pending'] ?? 0) . "개\n";
+            $telegram_success_msg .= "• 처리중: " . ($stats['processing'] ?? 0) . "개\n";
+            $telegram_success_msg .= "• 완료: " . ($stats['completed'] ?? 0) . "개\n";
+            $telegram_success_msg .= "• 실패: " . ($stats['failed'] ?? 0) . "개";
+            
+            send_telegram_notification($telegram_success_msg);
+            debug_log("main_process: Telegram success notification sent.");
+            main_log("New item added to split queue system successfully.");
+            
+            // 성공 리다이렉트
+            redirect_to_editor(true, [
+                'message' => '작업이 분할 큐 시스템에 성공적으로 추가되었습니다.',
+                'title' => $queue_data['title'],
+                'category' => $queue_data['category_name'],
+                'prompt_type' => $queue_data['prompt_type_name'],
+                'keywords_count' => count($cleaned_keywords),
+                'coupang_links' => $coupang_total,
+                'aliexpress_links' => $aliexpress_total,
+                'queue_stats' => $stats
+            ]);
         }
-        if ($products_with_html > 0) {
-            $summary[] = "HTML 생성: {$products_with_html}개";
+        
+    } catch (Exception $e) {
+        debug_log("main_process: Exception occurred: " . $e->getMessage());
+        debug_log("main_process: Stack trace: " . $e->getTraceAsString());
+        
+        $error_message_for_telegram = "🚨 키워드 프로세서 처리 중 오류 발생!\n\n";
+        $error_message_for_telegram .= "오류 메시지: " . $e->getMessage() . "\n";
+        $error_message_for_telegram .= "파일: " . $e->getFile() . "\n";
+        $error_message_for_telegram .= "라인: " . $e->getLine() . "\n";
+        $error_message_for_telegram .= "시간: " . date('Y-m-d H:i:s') . "\n";
+        if (!empty($input_data['title'])) {
+            $error_message_for_telegram .= "제목: " . $input_data['title'] . "\n";
+        }
+        
+        send_telegram_notification($error_message_for_telegram, true);
+        main_log("EXCEPTION: " . $e->getMessage() . " at " . $e->getFile() . ":" . $e->getLine());
+
+        // 즉시 발행 모드인지 확인
+        $publish_mode = $_POST['publish_mode'] ?? 'queue';
+        if ($publish_mode === 'immediate') {
+            send_json_response(false, [
+                'message' => '처리 중 오류가 발생했습니다: ' . $e->getMessage(),
+                'error' => $e->getMessage()
+            ]);
+        } else {
+            redirect_to_editor(false, ['error' => '처리 중 오류가 발생했습니다: ' . $e->getMessage()]);
         }
     }
-    
-    return implode(', ', $summary);
 }
 
 // 🚀 메인 실행 코드
+debug_log("=== Main execution starting ===");
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    debug_log("=== New POST request received ===");
-    debug_log("POST data keys: " . implode(', ', array_keys($_POST)));
+    debug_log("POST request received");
+    debug_log("POST keys: " . implode(', ', array_keys($_POST)));
     
     try {
-        // POST 데이터 처리
+        // 🔧 POST 데이터 정리 및 검증
         $input_data = [
-            'title' => $_POST['title'] ?? '',
-            'category' => $_POST['category'] ?? '',
-            'prompt_type' => $_POST['prompt_type'] ?? '',
+            'title' => trim($_POST['title'] ?? ''),
+            'category' => trim($_POST['category'] ?? ''),
+            'prompt_type' => trim($_POST['prompt_type'] ?? ''),
             'keywords' => [],
             'user_details' => [],
-            'thumbnail_url' => $_POST['thumbnail_url'] ?? '',
-            'publish_mode' => $_POST['publish_mode'] ?? 'queue' // 기본값: queue
+            'thumbnail_url' => trim($_POST['thumbnail_url'] ?? ''),
+            'publish_mode' => trim($_POST['publish_mode'] ?? 'queue')
         ];
         
-        // 키워드 데이터 파싱
-        if (isset($_POST['keywords'])) {
+        debug_log("Input data basic fields prepared");
+        debug_log("Title: " . $input_data['title']);
+        debug_log("Category: " . $input_data['category']);
+        debug_log("Prompt type: " . $input_data['prompt_type']);
+        debug_log("Publish mode: " . $input_data['publish_mode']);
+        debug_log("Thumbnail URL: " . ($input_data['thumbnail_url'] ? 'Yes' : 'No'));
+        
+        // 🔧 키워드 데이터 파싱 (JSON)
+        if (isset($_POST['keywords']) && !empty($_POST['keywords'])) {
+            debug_log("Processing keywords JSON data...");
             $keywords_json = $_POST['keywords'];
             $parsed_keywords = json_decode($keywords_json, true);
             
             if (json_last_error() === JSON_ERROR_NONE && is_array($parsed_keywords)) {
                 $input_data['keywords'] = $parsed_keywords;
-                debug_log("Keywords parsed successfully. Count: " . count($parsed_keywords));
+                debug_log("Keywords successfully parsed. Count: " . count($parsed_keywords));
             } else {
-                debug_log("Keywords JSON parsing failed: " . json_last_error_msg());
-                main_log("Keywords JSON parsing failed: " . json_last_error_msg());
+                $error_msg = "키워드 JSON 파싱 실패: " . json_last_error_msg();
+                debug_log($error_msg);
+                main_log($error_msg);
                 redirect_to_editor(false, ['error' => '키워드 데이터 형식이 올바르지 않습니다.']);
             }
+        } else {
+            debug_log("No keywords data provided");
         }
         
-        // 사용자 세부사항 파싱
-        if (isset($_POST['user_details'])) {
+        // 🔧 사용자 세부 정보 파싱 (JSON, 선택사항)
+        if (isset($_POST['user_details']) && !empty($_POST['user_details'])) {
+            debug_log("Processing user details JSON data...");
             $user_details_json = $_POST['user_details'];
             $parsed_user_details = json_decode($user_details_json, true);
             
             if (json_last_error() === JSON_ERROR_NONE && is_array($parsed_user_details)) {
                 $input_data['user_details'] = $parsed_user_details;
-                debug_log("User details parsed successfully. Count: " . count($parsed_user_details));
+                debug_log("User details successfully parsed. Fields: " . count($parsed_user_details));
             } else {
-                debug_log("User details JSON parsing failed: " . json_last_error_msg());
-                // 사용자 세부사항은 선택사항이므로 오류로 처리하지 않음
+                debug_log("User details JSON parsing failed: " . json_last_error_msg() . " - Continuing without user details");
                 $input_data['user_details'] = [];
             }
+        } else {
+            debug_log("No user details provided");
         }
         
-        debug_log("Input data prepared successfully.");
-        debug_log("Title: " . $input_data['title']);
-        debug_log("Category: " . $input_data['category']);
-        debug_log("Prompt type: " . $input_data['prompt_type']);
-        debug_log("Keywords count: " . count($input_data['keywords']));
-        debug_log("User details count: " . count($input_data['user_details']));
-        debug_log("Thumbnail URL: " . ($input_data['thumbnail_url'] ? 'Yes' : 'No'));
-        debug_log("Publish mode: " . $input_data['publish_mode']);
+        debug_log("All input data prepared successfully");
+        debug_log("Final keywords count: " . count($input_data['keywords']));
+        debug_log("Final user details count: " . count($input_data['user_details']));
         
-        // 메인 프로세스 실행
+        // 🚀 메인 프로세스 실행
         main_process($input_data);
         
     } catch (Exception $e) {
-        debug_log("Fatal error in main execution: " . $e->getMessage());
+        debug_log("Fatal error in POST processing: " . $e->getMessage());
         debug_log("Stack trace: " . $e->getTraceAsString());
         main_log("Fatal error: " . $e->getMessage());
         
-        // 텔레그램 오류 알림
-        $telegram_error_msg = "🚨 키워드 프로세서 오류 발생!\n\n";
-        $telegram_error_msg .= "오류 메시지: " . $e->getMessage() . "\n";
-        $telegram_error_msg .= "파일: " . $e->getFile() . "\n";
-        $telegram_error_msg .= "라인: " . $e->getLine() . "\n";
-        $telegram_error_msg .= "시간: " . date('Y-m-d H:i:s');
+        // 텔레그램 치명적 오류 알림
+        $telegram_fatal_msg = "🆘 키워드 프로세서 치명적 오류!\n\n";
+        $telegram_fatal_msg .= "오류: " . $e->getMessage() . "\n";
+        $telegram_fatal_msg .= "파일: " . $e->getFile() . "\n";
+        $telegram_fatal_msg .= "라인: " . $e->getLine() . "\n";
+        $telegram_fatal_msg .= "시간: " . date('Y-m-d H:i:s');
         
-        send_telegram_notification($telegram_error_msg, true);
+        send_telegram_notification($telegram_fatal_msg, true);
         
-        redirect_to_editor(false, ['error' => '처리 중 오류가 발생했습니다: ' . $e->getMessage()]);
+        // 즉시 발행 모드인지 확인하여 적절한 응답 전송
+        $publish_mode = $_POST['publish_mode'] ?? 'queue';
+        if ($publish_mode === 'immediate') {
+            send_json_response(false, [
+                'message' => '시스템 오류가 발생했습니다: ' . $e->getMessage(),
+                'error' => $e->getMessage()
+            ]);
+        } else {
+            redirect_to_editor(false, ['error' => '시스템 오류가 발생했습니다: ' . $e->getMessage()]);
+        }
     }
 } else {
-    debug_log("Non-POST request received. Method: " . $_SERVER['REQUEST_METHOD']);
-    redirect_to_editor(false, ['error' => '잘못된 요청 방식입니다.']);
+    debug_log("Non-POST request received. Method: " . ($_SERVER['REQUEST_METHOD'] ?? 'UNKNOWN'));
+    redirect_to_editor(false, ['error' => '잘못된 요청 방식입니다. POST 요청만 허용됩니다.']);
 }
+
+debug_log("=== Script execution completed ===");
 ?>
