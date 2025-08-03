@@ -40,7 +40,7 @@ import iop
 MAX_POSTS_PER_RUN = 1
 QUEUE_FILE = "/var/www/product_queue.json"  # 레거시 큐 파일 (백업용)
 QUEUES_DIR = "/var/www/queues"  # 새로운 분할 큐 디렉토리
-PUBLISHED_LOG_FILE = "/var/www/published_log.txt"
+
 POST_DELAY_SECONDS = 30
 # ##############################################################################
 
@@ -1410,8 +1410,6 @@ try {{
                 except Exception as e:
                     print(f"[⚠️] Yoast SEO 설정 중 오류 (무시하고 계속): {e}")
                 
-                # 발행 로그 저장
-                self.save_published_log(job_data, post_url)
                 
                 print(f"[🎉] 모든 작업 완료! 발행된 글 주소: {post_url}")
                 print(f"[📊] SEO 정보 - 슬러그: {seo_slug}, 키프레이즈: {focus_keyphrase}, 태그: {len(seo_tags)}개")
@@ -1431,20 +1429,6 @@ try {{
         finally:
             # 메모리 정리
             gc.collect()
-            
-    def save_published_log(self, job_data, post_url):
-        """발행 로그 저장"""
-        try:
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            prompt_type = job_data.get('prompt_type', 'essential_items')
-            mode_text = "[즉시발행]" if self.immediate_mode else "[큐처리]"
-            log_entry = f"[{timestamp}] {mode_text} {job_data['title']} ({prompt_type}) - {post_url}\n"
-            
-            with open(PUBLISHED_LOG_FILE, "a", encoding="utf-8") as f:
-                f.write(log_entry)
-                
-        except Exception as e:
-            print(f"[❌] 발행 로그 저장 중 오류: {e}")
             
     def process_job(self, job_data):
         """단일 작업 처리 (메모리 최적화)"""
