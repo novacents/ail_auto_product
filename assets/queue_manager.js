@@ -188,13 +188,83 @@ async function immediatePublish(queueId) {
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
             body: `action=immediate_publish&queue_id=${encodeURIComponent(queueId)}`
         });
-        const result = await response.json();
-        if (result.success) {
+        
+        if (!response.ok) {
+            console.error('❌ HTTP 오류:', response.status, response.statusText);
+            alert(`발행에 실패했습니다: HTTP 오류 ${response.status}`);
+            return;
+        }
+        
+        const responseText = await response.text();
+        console.log('🔍 즉시발행 응답 길이:', responseText.length, '문자');
+        console.log('🔍 즉시발행 응답 내용 (처음 500자):', responseText.substring(0, 500));
+        
+        let result;
+        try {
+            result = JSON.parse(responseText);
+            console.log('✅ JSON 파싱 성공:', result);
+        } catch (parseError) {
+            console.error('❌ JSON 파싱 오류:', parseError.message);
+            console.log('📝 전체 응답 내용:', responseText);
+            
+            // keyword_processor.php의 JSON 응답 패턴 확인 (PHP와 동일한 로직)
+            const jsonPattern = /\{"success":(true|false).*?\}$/s;
+            const jsonMatch = responseText.match(jsonPattern);
+            
+            if (jsonMatch) {
+                const jsonPart = jsonMatch[0];
+                console.log('🔍 JSON 부분 발견:', jsonPart);
+                try {
+                    result = JSON.parse(jsonPart);
+                    console.log('✅ 패턴 매칭으로 JSON 파싱 성공:', result);
+                } catch (retryError) {
+                    console.error('❌ 패턴 매칭 JSON 파싱도 실패:', retryError.message);
+                    result = null;
+                }
+            }
+            
+            // Python 스크립트 출력에서 성공 메시지 찾기 (PHP와 동일한 로직)
+            if (!result && responseText.includes('워드프레스 발행 성공:')) {
+                console.log('🎉 Python 스크립트 성공 메시지 발견');
+                const urlMatch = responseText.match(/워드프레스 발행 성공: (https?:\/\/[^\s]+)/);
+                const postUrl = urlMatch ? urlMatch[1] : '';
+                
+                result = {
+                    success: true,
+                    message: '글이 성공적으로 발행되었습니다!',
+                    post_url: postUrl
+                };
+                console.log('✅ Python 출력으로부터 성공 결과 생성:', result);
+            }
+            
+            // 모든 파싱 방법이 실패한 경우
+            if (!result) {
+                console.error('❌ 모든 응답 파싱 방법 실패');
+                alert('발행 처리 중 오류가 발생했습니다. (응답 파싱 실패)');
+                return;
+            }
+        }
+        
+        // 성공적으로 파싱된 결과 처리
+        if (result && result.success) {
+            console.log('🎉 즉시발행 성공:', result.message);
             alert('✅ 글이 성공적으로 발행되었습니다!');
-            if (result.post_url) window.open(result.post_url, '_blank');
+            if (result.post_url) {
+                console.log('🔗 새 창에서 발행된 글 열기:', result.post_url);
+                window.open(result.post_url, '_blank');
+            }
             loadQueue();
-        } else { alert('발행에 실패했습니다: ' + result.message); }
-    } catch (error) { console.error('발행 오류:', error); alert('발행 중 오류가 발생했습니다.'); } finally { hideLoading(); }
+        } else {
+            console.error('❌ 즉시발행 실패:', result.message || '알 수 없는 오류');
+            alert('발행에 실패했습니다: ' + (result.message || '알 수 없는 오류'));
+        }
+        
+    } catch (error) { 
+        console.error('❌ 즉시발행 예외 오류:', error); 
+        alert('발행 중 오류가 발생했습니다: ' + error.message); 
+    } finally { 
+        hideLoading(); 
+    }
 }
 
 async function editQueue(queueId) {
