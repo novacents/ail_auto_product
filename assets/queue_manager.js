@@ -1,4 +1,7 @@
 let currentQueue = [];
+let filteredQueue = [];
+let currentFilter = 'all';
+let currentSearchTerm = '';
 let dragEnabled = false;
 let currentEditingQueueId = null;
 let currentEditingData = null;
@@ -18,7 +21,7 @@ async function loadQueue() {
             currentQueue = result.queue;
             console.log('🔍 큐 데이터 로드 완료:', currentQueue.length, '개 항목');
             updateQueueStats();
-            displayQueue();
+            applyFiltersAndSearch();
         } else {
             alert('큐 데이터를 불러오는데 실패했습니다.');
         }
@@ -35,65 +38,19 @@ function updateQueueStats() {
         total: currentQueue.length,
         pending: currentQueue.filter(item => item.status === 'pending').length,
         processing: currentQueue.filter(item => item.status === 'processing').length,
-        completed: currentQueue.filter(item => item.status === 'completed').length
+        completed: currentQueue.filter(item => item.status === 'completed').length,
+        failed: currentQueue.filter(item => item.status === 'failed').length
     };
     document.getElementById('totalCount').textContent = stats.total;
     document.getElementById('pendingCount').textContent = stats.pending;
     document.getElementById('processingCount').textContent = stats.processing;
     document.getElementById('completedCount').textContent = stats.completed;
+    document.getElementById('failedCount').textContent = stats.failed;
 }
 
 function displayQueue() {
-    const queueList = document.getElementById('queueList');
-    if (currentQueue.length === 0) {
-        queueList.innerHTML = `<div class="empty-state"><h3>📦 저장된 정보가 없습니다</h3><p>아직 저장된 큐 항목이 없습니다.</p><a href="affiliate_editor.php" class="btn btn-primary">첫 번째 글 작성하기</a></div>`;
-        return;
-    }
-    
-    let html = '';
-    currentQueue.forEach(item => {
-        const keywordCount = item.keywords ? item.keywords.length : 0;
-        const totalLinks = item.keywords ? item.keywords.reduce((sum, k) => sum + (k.coupang?.length || 0) + (k.aliexpress?.length || 0), 0) : 0;
-        const statusClass = `status-${item.status}`;
-        const statusText = getStatusText(item.status);
-        const productsSummary = getProductsSummary(item.keywords);
-        
-        // 🔧 썸네일 URL 표시 추가
-        const thumbnailDisplay = item.thumbnail_url ? 
-            `<div class="thumbnail-preview"><img src="${item.thumbnail_url}" alt="썸네일" style="max-width: 100px; max-height: 60px; border-radius: 4px; object-fit: cover;" onerror="this.style.display='none'"><span class="thumbnail-text">썸네일 있음</span></div>` :
-            `<div class="thumbnail-preview"><span class="thumbnail-text">썸네일 없음</span></div>`;
-        
-        html += `<div class="queue-item" data-queue-id="${item.queue_id}" draggable="${dragEnabled}">
-            <div class="queue-header">
-                <div>
-                    <h3 class="queue-title">${item.title}</h3>
-                    <p class="queue-meta">${item.category_name} | ${item.prompt_type_name || '기본형'} | ${item.created_at} | <span class="status-badge ${statusClass}">${statusText}</span></p>
-                </div>
-                <div class="queue-actions">
-                    <button class="btn btn-primary btn-small" onclick="editQueue('${item.queue_id}')">✏️ 편집</button>
-                    <button class="btn btn-orange btn-small" onclick="immediatePublish('${item.queue_id}')">🚀 즉시발행</button>
-                    <button class="btn btn-danger btn-small" onclick="deleteQueue('${item.queue_id}')">🗑️ 삭제</button>
-                </div>
-            </div>
-            <div class="queue-content">
-                <div class="queue-info">
-                    <div class="info-item"><div class="info-value">${keywordCount}</div><div class="info-label">키워드</div></div>
-                    <div class="info-item"><div class="info-value">${totalLinks}</div><div class="info-label">총 링크</div></div>
-                    <div class="info-item"><div class="info-value">${productsSummary.products_with_data}</div><div class="info-label">분석완료</div></div>
-                    <div class="info-item"><div class="info-value">${item.priority || 1}</div><div class="info-label">우선순위</div></div>
-                    <div class="info-item"><div class="info-value">${item.has_user_details ? 'O' : 'X'}</div><div class="info-label">상세정보</div></div>
-                    <div class="info-item"><div class="info-value">${item.has_product_data ? 'O' : 'X'}</div><div class="info-label">상품데이터</div></div>
-                    <div class="info-item"><div class="info-value">${item.has_thumbnail_url ? 'O' : 'X'}</div><div class="info-label">썸네일</div></div>
-                </div>
-                ${item.keywords && item.keywords.length > 0 ? `<div class="keywords-preview"><h4>키워드:</h4><div class="keyword-tags">${item.keywords.map(k => `<span class="keyword-tag">${k.name}</span>`).join('')}</div></div>` : ''}
-                ${generateProductsPreview(productsSummary)}
-                ${thumbnailDisplay}
-            </div>
-        </div>`;
-    });
-    
-    queueList.innerHTML = html;
-    if (dragEnabled) addDragEvents();
+    // 기존 displayQueue 함수는 새로운 필터링 시스템으로 대체
+    applyFiltersAndSearch();
 }
 
 function getProductsSummary(keywords) {
@@ -162,7 +119,7 @@ function sortQueue() {
         }
         return sortOrder === 'asc' ? (aValue < bValue ? -1 : aValue > bValue ? 1 : 0) : (aValue > bValue ? -1 : aValue < bValue ? 1 : 0);
     });
-    displayQueue();
+    applyFiltersAndSearch();
 }
 
 function toggleDragSort() {
@@ -191,7 +148,7 @@ function handleDrop(e) {
         const draggedIndex = currentQueue.findIndex(item => item.queue_id === draggedId);
         const targetIndex = currentQueue.findIndex(item => item.queue_id === targetId);
         currentQueue.splice(targetIndex, 0, currentQueue.splice(draggedIndex, 1)[0]);
-        saveQueueOrder(); displayQueue();
+        saveQueueOrder(); applyFiltersAndSearch();
     }
 }
 function handleDragEnd(e) { this.classList.remove('dragging'); document.querySelectorAll('.queue-item').forEach(item => item.classList.remove('drag-over')); }
@@ -1061,3 +1018,124 @@ function hideLoading() { document.getElementById('loadingOverlay').style.display
 
 document.getElementById('editModal').addEventListener('click', function(e) { if (e.target === this) closeEditModal(); });
 document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && document.getElementById('editModal').style.display === 'flex') closeEditModal(); });
+
+// 🆕 필터링 및 검색 기능
+function filterByStatus(status) {
+    currentFilter = status;
+    
+    // 필터 버튼 활성화 상태 업데이트
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    document.querySelector(`[data-status="${status}"]`).classList.add('active');
+    
+    applyFiltersAndSearch();
+}
+
+function searchQueues() {
+    currentSearchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
+    applyFiltersAndSearch();
+}
+
+function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    currentSearchTerm = '';
+    applyFiltersAndSearch();
+}
+
+function applyFiltersAndSearch() {
+    // 상태 필터링
+    let filtered = currentQueue;
+    if (currentFilter !== 'all') {
+        filtered = currentQueue.filter(item => item.status === currentFilter);
+    }
+    
+    // 검색 필터링
+    if (currentSearchTerm) {
+        filtered = filtered.filter(item => {
+            const searchableText = [
+                item.title || '',
+                item.category_name || '',
+                item.prompt_type_name || '',
+                ...(item.keywords || []).map(k => k.name || '')
+            ].join(' ').toLowerCase();
+            
+            return searchableText.includes(currentSearchTerm);
+        });
+    }
+    
+    filteredQueue = filtered;
+    displayFilteredQueue();
+}
+
+function displayFilteredQueue() {
+    const queueList = document.getElementById('queueList');
+    
+    if (filteredQueue.length === 0) {
+        let emptyMessage = '저장된 큐 항목이 없습니다.';
+        if (currentFilter !== 'all') {
+            const filterNames = {
+                'pending': '대기 중',
+                'processing': '처리 중', 
+                'completed': '완료',
+                'failed': '실패'
+            };
+            emptyMessage = `${filterNames[currentFilter]} 상태의 항목이 없습니다.`;
+        }
+        if (currentSearchTerm) {
+            emptyMessage = `"${currentSearchTerm}" 검색 결과가 없습니다.`;
+        }
+        
+        queueList.innerHTML = `<div class="empty-state">
+            <h3>📦 ${emptyMessage}</h3>
+            <p>필터를 변경하거나 검색어를 확인해보세요.</p>
+            <a href="affiliate_editor.php" class="btn btn-primary">새 글 작성하기</a>
+        </div>`;
+        return;
+    }
+    
+    let html = '';
+    filteredQueue.forEach(item => {
+        const keywordCount = item.keywords ? item.keywords.length : 0;
+        const totalLinks = item.keywords ? item.keywords.reduce((sum, k) => sum + (k.coupang?.length || 0) + (k.aliexpress?.length || 0), 0) : 0;
+        const statusClass = `status-${item.status}`;
+        const statusText = getStatusText(item.status);
+        const productsSummary = getProductsSummary(item.keywords);
+        
+        // 🔧 썸네일 URL 표시 추가
+        const thumbnailDisplay = item.thumbnail_url ? 
+            `<div class="thumbnail-preview"><img src="${item.thumbnail_url}" alt="썸네일" style="max-width: 100px; max-height: 60px; border-radius: 4px; object-fit: cover;" onerror="this.style.display='none'"><span class="thumbnail-text">썸네일 있음</span></div>` :
+            `<div class="thumbnail-preview"><span class="thumbnail-text">썸네일 없음</span></div>`;
+        
+        html += `<div class="queue-item queue-${item.status}" data-queue-id="${item.queue_id}" data-status="${item.status}" draggable="${dragEnabled}">
+            <div class="queue-header">
+                <div>
+                    <h3 class="queue-title">${item.title}</h3>
+                    <p class="queue-meta">${item.category_name} | ${item.prompt_type_name || '기본형'} | ${item.created_at} | <span class="status-badge ${statusClass}">${statusText}</span></p>
+                </div>
+                <div class="queue-actions">
+                    <button class="btn btn-primary btn-small" onclick="editQueue('${item.queue_id}')">✏️ 편집</button>
+                    <button class="btn btn-orange btn-small" onclick="immediatePublish('${item.queue_id}')">🚀 즉시발행</button>
+                    <button class="btn btn-danger btn-small" onclick="deleteQueue('${item.queue_id}')">🗑️ 삭제</button>
+                </div>
+            </div>
+            <div class="queue-content">
+                <div class="queue-info">
+                    <div class="info-item"><div class="info-value">${keywordCount}</div><div class="info-label">키워드</div></div>
+                    <div class="info-item"><div class="info-value">${totalLinks}</div><div class="info-label">총 링크</div></div>
+                    <div class="info-item"><div class="info-value">${productsSummary.products_with_data}</div><div class="info-label">분석완료</div></div>
+                    <div class="info-item"><div class="info-value">${item.priority || 1}</div><div class="info-label">우선순위</div></div>
+                    <div class="info-item"><div class="info-value">${item.has_user_details ? 'O' : 'X'}</div><div class="info-label">상세정보</div></div>
+                    <div class="info-item"><div class="info-value">${item.has_product_data ? 'O' : 'X'}</div><div class="info-label">상품데이터</div></div>
+                    <div class="info-item"><div class="info-value">${item.has_thumbnail_url ? 'O' : 'X'}</div><div class="info-label">썸네일</div></div>
+                </div>
+                ${item.keywords && item.keywords.length > 0 ? `<div class="keywords-preview"><h4>키워드:</h4><div class="keyword-tags">${item.keywords.map(k => `<span class="keyword-tag">${k.name}</span>`).join('')}</div></div>` : ''}
+                ${generateProductsPreview(productsSummary)}
+                ${thumbnailDisplay}
+            </div>
+        </div>`;
+    });
+    
+    queueList.innerHTML = html;
+    if (dragEnabled) addDragEvents();
+}
