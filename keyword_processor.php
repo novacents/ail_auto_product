@@ -8,9 +8,9 @@
  * 버전: v4.7 (queue_manager.php 즉시 발행 지원 추가)
  */
 
-// 1. 초기 에러 리포팅 설정 (스크립트 시작 시점부터 에러를 잡기 위함)
+// 1. 초기 에러 리포팅 설정 (프로덕션 모드)
 error_reporting(E_ALL); // 모든 PHP 에러를 보고
-ini_set('display_errors', 1); // 웹 브라우저에 에러를 직접 표시
+ini_set('display_errors', 0); // 프로덕션에서는 에러를 브라우저에 표시하지 않음
 ini_set('log_errors', 1); // 에러를 웹 서버 에러 로그에 기록
 ini_set('error_log', __DIR__ . '/php_error_log.txt'); // PHP 에러를 특정 파일에 기록
 
@@ -129,8 +129,14 @@ function main_log($message) {
     @file_put_contents(MAIN_LOG_FILE, $log_entry, FILE_APPEND | LOCK_EX);
 }
 
-// 7. JSON 응답 전송 함수 (AJAX 응답용)
+// 7. JSON 응답 전송 함수 (AJAX 응답용) - 출력 버퍼 정리 강화
 function send_json_response($success, $data = [], $message = '') {
+    // 모든 출력 버퍼 정리
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    ob_start();
+    
     // 헤더 설정 (중복 방지)
     if (!headers_sent()) {
         header('Content-Type: application/json; charset=utf-8');
@@ -145,8 +151,10 @@ function send_json_response($success, $data = [], $message = '') {
         'timestamp' => date('Y-m-d H:i:s')
     ];
     
+    // 이전 출력 완전 제거 후 JSON만 출력
+    ob_clean();
     echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    debug_log("send_json_response: JSON response sent. Success: " . ($success ? 'YES' : 'NO') . ", Message: " . $message);
+    debug_log("send_json_response: Clean JSON response sent. Success: " . ($success ? 'YES' : 'NO') . ", Message: " . $message);
     exit;
 }
 
@@ -629,8 +637,8 @@ function execute_python_script($temp_file) {
         ];
     }
     
-    // Python 명령어 구성
-    $command = "cd /var/www/novacents/tools && python3 {$python_script} --immediate --temp-file " . escapeshellarg($temp_file) . " 2>&1";
+    // Python 명령어 구성 (에러 스트림 분리)
+    $command = "cd /var/www/novacents/tools && python3 {$python_script} --immediate --temp-file " . escapeshellarg($temp_file);
     debug_log("execute_python_script: Executing command: " . $command);
     
     // Python 스크립트 실행
