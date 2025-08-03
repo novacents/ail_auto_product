@@ -258,24 +258,24 @@ if (isset($_POST['action'])) {
                 curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // SSL 인증서 검증 비활성화 (개발 환경용)
                 curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
                 
-                // 디버깅을 위한 상세 정보 출력
-                curl_setopt($ch, CURLOPT_VERBOSE, true);
-                $verbose = fopen('php://temp', 'w+');
-                curl_setopt($ch, CURLOPT_STDERR, $verbose);
+                // 프로덕션 모드: 디버깅 출력 비활성화
+                // curl_setopt($ch, CURLOPT_VERBOSE, true);
+                // $verbose = fopen('php://temp', 'w+');
+                // curl_setopt($ch, CURLOPT_STDERR, $verbose);
                 
                 $response = curl_exec($ch);
                 $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
                 $curl_error = curl_error($ch);
                 $curl_info = curl_getinfo($ch);
                 
-                // 디버깅 정보 로깅
-                rewind($verbose);
-                $verboseLog = stream_get_contents($verbose);
-                error_log("CURL Verbose Log: " . $verboseLog);
+                // 프로덕션 모드: 상세 디버깅 로그 비활성화 (필요시에만 활성화)
+                // rewind($verbose);
+                // $verboseLog = stream_get_contents($verbose);
+                // error_log("CURL Verbose Log: " . $verboseLog);
                 error_log("HTTP Code: " . $http_code);
                 error_log("CURL Error: " . $curl_error);
                 error_log("Response length: " . strlen($response));
-                error_log("Response (first 500 chars): " . substr($response, 0, 500));
+                // error_log("Response (first 500 chars): " . substr($response, 0, 500));
                 
                 curl_close($ch);
                 
