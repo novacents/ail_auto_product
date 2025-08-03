@@ -300,6 +300,18 @@ if (isset($_POST['action'])) {
                 
                 if (json_last_error() !== JSON_ERROR_NONE) {
                     error_log("JSON 디코딩 오류: " . json_last_error_msg());
+                    error_log("전체 응답 내용: " . $response);
+                    
+                    // keyword_processor.php의 JSON 응답 패턴 확인
+                    if (preg_match('/\{"success":(true|false).*?\}$/s', $response, $json_matches)) {
+                        $json_part = $json_matches[0];
+                        error_log("JSON 부분 발견: " . $json_part);
+                        $result = json_decode($json_part, true);
+                        if (json_last_error() === JSON_ERROR_NONE) {
+                            echo json_encode($result);
+                            exit;
+                        }
+                    }
                     
                     // Python 스크립트 출력에서 성공 메시지 찾기
                     if (strpos($response, '워드프레스 발행 성공:') !== false) {
