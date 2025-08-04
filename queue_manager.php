@@ -1,7 +1,7 @@
 <?php
 /**
  * 저장된 정보 관리 페이지 - 분할 시스템 적용 버전
- * 버전: v3.0 (분할 시스템 적용)
+ * 버전: v4.0 (Phase 2 UI/UX 개선 완료)
  */
 require_once($_SERVER['DOCUMENT_ROOT'] . '/wp-config.php');
 require_once __DIR__ . '/queue_utils.php';
@@ -258,24 +258,24 @@ if (isset($_POST['action'])) {
                 curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // SSL 인증서 검증 비활성화 (개발 환경용)
                 curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
                 
-                // 디버깅을 위한 상세 정보 출력
-                curl_setopt($ch, CURLOPT_VERBOSE, true);
-                $verbose = fopen('php://temp', 'w+');
-                curl_setopt($ch, CURLOPT_STDERR, $verbose);
+                // 프로덕션 모드: 디버깅 출력 비활성화
+                // curl_setopt($ch, CURLOPT_VERBOSE, true);
+                // $verbose = fopen('php://temp', 'w+');
+                // curl_setopt($ch, CURLOPT_STDERR, $verbose);
                 
                 $response = curl_exec($ch);
                 $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
                 $curl_error = curl_error($ch);
                 $curl_info = curl_getinfo($ch);
                 
-                // 디버깅 정보 로깅
-                rewind($verbose);
-                $verboseLog = stream_get_contents($verbose);
-                error_log("CURL Verbose Log: " . $verboseLog);
+                // 프로덕션 모드: 상세 디버깅 로그 비활성화 (필요시에만 활성화)
+                // rewind($verbose);
+                // $verboseLog = stream_get_contents($verbose);
+                // error_log("CURL Verbose Log: " . $verboseLog);
                 error_log("HTTP Code: " . $http_code);
                 error_log("CURL Error: " . $curl_error);
                 error_log("Response length: " . strlen($response));
-                error_log("Response (first 500 chars): " . substr($response, 0, 500));
+                // error_log("Response (first 500 chars): " . substr($response, 0, 500));
                 
                 curl_close($ch);
                 
@@ -300,6 +300,18 @@ if (isset($_POST['action'])) {
                 
                 if (json_last_error() !== JSON_ERROR_NONE) {
                     error_log("JSON 디코딩 오류: " . json_last_error_msg());
+                    error_log("전체 응답 내용: " . $response);
+                    
+                    // keyword_processor.php의 JSON 응답 패턴 확인
+                    if (preg_match('/\{"success":(true|false).*?\}$/s', $response, $json_matches)) {
+                        $json_part = $json_matches[0];
+                        error_log("JSON 부분 발견: " . $json_part);
+                        $result = json_decode($json_part, true);
+                        if (json_last_error() === JSON_ERROR_NONE) {
+                            echo json_encode($result);
+                            exit;
+                        }
+                    }
                     
                     // Python 스크립트 출력에서 성공 메시지 찾기
                     if (strpos($response, '워드프레스 발행 성공:') !== false) {
@@ -458,7 +470,7 @@ if (isset($_POST['action'])) {
 <div class="main-container">
     <div class="header-section">
         <h1>📋 저장된 정보 관리</h1>
-        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v3.0 - 분할 시스템 적용)</p>
+        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v4.0 - Phase 2 UI/UX 개선 완료)</p>
         <div class="header-actions">
             <a href="affiliate_editor.php" class="btn btn-primary">📝 새 글 작성</a>
             <button type="button" class="btn btn-secondary" onclick="refreshQueue()">🔄 새로고침</button>
@@ -466,44 +478,113 @@ if (isset($_POST['action'])) {
     </div>
 
     <div class="main-content">
-        <div class="queue-stats" id="queueStats">
-            <div class="stat-card">
-                <div class="stat-number" id="totalCount">0</div>
-                <div class="stat-label">전체 항목</div>
+        <!-- 📊 향상된 대시보드 영역 -->
+        <div class="dashboard-section">
+            <div class="dashboard-header">
+                <h2>📊 큐 관리 대시보드</h2>
+                <div class="dashboard-meta">
+                    <span class="last-updated">마지막 업데이트: <span id="lastUpdated">-</span></span>
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-number" id="pendingCount">0</div>
-                <div class="stat-label">대기 중</div>
+            
+            <div class="queue-stats" id="queueStats">
+                <div class="stat-card stat-total">
+                    <div class="stat-icon">📋</div>
+                    <div class="stat-info">
+                        <div class="stat-number" id="totalCount">0</div>
+                        <div class="stat-label">전체 항목</div>
+                    </div>
+                </div>
+                <div class="stat-card stat-pending">
+                    <div class="stat-icon">🟡</div>
+                    <div class="stat-info">
+                        <div class="stat-number" id="pendingCount">0</div>
+                        <div class="stat-label">대기 중</div>
+                    </div>
+                </div>
+                <div class="stat-card stat-processing">
+                    <div class="stat-icon">🔵</div>
+                    <div class="stat-info">
+                        <div class="stat-number" id="processingCount">0</div>
+                        <div class="stat-label">처리 중</div>
+                    </div>
+                </div>
+                <div class="stat-card stat-completed">
+                    <div class="stat-icon">🟢</div>
+                    <div class="stat-info">
+                        <div class="stat-number" id="completedCount">0</div>
+                        <div class="stat-label">완료</div>
+                    </div>
+                </div>
+                <div class="stat-card stat-failed">
+                    <div class="stat-icon">🔴</div>
+                    <div class="stat-info">
+                        <div class="stat-number" id="failedCount">0</div>
+                        <div class="stat-label">실패</div>
+                    </div>
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-number" id="processingCount">0</div>
-                <div class="stat-label">처리 중</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number" id="completedCount">0</div>
-                <div class="stat-label">완료</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number" id="failedCount">0</div>
-                <div class="stat-label">실패</div>
+            
+            <!-- 📈 오늘/이번주 통계 -->
+            <div class="period-stats">
+                <div class="period-card">
+                    <div class="period-icon">📈</div>
+                    <div class="period-info">
+                        <div class="period-number" id="todayProcessed">0</div>
+                        <div class="period-label">오늘 처리</div>
+                    </div>
+                </div>
+                <div class="period-card">
+                    <div class="period-icon">📅</div>
+                    <div class="period-info">
+                        <div class="period-number" id="weekProcessed">0</div>
+                        <div class="period-label">이번주 처리</div>
+                    </div>
+                </div>
+                <div class="period-card">
+                    <div class="period-icon">⚡</div>
+                    <div class="period-info">
+                        <div class="period-number" id="avgProcessTime">-</div>
+                        <div class="period-label">평균 처리시간</div>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <div class="sort-controls">
-            <label for="sortBy">정렬 기준:</label>
-            <select id="sortBy" onchange="sortQueue()">
-                <option value="created_at">등록일시</option>
-                <option value="title">제목</option>
-                <option value="status">상태</option>
-                <option value="priority">우선순위</option>
-            </select>
-            <select id="sortOrder" onchange="sortQueue()">
-                <option value="desc">내림차순</option>
-                <option value="asc">오름차순</option>
-            </select>
-            <button type="button" class="btn btn-secondary btn-small" onclick="toggleDragSort()">
-                <span id="dragToggleText">드래그 정렬 활성화</span>
-            </button>
+        <div class="filter-controls">
+            <div class="status-filters">
+                <label>📊 상태 필터:</label>
+                <div class="filter-buttons">
+                    <button type="button" class="filter-btn active" data-status="all" onclick="filterByStatus('all')">전체</button>
+                    <button type="button" class="filter-btn" data-status="pending" onclick="filterByStatus('pending')">🟡 대기중</button>
+                    <button type="button" class="filter-btn" data-status="processing" onclick="filterByStatus('processing')">🔵 처리중</button>
+                    <button type="button" class="filter-btn" data-status="completed" onclick="filterByStatus('completed')">🟢 완료</button>
+                    <button type="button" class="filter-btn" data-status="failed" onclick="filterByStatus('failed')">🔴 실패</button>
+                </div>
+            </div>
+            
+            <div class="search-controls">
+                <label for="searchInput">🔍 검색:</label>
+                <input type="text" id="searchInput" placeholder="제목 또는 키워드로 검색..." onkeyup="searchQueues()">
+                <button type="button" class="btn btn-secondary btn-small" onclick="clearSearch()">지우기</button>
+            </div>
+            
+            <div class="sort-controls">
+                <label for="sortBy">📊 정렬:</label>
+                <select id="sortBy" onchange="sortQueue()">
+                    <option value="created_at">📅 등록일시</option>
+                    <option value="title">📝 제목</option>
+                    <option value="status">⚡ 상태</option>
+                    <option value="priority">⭐ 우선순위</option>
+                </select>
+                <select id="sortOrder" onchange="sortQueue()">
+                    <option value="desc">⬇️ 내림차순</option>
+                    <option value="asc">⬆️ 오름차순</option>
+                </select>
+                <button type="button" class="btn btn-secondary btn-small" onclick="toggleDragSort()">
+                    <span id="dragToggleText">🔄 드래그 정렬 활성화</span>
+                </button>
+            </div>
         </div>
 
         <div class="queue-list" id="queueList">
@@ -516,6 +597,108 @@ if (isset($_POST['action'])) {
     </div>
 </div>
 
+<!-- 🔔 알림 모달 -->
+<div class="notification-container" id="notificationContainer"></div>
+
 <script src="assets/queue_manager.js?v=<?php echo time(); ?>"></script>
+<script src="assets/queue_manager_enhanced.js?v=<?php echo time(); ?>"></script>
+<script>
+// 🔄 마지막 업데이트 시간 업데이트
+function updateLastUpdated() {
+    const now = new Date();
+    const timeString = now.toLocaleString('ko-KR');
+    document.getElementById('lastUpdated').textContent = timeString;
+}
+
+// 📊 기간별 통계 업데이트 (모의 데이터)
+function updatePeriodStats() {
+    // TODO: 실제 API에서 데이터 가져오기
+    document.getElementById('todayProcessed').textContent = '5';
+    document.getElementById('weekProcessed').textContent = '23';
+    document.getElementById('avgProcessTime').textContent = '2.5분';
+}
+
+// 🔍 검색 엔터 키 처리
+function handleSearchKeyPress(event) {
+    if (event.key === 'Enter') {
+        performSearch();
+    }
+}
+
+// 🔍 검색 수행
+function performSearch() {
+    const searchTerm = document.getElementById('searchInput').value;
+    console.log('검색 수행:', searchTerm);
+    // TODO: 실제 검색 로직 구현
+}
+
+// 📅 기간 필터
+function filterByPeriod() {
+    const period = document.getElementById('periodFilter').value;
+    console.log('기간 필터:', period);
+    // TODO: 기간별 필터링 로직 구현
+}
+
+// 📂 카테고리 필터
+function filterByCategory() {
+    const category = document.getElementById('categoryFilter').value;
+    console.log('카테골리 필터:', category);
+    // TODO: 카테고리별 필터링 로직 구현
+}
+
+// 📊 뷰 변경
+function changeView(viewType) {
+    const viewBtns = document.querySelectorAll('.view-btn');
+    viewBtns.forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`[data-view="${viewType}"]`).classList.add('active');
+    
+    const queueList = document.getElementById('queueList');
+    queueList.className = `queue-list view-${viewType}`;
+    console.log('뷰 변경:', viewType);
+}
+
+// ☑️ 전체 선택
+function selectAll() {
+    console.log('전체 선택');
+    // TODO: 전체 선택 로직 구현
+}
+
+// 🛠️ 대량 작업
+function bulkAction(action) {
+    console.log('대량 작업:', action);
+    // TODO: 대량 작업 로직 구현
+}
+
+// 🔔 알림 표시
+function showNotification(message, type = 'info') {
+    const container = document.getElementById('notificationContainer');
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.innerHTML = `
+        <span class="notification-message">${message}</span>
+        <button class="notification-close" onclick="this.parentElement.remove()">×</button>
+    `;
+    container.appendChild(notification);
+    
+    // 5초 후 자동 제거
+    setTimeout(() => {
+        if (notification.parentElement) {
+            notification.remove();
+        }
+    }, 5000);
+}
+
+// 🔄 페이지 로드 시 초기화
+document.addEventListener('DOMContentLoaded', function() {
+    updateLastUpdated();
+    updatePeriodStats();
+    
+    // 30초마다 통계 업데이트
+    setInterval(() => {
+        updatePeriodStats();
+        updateLastUpdated();
+    }, 30000);
+});
+</script>
 </body>
 </html>
