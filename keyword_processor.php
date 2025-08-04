@@ -5,7 +5,7 @@
  * 워드프레스 환경에 전혀 종속되지 않으며, 순수 PHP로만 작동합니다.
  *
  * 파일 위치: /var/www/novacents/tools/keyword_processor.php
- * 버전: v4.7 (queue_manager.php 즉시 발행 지원 추가)
+ * 버전: v4.8 (validate_user_details 함수 수정 - 중첩 배열 처리)
  */
 
 // 1. 초기 에러 리포팅 설정 (프로덕션 모드)
@@ -356,16 +356,21 @@ function parse_user_details($user_details_json) {
     return $user_details_json;
 }
 
-// 13. 사용자 세부 정보 유효성 검사 함수
+// 13. 사용자 세부 정보 유효성 검사 함수 (중첩 배열 처리 수정)
 function validate_user_details($user_details) {
     if (!is_array($user_details) || empty($user_details)) {
         return false;
     }
     
-    // 최소한 하나의 유효한 필드가 있는지 확인
+    // 최소한 하나의 유효한 필드가 있는지 확인 (중첩 배열 처리)
     foreach ($user_details as $key => $value) {
-        if (!empty(trim($value))) {
+        if (is_string($value) && !empty(trim($value))) {
             return true;
+        } elseif (is_array($value) && !empty($value)) {
+            // 중첩 배열인 경우 재귀적으로 검사
+            if (validate_user_details($value)) {
+                return true;
+            }
         }
     }
     
