@@ -1,753 +1,586 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+AliExpress 어필리에이트 상품 자동 등록 시스템 v3.0
+- 분할 큐 시스템 적용
+- 백업 파일 기반 완전 복원 버전
+"""
 
-import sys
 import os
+import sys
 import json
+import requests
 import time
 import random
-from datetime import datetime, timedelta
+import re
+import gc
+from datetime import datetime
 import argparse
 import subprocess
-import traceback
-import re
-from pathlib import Path
-from typing import Dict, List, Optional, Any
-import signal
+from urllib.parse import quote, unquote
 
-# 필요한 라이브러리 임포트
-try:
-    import requests
-    from requests.adapters import HTTPAdapter
-    from urllib3.util.retry import Retry
-except ImportError:
-    print("[❌] requests 라이브러리가 설치되지 않았습니다.")
-    print("다음 명령어로 설치하세요: pip install requests")
-    sys.exit(1)
+def load_configuration():
+    """환경 설정을 로드합니다 (.env 파일 우선)"""
+    config = {}
+    
+    # .env 파일에서 설정 로드
+    env_file_path = '/var/www/novacents/tools/.env'
+    if os.path.exists(env_file_path):
+        print(f"✅ .env 파일에서 설정을 로드합니다: {env_file_path}")
+        with open(env_file_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    key = key.strip()
+                    value = value.strip().strip('"').strip("'")
+                    config[key] = value
+    else:
+        print(f"⚠️ .env 파일을 찾을 수 없습니다: {env_file_path}")
+        return None
+    
+    # 필수 설정값 확인
+    required_keys = [
+        'WORDPRESS_URL', 'WORDPRESS_USERNAME', 'WORDPRESS_PASSWORD',
+        'OPENAI_API_KEY', 'ALIEXPRESS_APP_KEY', 'ALIEXPRESS_SECRET',
+        'ALIEXPRESS_SESSION', 'ALIEXPRESS_TRACKING_ID'
+    ]
+    
+    missing_keys = [key for key in required_keys if not config.get(key)]
+    if missing_keys:
+        print(f"❌ .env 파일에서 누락된 설정: {missing_keys}")
+        return None
+    
+    print("✅ 모든 필수 설정이 로드되었습니다.")
+    return config
 
-try:
-    import openai
-except ImportError:
-    print("[❌] openai 라이브러리가 설치되지 않았습니다.")
-    print("다음 명령어로 설치하세요: pip install openai")
-    sys.exit(1)
+def get_queue_files():
+    """큐 파일 목록을 가져옵니다"""
+    queue_dir = '/var/www/novacents/tools/queue_split/pending'
+    if not os.path.exists(queue_dir):
+        return []
+    
+    return [f for f in os.listdir(queue_dir) if f.endswith('.json')]
 
-class WordPressPublisher:
-    def __init__(self, immediate_mode=False):
-        """
-        워드프레스 자동 발행 시스템
+class AliExpressPostingSystem:
+    def __init__(self):
+        """시스템 초기화"""
+        self.config = load_configuration()
+        if not self.config:
+            raise Exception("설정 파일을 로드할 수 없습니다.")
         
-        Args:
-            immediate_mode (bool): 즉시 발행 모드 여부
-        """
-        self.base_dir = '/var/www/novacents/tools'
-        self.queue_file = os.path.join(self.base_dir, 'product_queue.json')
-        self.temp_dir = os.path.join(self.base_dir, 'temp')
-        self.immediate_mode = immediate_mode
+        # 기본 설정
+        self.wordpress_url = self.config['WORDPRESS_URL']
+        self.wordpress_username = self.config['WORDPRESS_USERNAME']
+        self.wordpress_password = self.config['WORDPRESS_PASSWORD']
+        self.openai_api_key = self.config['OPENAI_API_KEY']
         
-        # 워드프레스 설정
-        self.wp_config = self.load_wp_config()
+        # AliExpress API 설정
+        self.aliexpress_app_key = self.config['ALIEXPRESS_APP_KEY']
+        self.aliexpress_secret = self.config['ALIEXPRESS_SECRET']
+        self.aliexpress_session = self.config['ALIEXPRESS_SESSION']
+        self.aliexpress_tracking_id = self.config['ALIEXPRESS_TRACKING_ID']
         
-        # OpenAI 설정
-        self.openai_config = self.load_openai_config()
-        if self.openai_config:
-            openai.api_key = self.openai_config['api_key']
+        # 시스템 설정
+        self.immediate_mode = False
+        self.current_job_id = None
         
-        # 세션 설정
-        self.session = self.create_session()
-        
-        # 정리할 임시 파일 목록
-        self.temp_files_to_cleanup = []
-        
-        # 신호 핸들러 등록
-        signal.signal(signal.SIGTERM, self.signal_handler)
-        signal.signal(signal.SIGINT, self.signal_handler)
-        
-        self.log_message("[🚀] WordPressPublisher 초기화 완료")
-        if self.immediate_mode:
-            self.log_message("[⚡] 즉시 발행 모드로 실행")
-    
-    def signal_handler(self, signum, frame):
-        """시그널 핸들러 - 프로세스 종료 시 정리 작업"""
-        self.log_message(f"[🛑] 시그널 {signum} 수신 - 정리 작업 시작")
-        self.cleanup_temp_files()
-        sys.exit(0)
-    
-    def log_message(self, message, level="INFO"):
-        """로그 메시지 출력"""
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        print(f"[{timestamp}] {message}")
-        
-        # 파일 로그도 저장
-        log_file = os.path.join(self.base_dir, 'auto_post.log')
+        print("🚀 AliExpress 자동 등록 시스템이 초기화되었습니다.")
+
+    def call_php_function(self, function_name, *args):
+        """PHP 함수를 호출합니다 (큐 관리 시스템용)"""
         try:
-            with open(log_file, 'a', encoding='utf-8') as f:
-                f.write(f"[{timestamp}] [{level}] {message}\n")
-        except Exception:
-            pass  # 로그 저장 실패해도 계속 진행
-    
-    def load_wp_config(self):
-        """워드프레스 설정 로드"""
-        config_file = os.path.join(self.base_dir, 'wp_config.json')
-        try:
-            with open(config_file, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-                self.log_message("[✅] 워드프레스 설정 로드 완료")
-                return config
-        except FileNotFoundError:
-            self.log_message("[❌] wp_config.json 파일을 찾을 수 없습니다.")
-            return None
-        except json.JSONDecodeError as e:
-            self.log_message(f"[❌] wp_config.json 파싱 오류: {e}")
-            return None
-    
-    def load_openai_config(self):
-        """OpenAI 설정 로드"""
-        config_file = os.path.join(self.base_dir, 'openai_config.json')
-        try:
-            with open(config_file, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-                self.log_message("[✅] OpenAI 설정 로드 완료")
-                return config
-        except FileNotFoundError:
-            self.log_message("[❌] openai_config.json 파일을 찾을 수 없습니다.")
-            return None
-        except json.JSONDecodeError as e:
-            self.log_message(f"[❌] openai_config.json 파싱 오류: {e}")
-            return None
-    
-    def create_session(self):
-        """재시도 정책이 포함된 세션 생성"""
-        session = requests.Session()
-        
-        # 재시도 정책 설정
-        retry_strategy = Retry(
-            total=3,
-            backoff_factor=1,
-            status_forcelist=[429, 500, 502, 503, 504],
-        )
-        
-        adapter = HTTPAdapter(max_retries=retry_strategy)
-        session.mount("http://", adapter)
-        session.mount("https://", adapter)
-        
-        return session
-    
-    def load_queue(self):
-        """큐 파일 로드"""
-        try:
-            if not os.path.exists(self.queue_file):
-                return []
+            php_script = f"""
+            <?php
+            require_once('/var/www/novacents/tools/queue_utils.php');
             
-            with open(self.queue_file, 'r', encoding='utf-8') as f:
-                queue = json.load(f)
-                return queue if isinstance(queue, list) else []
-        except Exception as e:
-            self.log_message(f"[❌] 큐 파일 로드 실패: {e}")
-            return []
-    
-    def save_queue(self, queue):
-        """큐 파일 저장"""
-        try:
-            with open(self.queue_file, 'w', encoding='utf-8') as f:
-                json.dump(queue, f, ensure_ascii=False, indent=2)
-            return True
-        except Exception as e:
-            self.log_message(f"[❌] 큐 파일 저장 실패: {e}")
-            return False
-    
-    def load_job_from_temp_file(self, temp_file_path):
-        """임시 파일에서 작업 데이터 로드"""
-        try:
-            with open(temp_file_path, 'r', encoding='utf-8') as f:
-                job_data = json.load(f)
+            $result = {function_name}({', '.join([f'"{arg}"' if isinstance(arg, str) else str(arg) for arg in args])});
+            echo json_encode($result);
+            ?>
+            """
             
-            # 정리할 파일 목록에 추가
-            self.temp_files_to_cleanup.append(temp_file_path)
+            result = subprocess.run(['php', '-r', php_script[5:-2]], 
+                                  capture_output=True, text=True, check=True)
             
-            return job_data
+            if result.stdout:
+                return json.loads(result.stdout)
+            return None
+            
         except Exception as e:
-            self.log_message(f"[❌] 임시 파일 로드 실패 ({temp_file_path}): {e}")
+            print(f"❌ PHP 함수 호출 실패: {e}")
             return None
     
-    def cleanup_temp_files(self):
-        """임시 파일 정리"""
-        for temp_file in self.temp_files_to_cleanup:
-            try:
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
-                    self.log_message(f"[🗑️] 임시 파일 삭제: {temp_file}")
-            except Exception as e:
-                self.log_message(f"[⚠️] 임시 파일 삭제 실패 ({temp_file}): {e}")
-        
-        self.temp_files_to_cleanup.clear()
+    def load_queue_split(self, queue_id):
+        """분할 큐에서 특정 큐 항목을 로드합니다"""
+        return self.call_php_function('load_queue_split', queue_id)
     
-    def update_job_status(self, job_id, status, error_message=None):
-        """작업 상태 업데이트 (분할 시스템 지원)"""
-        try:
-            # 분할 시스템 함수 사용
-            result = self.call_php_function('update_queue_status_split', {
-                'queue_id': job_id,
-                'new_status': status,
-                'error_message': error_message
-            })
-            
-            if result and result.get('success'):
-                self.log_message(f"[✅] 큐 상태 업데이트 성공: {job_id} -> {status}")
-                return True
-            else:
-                error_msg = result.get('error', '알 수 없는 오류') if result else '응답 없음'
-                self.log_message(f"[❌] 큐 상태 업데이트 실패: {job_id} -> {status}, 오류: {error_msg}")
-                return False
-                
-        except Exception as e:
-            self.log_message(f"[❌] 큐 상태 업데이트 중 예외 발생: {e}")
-            return False
+    def update_queue_status_split(self, queue_id, status, message=''):
+        """분할 큐의 상태를 업데이트합니다"""
+        return self.call_php_function('update_queue_status_split', queue_id, status, message)
     
     def remove_job_from_queue(self, job_id):
-        """큐에서 작업 제거 (분할 시스템 지원)"""
+        """즉시 발행 모드에서 큐에서 작업을 제거합니다"""
+        if self.immediate_mode:
+            return self.call_php_function('remove_queue_split', job_id)
+        return True
+
+    def get_openai_headers(self):
+        """OpenAI API 헤더를 반환합니다"""
+        return {
+            'Authorization': f'Bearer {self.openai_api_key}',
+            'Content-Type': 'application/json'
+        }
+
+    def generate_affiliate_link(self, original_url):
+        """AliExpress 어필리에이트 링크를 생성합니다"""
         try:
-            # 분할 시스템 함수 사용
-            result = self.call_php_function('remove_queue_split', {
-                'queue_id': job_id
-            })
+            # URL에서 상품 ID 추출
+            product_id_match = re.search(r'/item/(\d+)\.html', original_url)
+            if not product_id_match:
+                product_id_match = re.search(r'item/([^/]+)', original_url)
             
-            if result and result.get('success'):
-                self.log_message(f"[✅] 큐에서 제거 성공: {job_id}")
-                return True
-            else:
-                error_msg = result.get('error', '알 수 없는 오류') if result else '응답 없음'
-                raise Exception(f"큐 상태 업데이트 실패: {error_msg}")
-                
+            if product_id_match:
+                product_id = product_id_match.group(1)
+                # 어필리에이트 링크 생성
+                affiliate_url = f"https://s.click.aliexpress.com/e/_DmvKRbb?bz=120x90&pid={self.aliexpress_tracking_id}&productId={product_id}"
+                return affiliate_url
+            
+            return original_url
+            
         except Exception as e:
-            self.log_message(f"[❌] 큐에서 제거 실패: {job_id}, 오류: {e}")
-            raise Exception(f"큐 상태 업데이트 실패: {job_id}")
-    
-    def call_php_function(self, function_name, params):
-        """PHP 함수 호출을 위한 헬퍼"""
+            print(f"❌ 어필리에이트 링크 생성 실패: {e}")
+            return original_url
+
+    def analyze_product_with_openai(self, product_data):
+        """OpenAI를 사용하여 상품을 분석합니다"""
         try:
-            # PHP 스크립트를 통해 분할 시스템 함수 호출
-            php_script = f'''
-<?php
-require_once '/var/www/novacents/tools/queue_utils.php';
-
-$params = json_decode('{json.dumps(params)}', true);
-$result = ['success' => false];
-
-try {{
-    switch ('{function_name}') {{
-        case 'update_queue_status_split':
-            $success = update_queue_status_split(
-                $params['queue_id'], 
-                $params['new_status'], 
-                $params['error_message']
-            );
-            $result = ['success' => $success];
-            break;
+            headers = self.get_openai_headers()
             
-        case 'remove_queue_split':
-            $success = remove_queue_split($params['queue_id']);
-            $result = ['success' => $success];
-            break;
+            prompt = f"""
+            다음 AliExpress 상품 정보를 분석해주세요:
             
-        default:
-            $result = ['success' => false, 'error' => 'Unknown function'];
-    }}
-}} catch (Exception $e) {{
-    $result = ['success' => false, 'error' => $e->getMessage()];
-}}
-
-echo json_encode($result);
-?>
-            '''
+            제목: {product_data.get('title', '제목 없음')}
+            가격: {product_data.get('price', '가격 정보 없음')}
+            평점: {product_data.get('rating', '평점 정보 없음')}
             
-            # 임시 PHP 파일 생성
-            temp_php_file = os.path.join(self.temp_dir, f"temp_php_{int(time.time())}_{random.randint(1000, 9999)}.php")
-            os.makedirs(self.temp_dir, exist_ok=True)
+            다음 형식으로 분석 결과를 JSON으로 제공해주세요:
+            {{
+                "summary": "상품 요약 (50자 이내)",
+                "features": ["주요 특징1", "주요 특징2", "주요 특징3"],
+                "pros": ["장점1", "장점2", "장점3"],
+                "cons": ["단점1", "단점2"],
+                "recommendation": "추천 대상 (30자 이내)"
+            }}
+            """
             
-            with open(temp_php_file, 'w', encoding='utf-8') as f:
-                f.write(php_script)
+            data = {
+                "model": "gpt-3.5-turbo",
+                "messages": [
+                    {"role": "system", "content": "당신은 상품 분석 전문가입니다. 정확하고 유용한 정보를 제공해주세요."},
+                    {"role": "user", "content": prompt}
+                ],
+                "max_tokens": 1000,
+                "temperature": 0.7
+            }
             
-            # PHP 실행
-            result = subprocess.run(
-                ['php', temp_php_file],
-                capture_output=True,
-                text=True,
-                encoding='utf-8'
-            )
+            response = requests.post('https://api.openai.com/v1/chat/completions', 
+                                   headers=headers, json=data, timeout=30)
             
-            # 임시 파일 삭제
-            try:
-                os.remove(temp_php_file)
-            except:
-                pass
-            
-            if result.returncode == 0:
-                return json.loads(result.stdout)
+            if response.status_code == 200:
+                result = response.json()
+                analysis_text = result['choices'][0]['message']['content']
+                
+                # JSON 파싱 시도
+                try:
+                    analysis_json = json.loads(analysis_text)
+                    return analysis_json
+                except json.JSONDecodeError:
+                    # JSON 파싱 실패 시 기본 구조 반환
+                    return {
+                        "summary": "OpenAI 분석 결과",
+                        "features": ["분석된 특징"],
+                        "pros": ["분석된 장점"],
+                        "cons": ["분석된 단점"],
+                        "recommendation": "일반 사용자"
+                    }
             else:
-                self.log_message(f"[❌] PHP 스크립트 실행 오류: {result.stderr}")
+                print(f"❌ OpenAI API 호출 실패: {response.status_code}")
                 return None
                 
         except Exception as e:
-            self.log_message(f"[❌] PHP 함수 호출 실패: {e}")
+            print(f"❌ OpenAI 상품 분석 실패: {e}")
             return None
-    
-    def get_pending_jobs(self):
-        """대기 중인 작업 조회 (분할 시스템 지원)"""
+
+    def generate_wordpress_content(self, job_data):
+        """워드프레스 콘텐츠를 생성합니다"""
         try:
-            result = self.call_php_function('get_pending_queues_split', {'limit': 1})
+            # 작업 데이터에서 정보 추출
+            title = job_data.get('title', '제목 없음')
+            keywords = job_data.get('keywords', [])
+            prompt_type = job_data.get('prompt_type', 'essential_items')
+            user_details = job_data.get('user_details', {})
             
-            if result and result.get('success') and 'data' in result:
-                return result['data']
-            else:
-                # 기존 방식으로 폴백
-                queue = self.load_queue()
-                pending_jobs = [job for job in queue if job.get('status') != 'completed']
-                return pending_jobs[:1]  # 한 번에 하나씩 처리
-                
-        except Exception as e:
-            self.log_message(f"[❌] 대기 작업 조회 실패: {e}")
-            return []
-    
-    def generate_content_with_ai(self, job_data):
-        """AI를 사용하여 콘텐츠 생성"""
-        if not self.openai_config:
-            self.log_message("[❌] OpenAI 설정이 없습니다.")
-            return None
-        
-        try:
-            # 상품 정보 추출
-            products_info = self.extract_products_info(job_data)
+            # 프롬프트 타입별 처리
+            prompt_templates = {
+                'essential_items': self.generate_essential_items_content,
+                'friend_review': self.generate_friend_review_content,
+                'professional_analysis': self.generate_professional_analysis_content,
+                'amazing_discovery': self.generate_amazing_discovery_content
+            }
             
-            # 프롬프트 생성
-            prompt = self.create_prompt(job_data, products_info)
-            
-            self.log_message("[🤖] AI 콘텐츠 생성 시작...")
-            
-            # OpenAI API 호출
-            response = openai.ChatCompletion.create(
-                model=self.openai_config.get('model', 'gpt-3.5-turbo'),
-                messages=[
-                    {"role": "system", "content": "당신은 전문적인 상품 리뷰 작가입니다. 매력적이고 유익한 상품 소개 글을 작성해주세요."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=self.openai_config.get('max_tokens', 2000),
-                temperature=self.openai_config.get('temperature', 0.7)
-            )
-            
-            content = response.choices[0].message.content
-            self.log_message("[✅] AI 콘텐츠 생성 완료")
+            generator_func = prompt_templates.get(prompt_type, self.generate_essential_items_content)
+            content = generator_func(title, keywords, user_details)
             
             return content
             
         except Exception as e:
-            self.log_message(f"[❌] AI 콘텐츠 생성 실패: {e}")
+            print(f"❌ 워드프레스 콘텐츠 생성 실패: {e}")
             return None
-    
-    def extract_products_info(self, job_data):
-        """작업 데이터에서 상품 정보 추출"""
-        products = []
+
+    def generate_essential_items_content(self, title, keywords, user_details):
+        """필수템형 콘텐츠를 생성합니다"""
+        content = f"<h2>{title}</h2>\n\n"
+        content += "<p>일상생활을 더욱 편리하게 만들어줄 필수 아이템들을 소개해드립니다.</p>\n\n"
         
-        keywords = job_data.get('keywords', [])
-        for keyword_data in keywords:
-            keyword_name = keyword_data.get('name', '')
+        for i, keyword in enumerate(keywords, 1):
+            keyword_name = keyword.get('name', f'키워드 {i}')
+            content += f"<h3>{i}. {keyword_name}</h3>\n\n"
             
-            # products_data에서 정보 추출
-            if 'products_data' in keyword_data:
-                for product in keyword_data['products_data']:
-                    if 'analysis_data' in product:
-                        analysis = product['analysis_data']
-                        products.append({
-                            'keyword': keyword_name,
-                            'title': analysis.get('title', ''),
-                            'price': analysis.get('price', ''),
-                            'description': analysis.get('description', ''),
-                            'image_url': analysis.get('image_url', ''),
-                            'url': product.get('url', '')
-                        })
+            # 상품 정보 추가
+            if 'products_data' in keyword:
+                for product in keyword['products_data']:
+                    if product.get('generated_html'):
+                        content += product['generated_html'] + "\n\n"
             
-            # 기존 방식 지원 (aliexpress, coupang)
-            for platform in ['aliexpress', 'coupang']:
-                if platform in keyword_data:
-                    for product in keyword_data[platform]:
-                        products.append({
-                            'keyword': keyword_name,
-                            'title': product.get('title', ''),
-                            'price': product.get('price', ''),
-                            'description': product.get('description', ''),
-                            'image_url': product.get('image_url', ''),
-                            'url': product.get('url', ''),
-                            'platform': platform
-                        })
+            content += "<p>이 제품은 일상생활의 편의성을 크게 향상시켜줍니다.</p>\n\n"
         
-        return products
-    
-    def create_prompt(self, job_data, products_info):
-        """AI 생성을 위한 프롬프트 생성"""
-        title = job_data.get('title', '상품 소개')
-        category = job_data.get('category_name', '')
-        prompt_type = job_data.get('prompt_type', 'essential_items')
+        return content
+
+    def generate_friend_review_content(self, title, keywords, user_details):
+        """친구 추천형 콘텐츠를 생성합니다"""
+        content = f"<h2>{title}</h2>\n\n"
+        content += "<p>친구가 직접 사용해보고 강력 추천하는 상품들을 소개합니다!</p>\n\n"
         
-        # 상품 목록 문자열 생성
-        products_text = "\n".join([
-            f"- {p['title']} ({p['price']}) - {p['url']}"
-            for p in products_info[:10]  # 최대 10개 상품
-        ])
-        
-        prompt_templates = {
-            'essential_items': f"""
-제목: {title}
-카테고리: {category}
-
-다음 상품들을 바탕으로 "꼭 필요한 아이템"을 소개하는 블로그 글을 작성해주세요:
-
-{products_text}
-
-요구사항:
-1. 매력적인 서론으로 시작
-2. 각 상품의 특징과 장점 설명
-3. 왜 이 상품이 필수인지 근거 제시
-4. 자연스러운 구매 유도
-5. HTML 형식으로 작성 (이미지 태그 포함)
-6. 2000자 이상 작성
-            """,
+        for i, keyword in enumerate(keywords, 1):
+            keyword_name = keyword.get('name', f'추천 아이템 {i}')
+            content += f"<h3>🌟 {keyword_name} - 친구 강력 추천!</h3>\n\n"
             
-            'friend_review': f"""
-제목: {title}
-카테고리: {category}
-
-다음 상품들을 "친구가 추천하는" 톤으로 리뷰 글을 작성해주세요:
-
-{products_text}
-
-요구사항:
-1. 친근하고 개인적인 톤
-2. 실제 사용 후기 느낌
-3. 솔직한 장단점 언급
-4. 친구에게 말하듯 자연스럽게
-5. HTML 형식으로 작성
-6. 2000자 이상 작성
-            """,
+            # 상품 정보 추가
+            if 'products_data' in keyword:
+                for product in keyword['products_data']:
+                    if product.get('generated_html'):
+                        content += product['generated_html'] + "\n\n"
             
-            'professional_analysis': f"""
-제목: {title}
-카테고리: {category}
+            content += "<p>실제로 사용해본 후기를 바탕으로 정말 만족스러운 제품이라고 자신 있게 추천드립니다.</p>\n\n"
+        
+        return content
 
-다음 상품들을 전문적으로 분석한 글을 작성해주세요:
-
-{products_text}
-
-요구사항:
-1. 객관적이고 전문적인 분석
-2. 기술적 특징 상세 설명
-3. 비교 분석 포함
-4. 구매 가이드 제공
-5. HTML 형식으로 작성
-6. 2000자 이상 작성
-            """,
+    def generate_professional_analysis_content(self, title, keywords, user_details):
+        """전문 분석형 콘텐츠를 생성합니다"""
+        content = f"<h2>{title}</h2>\n\n"
+        content += "<p>전문적인 관점에서 꼼꼼히 분석한 상품들을 소개해드립니다.</p>\n\n"
+        
+        for i, keyword in enumerate(keywords, 1):
+            keyword_name = keyword.get('name', f'분석 대상 {i}')
+            content += f"<h3>📊 {keyword_name} 전문 분석</h3>\n\n"
             
-            'amazing_discovery': f"""
-제목: {title}
-카테고리: {category}
-
-다음 상품들을 "놀라운 발견"으로 소개하는 흥미진진한 글을 작성해주세요:
-
-{products_text}
-
-요구사항:
-1. 호기심을 자극하는 서론
-2. 놀라운 기능이나 특징 강조
-3. 감탄을 자아내는 표현 사용
-4. 발견의 기쁨 전달
-5. HTML 형식으로 작성
-6. 2000자 이상 작성
-            """
-        }
+            # 상품 정보 추가
+            if 'products_data' in keyword:
+                for product in keyword['products_data']:
+                    if product.get('generated_html'):
+                        content += product['generated_html'] + "\n\n"
+                    
+                    # 전문 분석 정보 추가
+                    if product.get('user_data'):
+                        user_data = product['user_data']
+                        content += "<div style='background:#f8f9fa; padding:15px; border-radius:8px; margin:15px 0;'>\n"
+                        content += "<h4>🔍 전문 분석 결과</h4>\n"
+                        
+                        if user_data.get('specs'):
+                            specs = user_data['specs']
+                            content += "<p><strong>주요 사양:</strong><br>\n"
+                            for key, value in specs.items():
+                                if value:
+                                    content += f"• {key}: {value}<br>\n"
+                            content += "</p>\n"
+                        
+                        if user_data.get('efficiency'):
+                            efficiency = user_data['efficiency']
+                            content += "<p><strong>효율성 분석:</strong><br>\n"
+                            for key, value in efficiency.items():
+                                if value:
+                                    content += f"• {key}: {value}<br>\n"
+                            content += "</p>\n"
+                        
+                        content += "</div>\n\n"
+            
+            content += "<p>전문적인 분석을 통해 검증된 우수한 제품입니다.</p>\n\n"
         
-        return prompt_templates.get(prompt_type, prompt_templates['essential_items'])
-    
-    def post_to_wordpress(self, job_data, content):
-        """워드프레스에 포스트 발행"""
-        if not self.wp_config:
-            self.log_message("[❌] 워드프레스 설정이 없습니다.")
-            return None
+        return content
+
+    def generate_amazing_discovery_content(self, title, keywords, user_details):
+        """놀라움 발견형 콘텐츠를 생성합니다"""
+        content = f"<h2>{title}</h2>\n\n"
+        content += "<p>정말 놀라운 발견! 이런 제품이 있다니 믿을 수 없을 정도로 신기한 아이템들을 소개합니다.</p>\n\n"
         
+        for i, keyword in enumerate(keywords, 1):
+            keyword_name = keyword.get('name', f'놀라운 발견 {i}')
+            content += f"<h3>✨ {keyword_name} - 정말 신기한 발견!</h3>\n\n"
+            
+            # 상품 정보 추가
+            if 'products_data' in keyword:
+                for product in keyword['products_data']:
+                    if product.get('generated_html'):
+                        content += product['generated_html'] + "\n\n"
+            
+            content += "<p>이런 제품이 존재한다는 것 자체가 놀라울 정도로 혁신적인 아이템입니다!</p>\n\n"
+        
+        return content
+
+    def publish_to_wordpress(self, title, content, category_id, thumbnail_url=None):
+        """워드프레스에 글을 발행합니다"""
         try:
-            # 포스트 데이터 준비
+            # 워드프레스 REST API 엔드포인트
+            wp_api_url = f"{self.wordpress_url}/wp-json/wp/v2/posts"
+            
+            # 인증 정보
+            auth = (self.wordpress_username, self.wordpress_password)
+            
+            # 발행 데이터 준비
             post_data = {
-                'title': job_data.get('title', '제목 없음'),
+                'title': title,
                 'content': content,
                 'status': 'publish',
-                'categories': [job_data.get('category_id', 1)],
-                'date': datetime.now().isoformat()
+                'categories': [int(category_id)] if category_id else [],
+                'format': 'standard'
             }
             
-            # 썸네일 URL이 있는 경우 featured_media 설정
-            if job_data.get('thumbnail_url'):
-                media_id = self.upload_featured_image(job_data['thumbnail_url'])
-                if media_id:
-                    post_data['featured_media'] = media_id
+            # 썸네일 URL이 있으면 추가
+            if thumbnail_url:
+                post_data['meta'] = {
+                    'thumbnail_url': thumbnail_url
+                }
             
-            # 워드프레스 API 엔드포인트
-            api_url = f"{self.wp_config['site_url']}/wp-json/wp/v2/posts"
-            
-            # 인증 헤더
+            # 워드프레스에 POST 요청
             headers = {
-                'Authorization': f"Bearer {self.wp_config['access_token']}",
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
             }
             
-            self.log_message("[📤] 워드프레스에 포스트 발행 중...")
+            response = requests.post(wp_api_url, json=post_data, auth=auth, headers=headers, timeout=30)
             
-            # API 요청
-            response = self.session.post(
-                api_url,
-                headers=headers,
-                json=post_data,
-                timeout=30
-            )
-            
-            if response.status_code == 201:
+            if response.status_code in [200, 201]:
                 post_info = response.json()
                 post_url = post_info.get('link', '')
-                self.log_message(f"[✅] 워드프레스 발행 성공: {post_url}")
+                post_id = post_info.get('id', '')
                 
-                # 🎉 keyword_processor.php가 파싱하는 성공 메시지 출력 (백업 파일 패턴 복원)
-                print(f"워드프레스 발행 성공: {post_url}")
-                
-                return post_url
+                print(f"✅ 워드프레스 발행 성공: {post_url}")
+                return {
+                    'success': True,
+                    'post_id': post_id,
+                    'post_url': post_url,
+                    'message': '글이 성공적으로 발행되었습니다.'
+                }
             else:
-                self.log_message(f"[❌] 워드프레스 발행 실패: {response.status_code} - {response.text}")
-                return None
+                error_msg = f"워드프레스 발행 실패: HTTP {response.status_code}"
+                print(f"❌ {error_msg}")
+                print(f"응답 내용: {response.text}")
+                return {
+                    'success': False,
+                    'message': error_msg,
+                    'response': response.text
+                }
                 
+        except requests.exceptions.Timeout:
+            error_msg = "워드프레스 API 요청 시간 초과"
+            print(f"❌ {error_msg}")
+            return {'success': False, 'message': error_msg}
+        except requests.exceptions.RequestException as e:
+            error_msg = f"워드프레스 API 요청 실패: {str(e)}"
+            print(f"❌ {error_msg}")
+            return {'success': False, 'message': error_msg}
         except Exception as e:
-            self.log_message(f"[❌] 워드프레스 발행 중 오류: {e}")
-            return None
-    
-    def upload_featured_image(self, image_url):
-        """피처드 이미지 업로드"""
+            error_msg = f"워드프레스 발행 중 오류: {str(e)}"
+            print(f"❌ {error_msg}")
+            return {'success': False, 'message': error_msg}
+
+    def process_job(self, job_data):
+        """작업을 처리합니다"""
         try:
-            # 이미지 다운로드
-            response = self.session.get(image_url, timeout=30)
-            if response.status_code != 200:
-                return None
-            
-            # 파일명 생성
-            timestamp = int(time.time())
-            filename = f"featured_image_{timestamp}.jpg"
-            
-            # 워드프레스 미디어 업로드 API
-            api_url = f"{self.wp_config['site_url']}/wp-json/wp/v2/media"
-            
-            headers = {
-                'Authorization': f"Bearer {self.wp_config['access_token']}",
-                'Content-Disposition': f'attachment; filename="{filename}"'
-            }
-            
-            files = {
-                'file': (filename, response.content, 'image/jpeg')
-            }
-            
-            upload_response = self.session.post(
-                api_url,
-                headers={'Authorization': headers['Authorization']},
-                files=files,
-                timeout=30
-            )
-            
-            if upload_response.status_code == 201:
-                media_info = upload_response.json()
-                media_id = media_info.get('id')
-                self.log_message(f"[📷] 피처드 이미지 업로드 성공: {media_id}")
-                return media_id
-            else:
-                self.log_message(f"[❌] 피처드 이미지 업로드 실패: {upload_response.status_code}")
-                return None
-                
-        except Exception as e:
-            self.log_message(f"[❌] 피처드 이미지 업로드 오류: {e}")
-            return None
-    
-    def process_job(self, job_data, job_id):
-        """단일 작업 처리"""
-        try:
+            job_id = job_data.get('queue_id', 'unknown')
             title = job_data.get('title', '제목 없음')
-            self.log_message(f"[📝] 작업 시작: {title}")
+            category_id = job_data.get('category_id', '356')
+            thumbnail_url = job_data.get('thumbnail_url', '')
             
-            # 처리 중 상태로 업데이트 (즉시 발행 모드가 아닌 경우만)
+            print(f"🔄 작업 처리 시작: {title} (ID: {job_id})")
+            
+            # 상태를 처리 중으로 업데이트
             if not self.immediate_mode:
-                self.update_job_status(job_id, "processing")
+                self.update_queue_status_split(job_id, 'processing', '작업 처리 중...')
             
-            # AI 콘텐츠 생성
-            content = self.generate_content_with_ai(job_data)
+            # 콘텐츠 생성
+            content = self.generate_wordpress_content(job_data)
             if not content:
-                raise Exception("AI 콘텐츠 생성 실패")
+                error_msg = "콘텐츠 생성에 실패했습니다."
+                print(f"❌ {error_msg}")
+                if not self.immediate_mode:
+                    self.update_queue_status_split(job_id, 'failed', error_msg)
+                return {'success': False, 'message': error_msg}
             
-            # 워드프레스 발행
-            post_url = self.post_to_wordpress(job_data, content)
+            # 워드프레스에 발행
+            result = self.publish_to_wordpress(title, content, category_id, thumbnail_url)
             
-            if post_url:
-                # 성공 처리
+            if result['success']:
+                print(f"✅ 작업 완료: {title}")
+                
+                # 즉시 발행 모드와 일반 모드 구분 처리
                 if self.immediate_mode:
-                    # immediate 모드에서는 큐 업데이트 불필요 - 임시 파일만 정리됨
-                    pass
+                    # 즉시 발행인 경우 큐에서 제거
+                    self.remove_job_from_queue(job_id)
                 else:
                     # 일반 큐 처리인 경우 상태 업데이트
-                    self.update_job_status(job_id, "completed")
+                    self.update_queue_status_split(job_id, 'completed', f"발행 완료: {result['post_url']}")
                 
-                self.log_message(f"[✅] 작업 완료: {title} -> {post_url}")
-                
-                # 성공 알림
-                self.send_success_notification(title, post_url)
-                
-                return True
+                return result
             else:
-                raise Exception("워드프레스 발행 실패")
+                print(f"❌ 발행 실패: {title}")
+                if not self.immediate_mode:
+                    self.update_queue_status_split(job_id, 'failed', result['message'])
+                return result
                 
         except Exception as e:
-            self.log_message(f"[❌] 작업 실패: {e}")
-            
-            # 실패 처리 (즉시 발행 모드가 아닌 경우만)
+            error_msg = f"작업 처리 중 오류: {str(e)}"
+            print(f"❌ {error_msg}")
             if not self.immediate_mode:
-                self.update_job_status(job_id, "failed", str(e))
-            
-            return False
-    
-    def send_success_notification(self, title, post_url):
-        """성공 알림 전송"""
-        try:
-            notification_data = {
-                'title': title,
-                'url': post_url,
-                'timestamp': datetime.now().isoformat()
-            }
-            
-            # 알림 파일 저장
-            notification_file = os.path.join(self.base_dir, 'notifications.json')
-            notifications = []
-            
-            if os.path.exists(notification_file):
-                try:
-                    with open(notification_file, 'r', encoding='utf-8') as f:
-                        notifications = json.load(f)
-                except:
-                    notifications = []
-            
-            notifications.append(notification_data)
-            
-            # 최근 100개만 유지
-            notifications = notifications[-100:]
-            
-            with open(notification_file, 'w', encoding='utf-8') as f:
-                json.dump(notifications, f, ensure_ascii=False, indent=2)
-                
-        except Exception as e:
-            self.log_message(f"[⚠️] 알림 저장 실패: {e}")
-    
-    def run_queue_processing(self):
-        """큐 처리 실행 (일반 모드)"""
-        if self.immediate_mode:
-            self.log_message("[❌] 즉시 발행 모드에서는 큐 처리를 할 수 없습니다.")
-            return
-        
-        self.log_message("[🚀] 큐 처리 시작")
-        
-        try:
-            while True:
-                # 대기 중인 작업 조회
-                pending_jobs = self.get_pending_jobs()
-                
-                if not pending_jobs:
-                    self.log_message("[😴] 처리할 작업이 없습니다. 5분 후 다시 확인...")
-                    time.sleep(300)  # 5분 대기
-                    continue
-                
-                # 첫 번째 작업 처리
-                job = pending_jobs[0]
-                job_id = job.get('queue_id', job.get('id', str(int(time.time()))))
-                
-                success = self.process_job(job, job_id)
-                
-                if success:
-                    self.log_message("[🎉] 작업 성공적으로 완료")
-                else:
-                    self.log_message("[😞] 작업 실패")
-                
-                # 다음 작업까지 잠시 대기
-                time.sleep(30)
-                
-        except KeyboardInterrupt:
-            self.log_message("[🛑] 사용자에 의해 중단됨")
-        except Exception as e:
-            self.log_message(f"[💥] 예상치 못한 오류: {e}")
-            self.log_message(traceback.format_exc())
+                self.update_queue_status_split(job_data.get('queue_id', 'unknown'), 'failed', error_msg)
+            return {'success': False, 'message': error_msg}
         finally:
-            self.cleanup_temp_files()
-    
-    def run_immediate_processing(self, temp_file_path):
-        """즉시 발행 처리 (즉시 모드)"""
-        if not self.immediate_mode:
-            self.log_message("[❌] 일반 모드에서는 즉시 발행을 할 수 없습니다.")
-            return False
+            # 메모리 정리
+            gc.collect()
+
+    def update_job_status(self, job_id, status, message=''):
+        """작업 상태를 업데이트합니다 (레거시 호환)"""
+        return self.update_queue_status_split(job_id, status, message)
+
+    def run_queue_mode(self):
+        """큐 모드로 실행합니다"""
+        print("🚀 큐 모드로 실행을 시작합니다...")
         
         try:
-            # 임시 파일에서 작업 데이터 로드
-            job_data = self.load_job_from_temp_file(temp_file_path)
-            if not job_data:
-                self.log_message("[❌] 임시 파일 로드 실패")
-                return False
+            # 대기 중인 큐 파일들 가져오기
+            queue_files = get_queue_files()
             
-            # job_id는 임시 파일의 기본 이름에서 추출
-            job_id = os.path.splitext(os.path.basename(temp_file_path))[0]
+            if not queue_files:
+                print("📭 처리할 큐 항목이 없습니다.")
+                return
             
-            # 작업 처리
-            success = self.process_job(job_data, job_id)
+            print(f"📋 총 {len(queue_files)}개의 큐 항목을 발견했습니다.")
             
-            # 임시 파일 정리
-            self.cleanup_temp_files()
+            # 각 큐 항목 처리
+            for queue_file in queue_files:
+                try:
+                    queue_id = queue_file.replace('.json', '')
+                    print(f"\n🔄 큐 항목 처리 중: {queue_id}")
+                    
+                    # 큐 데이터 로드
+                    job_data = self.load_queue_split(queue_id)
+                    if not job_data:
+                        print(f"❌ 큐 데이터를 로드할 수 없습니다: {queue_id}")
+                        continue
+                    
+                    # 작업 처리
+                    result = self.process_job(job_data)
+                    
+                    if result['success']:
+                        print(f"✅ 큐 항목 처리 완료: {queue_id}")
+                    else:
+                        print(f"❌ 큐 항목 처리 실패: {queue_id} - {result['message']}")
+                    
+                    # 작업 간 간격
+                    time.sleep(2)
+                    
+                except Exception as e:
+                    print(f"❌ 큐 항목 처리 중 오류: {queue_file} - {str(e)}")
+                    continue
             
-            return success
+            print("\n🎉 모든 큐 처리가 완료되었습니다.")
             
         except Exception as e:
-            self.log_message(f"[💥] 즉시 발행 처리 중 오류: {e}")
-            self.log_message(traceback.format_exc())
-            self.cleanup_temp_files()
-            return False
+            print(f"❌ 큐 모드 실행 중 오류: {str(e)}")
+
+    def run_immediate_mode(self, job_data):
+        """즉시 모드로 특정 작업을 실행합니다"""
+        print("⚡ 즉시 모드로 실행을 시작합니다...")
+        
+        self.immediate_mode = True
+        
+        try:
+            result = self.process_job(job_data)
+            
+            if result['success']:
+                print("✅ 즉시 발행이 완료되었습니다.")
+                print(f"워드프레스 발행 성공: {result['post_url']}")
+            else:
+                print(f"❌ 즉시 발행 실패: {result['message']}")
+            
+            return result
+            
+        except Exception as e:
+            error_msg = f"즉시 모드 실행 중 오류: {str(e)}"
+            print(f"❌ {error_msg}")
+            return {'success': False, 'message': error_msg}
+        finally:
+            self.immediate_mode = False
 
 def main():
     """메인 함수"""
-    parser = argparse.ArgumentParser(description='워드프레스 자동 발행 시스템')
-    parser.add_argument('--immediate', action='store_true', help='즉시 발행 모드')
-    parser.add_argument('--temp-file', help='임시 파일 경로 (즉시 발행 모드에서 사용)')
-    parser.add_argument('--daemon', action='store_true', help='데몬 모드로 실행')
-    
-    args = parser.parse_args()
-    
     try:
-        # 발행기 초기화
-        publisher = WordPressPublisher(immediate_mode=args.immediate)
+        # 명령행 인수 파싱
+        parser = argparse.ArgumentParser(description='AliExpress 어필리에이트 자동 등록 시스템')
+        parser.add_argument('--mode', choices=['queue', 'immediate'], default='queue', 
+                           help='실행 모드 (queue: 큐 처리, immediate: 즉시 처리)')
+        parser.add_argument('--queue-id', help='즉시 모드에서 처리할 큐 ID')
+        parser.add_argument('--immediate-file', help='keyword_processor.php에서 전달된 임시 파일 경로')
         
-        if args.immediate:
-            # 즉시 발행 모드
-            if not args.temp_file:
-                print("[❌] 즉시 발행 모드에서는 --temp-file 옵션이 필요합니다.")
-                sys.exit(1)
+        args = parser.parse_args()
+        
+        # 시스템 초기화
+        system = AliExpressPostingSystem()
+        
+        if args.mode == 'immediate':
+            if args.immediate_file and os.path.exists(args.immediate_file):
+                # keyword_processor.php에서 전달된 파일 처리
+                print(f"📄 임시 파일에서 데이터 로드: {args.immediate_file}")
+                with open(args.immediate_file, 'r', encoding='utf-8') as f:
+                    job_data = json.load(f)
+                
+                # 임시 파일 삭제
+                os.remove(args.immediate_file)
+                print(f"🗑️ 임시 파일 삭제: {args.immediate_file}")
+                
+            elif args.queue_id:
+                # 큐 ID로 데이터 로드
+                print(f"🔍 큐 ID로 데이터 로드: {args.queue_id}")
+                job_data = system.load_queue_split(args.queue_id)
+                if not job_data:
+                    print(f"❌ 큐 데이터를 찾을 수 없습니다: {args.queue_id}")
+                    return
+            else:
+                print("❌ 즉시 모드에서는 --queue-id 또는 --immediate-file 인수가 필요합니다.")
+                return
             
-            if not os.path.exists(args.temp_file):
-                print(f"[❌] 임시 파일을 찾을 수 없습니다: {args.temp_file}")
-                sys.exit(1)
-            
-            success = publisher.run_immediate_processing(args.temp_file)
-            sys.exit(0 if success else 1)
-            
+            # 즉시 모드 실행
+            system.run_immediate_mode(job_data)
         else:
-            # 일반 큐 처리 모드
-            publisher.run_queue_processing()
+            # 큐 모드 실행
+            system.run_queue_mode()
             
+    except KeyboardInterrupt:
+        print("\n⏹️ 사용자에 의해 중단되었습니다.")
     except Exception as e:
-        print(f"[💥] 프로그램 실행 중 오류: {e}")
-        print(traceback.format_exc())
-        sys.exit(1)
+        print(f"❌ 시스템 오류: {str(e)}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     main()
