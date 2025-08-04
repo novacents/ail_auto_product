@@ -483,6 +483,10 @@ if (isset($_POST['action'])) {
                 <div class="stat-number" id="completedCount">0</div>
                 <div class="stat-label">완료</div>
             </div>
+            <div class="stat-card">
+                <div class="stat-number" id="failedCount">0</div>
+                <div class="stat-label">실패</div>
+            </div>
         </div>
 
         <div class="sort-controls">
