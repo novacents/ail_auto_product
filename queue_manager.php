@@ -258,24 +258,24 @@ if (isset($_POST['action'])) {
                 curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // SSL 인증서 검증 비활성화 (개발 환경용)
                 curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
                 
-                // 프로덕션 모드: 디버깅 출력 비활성화
-                // curl_setopt($ch, CURLOPT_VERBOSE, true);
-                // $verbose = fopen('php://temp', 'w+');
-                // curl_setopt($ch, CURLOPT_STDERR, $verbose);
+                // 디버깅을 위한 상세 정보 출력
+                curl_setopt($ch, CURLOPT_VERBOSE, true);
+                $verbose = fopen('php://temp', 'w+');
+                curl_setopt($ch, CURLOPT_STDERR, $verbose);
                 
                 $response = curl_exec($ch);
                 $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
                 $curl_error = curl_error($ch);
                 $curl_info = curl_getinfo($ch);
                 
-                // 프로덕션 모드: 상세 디버깅 로그 비활성화 (필요시에만 활성화)
-                // rewind($verbose);
-                // $verboseLog = stream_get_contents($verbose);
-                // error_log("CURL Verbose Log: " . $verboseLog);
+                // 디버깅 정보 로깅
+                rewind($verbose);
+                $verboseLog = stream_get_contents($verbose);
+                error_log("CURL Verbose Log: " . $verboseLog);
                 error_log("HTTP Code: " . $http_code);
                 error_log("CURL Error: " . $curl_error);
                 error_log("Response length: " . strlen($response));
-                // error_log("Response (first 500 chars): " . substr($response, 0, 500));
+                error_log("Response (first 500 chars): " . substr($response, 0, 500));
                 
                 curl_close($ch);
                 
@@ -300,18 +300,6 @@ if (isset($_POST['action'])) {
                 
                 if (json_last_error() !== JSON_ERROR_NONE) {
                     error_log("JSON 디코딩 오류: " . json_last_error_msg());
-                    error_log("전체 응답 내용: " . $response);
-                    
-                    // keyword_processor.php의 JSON 응답 패턴 확인
-                    if (preg_match('/\{"success":(true|false).*?\}$/s', $response, $json_matches)) {
-                        $json_part = $json_matches[0];
-                        error_log("JSON 부분 발견: " . $json_part);
-                        $result = json_decode($json_part, true);
-                        if (json_last_error() === JSON_ERROR_NONE) {
-                            echo json_encode($result);
-                            exit;
-                        }
-                    }
                     
                     // Python 스크립트 출력에서 성공 메시지 찾기
                     if (strpos($response, '워드프레스 발행 성공:') !== false) {
@@ -479,62 +467,39 @@ if (isset($_POST['action'])) {
 
     <div class="main-content">
         <div class="queue-stats" id="queueStats">
-            <div class="stat-card stat-total">
+            <div class="stat-card">
                 <div class="stat-number" id="totalCount">0</div>
-                <div class="stat-label">📋 전체 항목</div>
+                <div class="stat-label">전체 항목</div>
             </div>
-            <div class="stat-card stat-pending">
+            <div class="stat-card">
                 <div class="stat-number" id="pendingCount">0</div>
-                <div class="stat-label">🟡 대기 중</div>
+                <div class="stat-label">대기 중</div>
             </div>
-            <div class="stat-card stat-processing">
+            <div class="stat-card">
                 <div class="stat-number" id="processingCount">0</div>
-                <div class="stat-label">🔵 처리 중</div>
+                <div class="stat-label">처리 중</div>
             </div>
-            <div class="stat-card stat-completed">
+            <div class="stat-card">
                 <div class="stat-number" id="completedCount">0</div>
-                <div class="stat-label">🟢 완료</div>
-            </div>
-            <div class="stat-card stat-failed">
-                <div class="stat-number" id="failedCount">0</div>
-                <div class="stat-label">🔴 실패</div>
+                <div class="stat-label">완료</div>
             </div>
         </div>
 
-        <div class="filter-controls">
-            <div class="status-filters">
-                <label>📊 상태 필터:</label>
-                <div class="filter-buttons">
-                    <button type="button" class="filter-btn active" data-status="all" onclick="filterByStatus('all')">전체</button>
-                    <button type="button" class="filter-btn" data-status="pending" onclick="filterByStatus('pending')">🟡 대기중</button>
-                    <button type="button" class="filter-btn" data-status="processing" onclick="filterByStatus('processing')">🔵 처리중</button>
-                    <button type="button" class="filter-btn" data-status="completed" onclick="filterByStatus('completed')">🟢 완료</button>
-                    <button type="button" class="filter-btn" data-status="failed" onclick="filterByStatus('failed')">🔴 실패</button>
-                </div>
-            </div>
-            
-            <div class="search-controls">
-                <label for="searchInput">🔍 검색:</label>
-                <input type="text" id="searchInput" placeholder="제목 또는 키워드로 검색..." onkeyup="searchQueues()">
-                <button type="button" class="btn btn-secondary btn-small" onclick="clearSearch()">지우기</button>
-            </div>
-            
-            <div class="sort-controls">
-                <label for="sortBy">📊 정렬:</label>
-                <select id="sortBy" onchange="sortQueue()">
-                    <option value="created_at">📅 등록일시</option>
-                    <option value="title">📝 제목</option>
-                    <option value="status">⚡ 상태</option>
-                    <option value="priority">⭐ 우선순위</option>
-                </select>
-                <select id="sortOrder" onchange="sortQueue()">
-                    <option value="desc">⬇️ 내림차순</option>
-                    <option value="asc">⬆️ 오름차순</option>
-                </select>
-                <button type="button" class="btn btn-secondary btn-small" onclick="toggleDragSort()">
-                    <span id="dragToggleText">🔄 드래그 정렬 활성화</span>
-                </button>
-            </div>
+        <div class="sort-controls">
+            <label for="sortBy">정렬 기준:</label>
+            <select id="sortBy" onchange="sortQueue()">
+                <option value="created_at">등록일시</option>
+                <option value="title">제목</option>
+                <option value="status">상태</option>
+                <option value="priority">우선순위</option>
+            </select>
+            <select id="sortOrder" onchange="sortQueue()">
+                <option value="desc">내림차순</option>
+                <option value="asc">오름차순</option>
+            </select>
+            <button type="button" class="btn btn-secondary btn-small" onclick="toggleDragSort()">
+                <span id="dragToggleText">드래그 정렬 활성화</span>
+            </button>
         </div>
 
         <div class="queue-list" id="queueList">
