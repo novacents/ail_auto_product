@@ -19,3 +19,5 @@ product_queue.json
 queue_index.json
 queues/
 *.queue
+php_error_log.txt
+
