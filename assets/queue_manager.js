@@ -1,5 +1,5 @@
 /**
- * 큐 관리자 JavaScript
+ * 큐 관리자 JavaScript - 2행 테이블 레이아웃 버전
  * 어필리에이트 상품 자동 발행 시스템
  */
 
@@ -7,7 +7,7 @@
 let allQueues = [];
 let filteredQueues = [];
 let currentFilter = 'all';
-let currentSort = 'newest';
+let currentSort = 'created_at';
 
 // DOM이 준비되면 초기화
 $(document).ready(function() {
@@ -19,8 +19,8 @@ $(document).ready(function() {
     // 이벤트 리스너 등록
     setupEventListeners();
     
-    // 주기적 업데이트 (30초마다)
-    setInterval(loadQueues, 30000);
+    // 주기적 업데이트 (1분마다)
+    setInterval(loadQueues, 60000);
     
     console.log('큐 관리자 JavaScript 초기화 완료');
 });
@@ -29,31 +29,16 @@ $(document).ready(function() {
  * 이벤트 리스너 설정
  */
 function setupEventListeners() {
-    // 필터 버튼 클릭
-    $('.filter-btn').click(function() {
-        const status = $(this).data('status');
-        setFilter(status);
-    });
-    
-    // 검색 입력
-    $('#searchInput').on('input', debounce(filterQueues, 300));
-    $('#searchInput').on('keypress', function(e) {
-        if (e.which === 13) { // Enter 키
-            filterQueues();
-        }
-    });
-    
     // 정렬 변경
-    $('#sortSelect').change(function() {
+    $('#sortBy').change(function() {
         currentSort = $(this).val();
         sortQueues();
         displayFilteredQueues();
     });
     
-    // 편집 폼 제출
-    $('#editForm').submit(function(e) {
-        e.preventDefault();
-        updateQueue();
+    $('#sortOrder').change(function() {
+        sortQueues();
+        displayFilteredQueues();
     });
     
     // 모달 외부 클릭 시 닫기
@@ -62,21 +47,6 @@ function setupEventListeners() {
             closeEditModal();
         }
     });
-}
-
-/**
- * 디바운스 함수
- */
-function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
 }
 
 /**
@@ -89,14 +59,14 @@ function loadQueues() {
         url: '',
         method: 'POST',
         data: {
-            action: 'get_queues'
+            action: 'get_queue_list'
         },
         dataType: 'json',
         success: function(response) {
             console.log('큐 데이터 로드 성공:', response);
             
             if (response.success) {
-                allQueues = response.data || [];
+                allQueues = response.queue || [];
                 filterQueues();
                 updateStatistics();
             } else {
@@ -115,73 +85,115 @@ function loadQueues() {
  * 큐 필터링
  */
 function filterQueues() {
-    const searchTerm = $('#searchInput').val().toLowerCase();
-    
-    filteredQueues = allQueues.filter(queue => {
-        // 상태 필터
-        if (currentFilter !== 'all' && queue.status !== currentFilter) {
-            return false;
-        }
-        
-        // 검색어 필터
-        if (searchTerm) {
-            const title = (queue.title || '').toLowerCase();
-            const keywordText = queue.keywords ? 
-                queue.keywords.map(k => k.name || '').join(' ').toLowerCase() : '';
-            
-            if (!title.includes(searchTerm) && !keywordText.includes(searchTerm)) {
-                return false;
-            }
-        }
-        
-        return true;
-    });
-    
+    // 현재는 모든 큐 표시 (필터 기능 추후 구현)
+    filteredQueues = [...allQueues];
     sortQueues();
     displayFilteredQueues();
-}
-
-/**
- * 필터 설정
- */
-function setFilter(status) {
-    currentFilter = status;
-    
-    // 필터 버튼 활성화 상태 변경
-    $('.filter-btn').removeClass('active');
-    $(`.filter-btn[data-status="${status}"]`).addClass('active');
-    
-    filterQueues();
-    
-    console.log('필터 변경:', status);
 }
 
 /**
  * 큐 정렬
  */
 function sortQueues() {
+    const sortOrder = $('#sortOrder').val() || 'desc';
+    
     filteredQueues.sort((a, b) => {
+        let result = 0;
+        
         switch (currentSort) {
-            case 'newest':
-                return new Date(b.created_at || 0) - new Date(a.created_at || 0);
-            case 'oldest':
-                return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+            case 'created_at':
+                result = new Date(b.created_at || 0) - new Date(a.created_at || 0);
+                break;
             case 'title':
-                return (a.title || '').localeCompare(b.title || '');
+                result = (a.title || '').localeCompare(b.title || '');
+                break;
             case 'status':
                 const statusOrder = { pending: 1, processing: 2, completed: 3, failed: 4 };
-                return (statusOrder[a.status] || 5) - (statusOrder[b.status] || 5);
+                result = (statusOrder[a.status] || 5) - (statusOrder[b.status] || 5);
+                break;
+            case 'priority':
+                result = (a.priority || 0) - (b.priority || 0);
+                break;
             default:
-                return 0;
+                result = new Date(b.created_at || 0) - new Date(a.created_at || 0);
         }
+        
+        return sortOrder === 'asc' ? result : -result;
     });
 }
 
 /**
- * Move 버튼 클릭 처리 (보안 강화)
+ * 필터링된 큐 목록 표시 (2행 테이블 구조)
+ */
+function displayFilteredQueues() {
+    const container = $('#queueTableBody');
+    const emptyState = $('#emptyState');
+    const queueTable = $('#queueTable');
+    
+    if (filteredQueues.length === 0) {
+        // 빈 상태 표시
+        queueTable.hide();
+        emptyState.show();
+        return;
+    }
+    
+    // 테이블 표시 및 빈 상태 숨김
+    queueTable.show();
+    emptyState.hide();
+    
+    // 2행 테이블 HTML 생성
+    let html = '';
+    filteredQueues.forEach(item => {
+        const thumbnailHtml = item.thumbnail_url ? 
+            `<img src="${item.thumbnail_url}" class="thumbnail-preview" alt="썸네일" onerror="this.parentElement.innerHTML='<div class=\\"no-thumbnail\\">📷</div>'">` : 
+            '<div class="no-thumbnail">📷</div>';
+            
+        const statusClass = `status-${item.status || 'pending'}`;
+        const statusText = getStatusText(item.status);
+        const categoryText = getCategoryText(item.category_id);
+        const promptText = getPromptTypeText(item.prompt_type);
+        const keywordCount = item.keywords ? item.keywords.length : 0;
+        const productCount = calculateProductCount(item.keywords);
+        const keywordsList = getKeywordsList(item.keywords);
+        
+        // 첫 번째 행 (메인 정보)
+        html += `
+            <tr class="queue-row-main ${statusClass}">
+                <td rowspan="2" class="thumbnail-cell">${thumbnailHtml}</td>
+                <td><span class="status-badge ${item.status || 'pending'}">${statusText}</span></td>
+                <td>${categoryText}</td>
+                <td>${promptText}</td>
+                <td>${keywordCount}개</td>
+                <td>${productCount}개</td>
+                <td>
+                    <div class="action-buttons">
+                        <button class="action-btn edit" onclick="editQueue('${item.id || item.queue_id}')">편집</button>
+                        <button class="action-btn publish" onclick="immediatePublish('${item.id || item.queue_id}')">즉시 발행</button>
+                        <button class="action-btn delete" onclick="deleteQueue('${item.id || item.queue_id}')">삭제</button>
+                        <button class="action-btn move" onclick="moveQueueStatus('${item.id || item.queue_id}', event)">이동</button>
+                    </div>
+                </td>
+            </tr>
+        `;
+        
+        // 두 번째 행 (키워드 목록)
+        html += `
+            <tr class="queue-row-keywords ${statusClass}">
+                <td colspan="6" class="keywords-list">${keywordsList}</td>
+            </tr>
+        `;
+    });
+    
+    container.html(html);
+    
+    console.log(`${filteredQueues.length}개의 큐 표시 완료 (2행 테이블)`);
+}
+
+/**
+ * Move 버튼 클릭 처리
  */
 async function moveQueueStatus(queueId, event) {
-    // 1. 중복 클릭 방지
+    // 중복 클릭 방지
     const button = event.target;
     if (button.disabled) return;
     
@@ -192,7 +204,7 @@ async function moveQueueStatus(queueId, event) {
     try {
         console.log('Move 버튼 클릭:', queueId);
         
-        // 2. 서버에 상태 변경 요청
+        // 서버에 상태 변경 요청
         const response = await $.ajax({
             url: '',
             method: 'POST',
@@ -201,36 +213,33 @@ async function moveQueueStatus(queueId, event) {
                 queue_id: queueId
             },
             dataType: 'json',
-            timeout: 15000 // 15초 타임아웃
+            timeout: 15000
         });
         
         console.log('Move 응답:', response);
         
         if (response.success) {
-            // 3. 성공 시 UI 업데이트
             showNotification(response.message || '큐 상태가 변경되었습니다.', 'success');
             
             // 큐 데이터 새로고침
             loadQueues();
             
-            // 4. 버튼 텍스트 복원 (새로운 상태에 맞게)
+            // 버튼 텍스트 복원
             setTimeout(() => {
                 button.disabled = false;
-                button.textContent = 'Move';
+                button.textContent = '이동';
             }, 1000);
             
         } else {
-            // 5. 실패 시 오류 메시지 표시
             console.error('Move 실패:', response.message);
             showNotification(response.message || '큐 상태 변경에 실패했습니다.', 'error');
             
             // 버튼 복원
             button.disabled = false;
-            button.textContent = 'Move';
+            button.textContent = '이동';
         }
         
     } catch (error) {
-        // 6. 네트워크 오류 등 예외 처리
         console.error('Move 오류:', error);
         
         let errorMessage = '큐 상태 변경 중 오류가 발생했습니다.';
@@ -244,70 +253,8 @@ async function moveQueueStatus(queueId, event) {
         
         // 버튼 복원
         button.disabled = false;
-        button.textContent = 'Move';
+        button.textContent = '이동';
     }
-}
-
-/**
- * 필터링된 큐 목록 표시
- */
-function displayFilteredQueues() {
-    const container = $('#queueTableBody');
-    
-    if (filteredQueues.length === 0) {
-        // 빈 상태 표시
-        container.html(`
-            <div class="empty-state">
-                <div class="empty-icon">📭</div>
-                <h3 class="empty-title">해당하는 큐가 없습니다</h3>
-                <p class="empty-message">필터를 변경하거나 새로운 큐를 추가해보세요.</p>
-                <a href="affiliate_editor.php" class="btn btn-primary">
-                    <span class="btn-icon">➕</span>
-                    새 큐 추가하기
-                </a>
-            </div>
-        `);
-        return;
-    }
-    
-    // 큐 목록 HTML 생성 (테이블 행 형태)
-    let html = '';
-    filteredQueues.forEach(item => {
-        const thumbnailHtml = item.thumbnail_url ? 
-            `<img src="${item.thumbnail_url}" alt="썸네일" onerror="this.style.display='none'">` : 
-            '📷';
-            
-        const statusClass = `status-${item.status}`;
-        const statusText = getStatusText(item.status);
-        const categoryText = getCategoryText(item.category_id);
-        const promptText = getPromptTypeText(item.prompt_type);
-        const keywordCount = item.keywords ? item.keywords.length : 0;
-        const productCount = item.keywords ? 
-            item.keywords.reduce((total, keyword) => total + (keyword.products_data ? keyword.products_data.length : 0), 0) : 0;
-        
-        html += `
-            <div class="queue-row ${statusClass}">
-                <div class="queue-thumbnail">${thumbnailHtml}</div>
-                <div class="queue-status">
-                    <span class="status-badge ${item.status}">${statusText}</span>
-                </div>
-                <div class="queue-category">${categoryText}</div>
-                <div class="queue-prompt">${promptText}</div>
-                <div class="queue-keywords">${keywordCount}개</div>
-                <div class="queue-products">${productCount}개</div>
-                <div class="queue-actions">
-                    <button class="action-btn edit" onclick="editQueue('${item.queue_id}')">Edit</button>
-                    <button class="action-btn publish" onclick="immediatePublish('${item.queue_id}')">Immediate Publish</button>
-                    <button class="action-btn move" onclick="moveQueueStatus('${item.queue_id}', event)">Move</button>
-                    <button class="action-btn delete" onclick="deleteQueue('${item.queue_id}')">Delete</button>
-                </div>
-            </div>
-        `;
-    });
-    
-    container.html(html);
-    
-    console.log(`${filteredQueues.length}개의 큐 표시 완료`);
 }
 
 /**
@@ -320,7 +267,7 @@ function getStatusText(status) {
         'completed': '🟢 완료',
         'failed': '🔴 실패'
     };
-    return statusMap[status] || status;
+    return statusMap[status] || '🟡 대기중';
 }
 
 /**
@@ -328,13 +275,12 @@ function getStatusText(status) {
  */
 function getCategoryText(categoryId) {
     const categoryMap = {
+        '354': "Today's Pick",
+        '355': '기발한 잡화점',
         '356': '스마트 리빙',
-        '357': '패션 & 뷰티',
-        '358': '전자기기',
-        '359': '스포츠 & 레저',
-        '360': '홈 & 가든'
+        '12': '우리잇템'
     };
-    return categoryMap[categoryId] || '기타';
+    return categoryMap[categoryId] || '알 수 없는 카테고리';
 }
 
 /**
@@ -342,12 +288,45 @@ function getCategoryText(categoryId) {
  */
 function getPromptTypeText(promptType) {
     const promptMap = {
-        'essential_items': '필수템형',
-        'friend_review': '친구 추천형',
-        'professional_analysis': '전문 분석형',
-        'amazing_discovery': '놀라움 발견형'
+        'essential_items': '필수템형 🎯',
+        'friend_review': '친구 추천형 👫',
+        'professional_analysis': '전문 분석형 📊',
+        'amazing_discovery': '놀라움 발견형 ✨'
     };
     return promptMap[promptType] || '기본형';
+}
+
+/**
+ * 상품 수 계산
+ */
+function calculateProductCount(keywords) {
+    if (!keywords || !Array.isArray(keywords)) return 0;
+    
+    let total = 0;
+    keywords.forEach(keyword => {
+        if (keyword.products_data && Array.isArray(keyword.products_data)) {
+            total += keyword.products_data.length;
+        }
+        if (keyword.aliexpress && Array.isArray(keyword.aliexpress)) {
+            total += keyword.aliexpress.length;
+        }
+        if (keyword.coupang && Array.isArray(keyword.coupang)) {
+            total += keyword.coupang.length;
+        }
+    });
+    return total;
+}
+
+/**
+ * 키워드 목록 문자열 생성
+ */
+function getKeywordsList(keywords) {
+    if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {
+        return '키워드 없음';
+    }
+    
+    const keywordNames = keywords.map(keyword => keyword.name || keyword).filter(name => name);
+    return keywordNames.length > 0 ? keywordNames.join(', ') : '키워드 없음';
 }
 
 /**
@@ -355,6 +334,7 @@ function getPromptTypeText(promptType) {
  */
 function updateStatistics() {
     const stats = {
+        total: 0,
         pending: 0,
         processing: 0,
         completed: 0,
@@ -362,16 +342,18 @@ function updateStatistics() {
     };
     
     allQueues.forEach(queue => {
-        if (stats.hasOwnProperty(queue.status)) {
-            stats[queue.status]++;
+        stats.total++;
+        const status = queue.status || 'pending';
+        if (stats.hasOwnProperty(status)) {
+            stats[status]++;
         }
     });
     
     // 통계 카드 업데이트
+    $('#totalCount').text(stats.total);
     $('#pendingCount').text(stats.pending);
     $('#processingCount').text(stats.processing);
     $('#completedCount').text(stats.completed);
-    $('#failedCount').text(stats.failed);
     
     console.log('통계 업데이트:', stats);
 }
@@ -379,7 +361,7 @@ function updateStatistics() {
 /**
  * 큐 새로고침
  */
-function refreshQueues() {
+function refreshQueue() {
     console.log('수동 새로고침 요청');
     showNotification('큐 목록을 새로고침합니다...', 'info');
     loadQueues();
@@ -400,7 +382,7 @@ function deleteQueue(queueId) {
         url: '',
         method: 'POST',
         data: {
-            action: 'delete_queue',
+            action: 'delete_queue_item',
             queue_id: queueId
         },
         dataType: 'json',
@@ -433,7 +415,7 @@ function editQueue(queueId) {
         url: '',
         method: 'POST',
         data: {
-            action: 'edit_queue',
+            action: 'get_queue_item',
             queue_id: queueId
         },
         dataType: 'json',
@@ -441,7 +423,7 @@ function editQueue(queueId) {
             showLoading(false);
             
             if (response.success) {
-                populateEditModal(response.data);
+                populateEditModal(response.item);
                 $('#editModal').show();
             } else {
                 showNotification(response.message || '큐 데이터를 불러오는데 실패했습니다.', 'error');
@@ -459,14 +441,13 @@ function editQueue(queueId) {
  * 편집 모달 채움
  */
 function populateEditModal(queueData) {
-    $('#editQueueId').val(queueData.queue_id);
     $('#editTitle').val(queueData.title || '');
-    $('#editCategoryId').val(queueData.category_id || '356');
+    $('#editCategory').val(queueData.category_id || '356');
     $('#editPromptType').val(queueData.prompt_type || 'essential_items');
     $('#editThumbnailUrl').val(queueData.thumbnail_url || '');
     
     // 키워드 목록 표시
-    const keywordsList = $('#editKeywordsList');
+    const keywordsList = $('#keywordList');
     keywordsList.empty();
     
     if (queueData.keywords && queueData.keywords.length > 0) {
@@ -480,20 +461,24 @@ function populateEditModal(queueData) {
     } else {
         keywordsList.append('<p style="color: #6b7280;">키워드가 없습니다.</p>');
     }
+    
+    // 큐 ID 저장 (숨겨진 필드)
+    window.currentEditQueueId = queueData.id || queueData.queue_id;
 }
 
 /**
  * 큐 업데이트
  */
-function updateQueue() {
+function saveEditedQueue() {
     const formData = {
-        action: 'update_queue',
-        queue_id: $('#editQueueId').val(),
-        title: $('#editTitle').val(),
-        category_id: $('#editCategoryId').val(),
-        prompt_type: $('#editPromptType').val(),
-        thumbnail_url: $('#editThumbnailUrl').val(),
-        keywords: JSON.stringify([]) // 키워드는 현재 편집 불가
+        action: 'update_queue_item',
+        queue_id: window.currentEditQueueId,
+        data: JSON.stringify({
+            title: $('#editTitle').val(),
+            category_id: $('#editCategory').val(),
+            prompt_type: $('#editPromptType').val(),
+            thumbnail_url: $('#editThumbnailUrl').val()
+        })
     };
     
     console.log('큐 업데이트 요청:', formData);
@@ -528,7 +513,7 @@ function updateQueue() {
  */
 function closeEditModal() {
     $('#editModal').hide();
-    $('#editForm')[0].reset();
+    window.currentEditQueueId = null;
 }
 
 /**
@@ -594,46 +579,46 @@ function showLoading(show) {
  * 알림 메시지 표시
  */
 function showNotification(message, type = 'info') {
-    const notification = $('#notification');
-    const iconMap = {
-        'success': '✅',
-        'error': '❌',
-        'info': 'ℹ️',
-        'warning': '⚠️'
-    };
+    // 간단한 알림 표시 (실제 구현에서는 더 정교한 알림 시스템 사용)
+    console.log(`알림 (${type}): ${message}`);
     
-    notification
-        .removeClass('success error info warning')
-        .addClass(type);
-    
-    notification.find('.notification-icon').text(iconMap[type] || 'ℹ️');
-    notification.find('.notification-message').text(message);
-    
-    notification.addClass('show');
-    
-    // 5초 후 자동 숨김
-    setTimeout(() => {
-        notification.removeClass('show');
-    }, 5000);
-    
-    console.log(`알림 (${type}):`, message);
+    // 브라우저 기본 알림 사용
+    if (type === 'error') {
+        alert('오류: ' + message);
+    } else if (type === 'success') {
+        alert('성공: ' + message);
+    }
+}
+
+/**
+ * 정렬 함수
+ */
+function sortQueue() {
+    currentSort = $('#sortBy').val();
+    sortQueues();
+    displayFilteredQueues();
+}
+
+/**
+ * 드래그 정렬 토글
+ */
+function toggleDragSort() {
+    console.log('드래그 정렬 기능은 추후 구현됩니다.');
+    showNotification('드래그 정렬 기능은 추후 구현됩니다.', 'info');
 }
 
 /**
  * 전역 함수들 (HTML에서 직접 호출)
  */
-window.refreshQueues = refreshQueues;
+window.refreshQueue = refreshQueue;
 window.deleteQueue = deleteQueue;
 window.editQueue = editQueue;
 window.immediatePublish = immediatePublish;
 window.closeEditModal = closeEditModal;
 window.moveQueueStatus = moveQueueStatus;
-window.filterQueues = filterQueues;
-window.sortQueues = function() {
-    currentSort = $('#sortSelect').val();
-    sortQueues();
-    displayFilteredQueues();
-};
+window.saveEditedQueue = saveEditedQueue;
+window.sortQueue = sortQueue;
+window.toggleDragSort = toggleDragSort;
 
 // 개발자 도구용 디버그 함수들
 window.debugQueue = {
@@ -644,4 +629,4 @@ window.debugQueue = {
     reloadQueues: loadQueues
 };
 
-console.log('큐 관리자 JavaScript 로드 완료');
+console.log('큐 관리자 JavaScript 로드 완료 (2행 테이블 버전)');
