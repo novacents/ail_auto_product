@@ -784,4 +784,502 @@ function debug_queue_split_info() {
     
     return $info;
 }
+
+// =====================================================================
+// 🔒 보안 강화 기능들 - Move 버튼 안전성 보장
+// =====================================================================
+
+// 보안 관련 상수 정의
+define('QUEUE_LOCKS_DIR', QUEUE_BASE_DIR . '/locks');
+define('QUEUE_TRANSACTIONS_DIR', QUEUE_BASE_DIR . '/transactions');
+define('PYTHON_PID_FILE', '/var/www/auto_post_products.pid');
+
+/**
+ * 🔒 큐 잠금 관리자 클래스
+ */
+class QueueLockManager {
+    private static $lock_dir = QUEUE_LOCKS_DIR;
+    
+    /**
+     * 큐 잠금 획득
+     */
+    public static function acquireLock($queue_id, $timeout = 10) {
+        if (!is_dir(self::$lock_dir)) {
+            if (!mkdir(self::$lock_dir, 0755, true)) {
+                error_log("Failed to create locks directory: " . self::$lock_dir);
+                return false;
+            }
+        }
+        
+        $lock_file = self::$lock_dir . "/{$queue_id}.lock";
+        $start_time = time();
+        
+        while (time() - $start_time < $timeout) {
+            // 기존 락 파일 만료 확인 (30초 이상 된 락은 만료)
+            if (file_exists($lock_file)) {
+                $lock_time = filemtime($lock_file);
+                if (time() - $lock_time > 30) {
+                    unlink($lock_file); // 만료된 락 제거
+                    error_log("Expired lock removed: {$queue_id}");
+                }
+            }
+            
+            // 락 획득 시도
+            $lock_data = [
+                'queue_id' => $queue_id,
+                'process_id' => getmypid(),
+                'user_id' => self::getCurrentUserId(),
+                'timestamp' => time(),
+                'action' => 'move_status'
+            ];
+            
+            if (!file_exists($lock_file)) {
+                if (file_put_contents($lock_file, json_encode($lock_data), LOCK_EX) !== false) {
+                    error_log("Lock acquired: {$queue_id}");
+                    return true; // 락 획득 성공
+                }
+            }
+            
+            usleep(100000); // 0.1초 대기
+        }
+        
+        error_log("Failed to acquire lock: {$queue_id}");
+        return false; // 락 획득 실패
+    }
+    
+    /**
+     * 큐 잠금 해제
+     */
+    public static function releaseLock($queue_id) {
+        $lock_file = self::$lock_dir . "/{$queue_id}.lock";
+        if (file_exists($lock_file)) {
+            unlink($lock_file);
+            error_log("Lock released: {$queue_id}");
+        }
+    }
+    
+    /**
+     * 큐 잠금 상태 확인
+     */
+    public static function isLocked($queue_id) {
+        $lock_file = self::$lock_dir . "/{$queue_id}.lock";
+        if (!file_exists($lock_file)) {
+            return false;
+        }
+        
+        $lock_time = filemtime($lock_file);
+        return (time() - $lock_time) < 30; // 30초 이내면 락 유효
+    }
+    
+    /**
+     * 현재 사용자 ID 가져오기
+     */
+    private static function getCurrentUserId() {
+        if (function_exists('get_current_user_id')) {
+            return get_current_user_id();
+        }
+        return 'system';
+    }
+}
+
+/**
+ * 🔍 큐 상태 검증자 클래스
+ */
+class QueueStatusValidator {
+    // 허용되는 상태 전환 규칙
+    private static $allowed_transitions = [
+        'pending' => ['processing', 'failed'],
+        'processing' => ['completed', 'failed', 'pending'],
+        'completed' => ['failed', 'pending'],
+        'failed' => ['pending']
+    ];
+    
+    /**
+     * 상태 전환 유효성 검증
+     */
+    public static function validateStatusTransition($current_status, $new_status) {
+        // Move 버튼의 순환 전환 허용
+        $move_cycle = ['pending', 'processing', 'completed', 'failed'];
+        $current_index = array_search($current_status, $move_cycle);
+        
+        if ($current_index !== false) {
+            $next_index = ($current_index + 1) % count($move_cycle);
+            
+            // Move 버튼 순환 허용
+            if ($new_status === $move_cycle[$next_index]) {
+                return true;
+            }
+        }
+        
+        // 기본 전환 규칙 확인
+        if (isset(self::$allowed_transitions[$current_status])) {
+            return in_array($new_status, self::$allowed_transitions[$current_status]);
+        }
+        
+        return false;
+    }
+    
+    /**
+     * 큐 데이터 유효성 검증
+     */
+    public static function validateQueueData($queue_data) {
+        $required_fields = ['queue_id', 'title', 'status', 'created_at'];
+        
+        foreach ($required_fields as $field) {
+            if (!isset($queue_data[$field]) || empty($queue_data[$field])) {
+                error_log("Missing required field: {$field}");
+                return false;
+            }
+        }
+        
+        // 상태 값 검증
+        $valid_statuses = ['pending', 'processing', 'completed', 'failed'];
+        if (!in_array($queue_data['status'], $valid_statuses)) {
+            error_log("Invalid status: " . $queue_data['status']);
+            return false;
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Move 버튼 다음 상태 계산
+     */
+    public static function getNextMoveStatus($current_status) {
+        $move_cycle = ['pending', 'processing', 'completed', 'failed'];
+        $current_index = array_search($current_status, $move_cycle);
+        
+        if ($current_index !== false) {
+            $next_index = ($current_index + 1) % count($move_cycle);
+            return $move_cycle[$next_index];
+        }
+        
+        return 'pending'; // 기본값
+    }
+}
+
+/**
+ * 🔄 원자적 트랜잭션 관리자
+ */
+class QueueTransactionManager {
+    private static $transaction_dir = QUEUE_TRANSACTIONS_DIR;
+    
+    /**
+     * 트랜잭션 시작
+     */
+    public static function beginTransaction($queue_id, $action, $backup_data) {
+        if (!is_dir(self::$transaction_dir)) {
+            if (!mkdir(self::$transaction_dir, 0755, true)) {
+                error_log("Failed to create transactions directory: " . self::$transaction_dir);
+                return false;
+            }
+        }
+        
+        $transaction_id = "txn_" . time() . "_" . mt_rand(1000, 9999);
+        $transaction_log = self::$transaction_dir . "/{$transaction_id}.log";
+        
+        $transaction_data = [
+            'transaction_id' => $transaction_id,
+            'queue_id' => $queue_id,
+            'action' => $action,
+            'backup_data' => $backup_data,
+            'timestamp' => date('Y-m-d H:i:s'),
+            'status' => 'started'
+        ];
+        
+        if (file_put_contents($transaction_log, json_encode($transaction_data, JSON_PRETTY_PRINT), LOCK_EX) === false) {
+            error_log("Failed to create transaction log: {$transaction_id}");
+            return false;
+        }
+        
+        error_log("Transaction started: {$transaction_id} for queue: {$queue_id}");
+        return $transaction_id;
+    }
+    
+    /**
+     * 트랜잭션 완료
+     */
+    public static function commitTransaction($transaction_id) {
+        $transaction_log = self::$transaction_dir . "/{$transaction_id}.log";
+        
+        if (file_exists($transaction_log)) {
+            unlink($transaction_log);
+            error_log("Transaction committed: {$transaction_id}");
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * 트랜잭션 롤백
+     */
+    public static function rollbackTransaction($transaction_id) {
+        $transaction_log = self::$transaction_dir . "/{$transaction_id}.log";
+        
+        if (!file_exists($transaction_log)) {
+            return false;
+        }
+        
+        $transaction_data = json_decode(file_get_contents($transaction_log), true);
+        if (!$transaction_data) {
+            return false;
+        }
+        
+        $backup_data = $transaction_data['backup_data'];
+        $queue_id = $transaction_data['queue_id'];
+        
+        // 백업 데이터로 복원
+        $restored = self::restoreFromBackup($backup_data);
+        
+        // 트랜잭션 로그 삭제
+        unlink($transaction_log);
+        
+        error_log("Transaction rolled back: {$transaction_id} for queue: {$queue_id}");
+        return $restored;
+    }
+    
+    /**
+     * 백업 데이터로부터 큐 복원
+     */
+    private static function restoreFromBackup($backup_data) {
+        try {
+            $queue_id = $backup_data['queue_id'];
+            $old_status = $backup_data['old_status'];
+            $old_data = $backup_data['old_data'];
+            
+            // 1. 현재 파일 제거 (실패해도 계속 진행)
+            if (isset($backup_data['new_status'])) {
+                $current_dir = get_queue_directory_by_status($backup_data['new_status']);
+                $current_file = $current_dir . '/' . $old_data['filename'];
+                
+                if (file_exists($current_file)) {
+                    unlink($current_file);
+                }
+            }
+            
+            // 2. 이전 상태로 파일 복원
+            $old_dir = get_queue_directory_by_status($old_status);
+            $old_file = $old_dir . '/' . $old_data['filename'];
+            
+            $json_content = json_encode($old_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if (file_put_contents($old_file, $json_content, LOCK_EX) === false) {
+                error_log("Failed to restore queue file: {$old_file}");
+                return false;
+            }
+            
+            // 3. 인덱스 복원
+            $index_info = [
+                'queue_id' => $queue_id,
+                'filename' => $old_data['filename'],
+                'status' => $old_status,
+                'title' => $old_data['title'] ?? '',
+                'created_at' => $old_data['created_at'],
+                'updated_at' => $old_data['updated_at'],
+                'attempts' => $old_data['attempts'] ?? 0,
+                'category_name' => $old_data['category_name'] ?? '',
+                'prompt_type_name' => $old_data['prompt_type_name'] ?? '',
+                'priority' => $old_data['priority'] ?? 1
+            ];
+            
+            if (!update_queue_index($queue_id, $index_info)) {
+                error_log("Failed to restore queue index: {$queue_id}");
+                return false;
+            }
+            
+            error_log("Queue restored from backup: {$queue_id}");
+            return true;
+            
+        } catch (Exception $e) {
+            error_log("Restore failed: {$e->getMessage()}");
+            return false;
+        }
+    }
+}
+
+/**
+ * 🤖 Python 스크립트 동기화 함수
+ */
+function is_queue_being_processed($queue_id) {
+    // 1. processing 상태 확인
+    $queue_data = load_queue_split($queue_id);
+    if (!$queue_data) {
+        return false;
+    }
+    
+    if ($queue_data['status'] === 'processing') {
+        // 처리 시작 시간 확인 (5분 이상 processing이면 오류로 간주)
+        $updated_time = strtotime($queue_data['updated_at']);
+        if (time() - $updated_time > 300) {
+            error_log("Processing timeout detected for queue: {$queue_id}");
+            return false; // 5분 이상 처리 중이면 이동 허용
+        }
+        return true;
+    }
+    
+    // 2. Python 프로세스 실행 여부 확인
+    if (file_exists(PYTHON_PID_FILE)) {
+        $pid = trim(file_get_contents(PYTHON_PID_FILE));
+        if ($pid && function_exists('posix_kill') && posix_kill($pid, 0)) {
+            return true; // Python 스크립트 실행 중
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * 🔒 안전한 큐 상태 업데이트 (트랜잭션 기반)
+ */
+function update_queue_status_split_safe($queue_id, $new_status, $error_message = null) {
+    // 1. 현재 상태 확인
+    $queue_data = load_queue_split($queue_id);
+    if (!$queue_data) {
+        error_log("Queue not found for safe status update: {$queue_id}");
+        return false;
+    }
+    
+    // 2. 백업 데이터 준비
+    $backup_data = [
+        'queue_id' => $queue_id,
+        'old_status' => $queue_data['status'],
+        'new_status' => $new_status,
+        'old_data' => $queue_data
+    ];
+    
+    // 3. 트랜잭션 시작
+    $transaction_id = QueueTransactionManager::beginTransaction($queue_id, 'status_update', $backup_data);
+    if (!$transaction_id) {
+        error_log("Failed to start transaction for queue: {$queue_id}");
+        return false;
+    }
+    
+    try {
+        // 4. 실제 상태 업데이트
+        $result = update_queue_status_split($queue_id, $new_status, $error_message);
+        
+        if (!$result) {
+            throw new Exception("Status update failed for queue: {$queue_id}");
+        }
+        
+        // 5. 트랜잭션 완료
+        QueueTransactionManager::commitTransaction($transaction_id);
+        
+        error_log("Safe status update completed: {$queue_id} -> {$new_status}");
+        return true;
+        
+    } catch (Exception $e) {
+        // 6. 실패 시 롤백
+        error_log("Safe status update failed, rolling back: " . $e->getMessage());
+        QueueTransactionManager::rollbackTransaction($transaction_id);
+        return false;
+    }
+}
+
+/**
+ * 🔒 완전한 Move 버튼 처리 함수
+ */
+function process_move_queue_status($queue_id) {
+    try {
+        // 1. 현재 상태 확인
+        $current_queue = load_queue_split($queue_id);
+        if (!$current_queue) {
+            return ['success' => false, 'message' => '큐를 찾을 수 없습니다.'];
+        }
+        
+        // 2. Python 처리 중인지 확인
+        if (is_queue_being_processed($queue_id)) {
+            return ['success' => false, 'message' => '현재 처리 중인 큐는 이동할 수 없습니다.'];
+        }
+        
+        // 3. 다음 상태 결정 (Move 버튼 순환)
+        $next_status = QueueStatusValidator::getNextMoveStatus($current_queue['status']);
+        
+        // 4. 상태 전환 검증
+        if (!QueueStatusValidator::validateStatusTransition($current_queue['status'], $next_status)) {
+            return ['success' => false, 'message' => '허용되지 않는 상태 전환입니다.'];
+        }
+        
+        // 5. 락 획득
+        if (!QueueLockManager::acquireLock($queue_id)) {
+            return ['success' => false, 'message' => '다른 사용자가 이 큐를 수정 중입니다. 잠시 후 다시 시도하세요.'];
+        }
+        
+        // 6. 안전한 상태 업데이트
+        $result = update_queue_status_split_safe($queue_id, $next_status);
+        
+        // 7. 락 해제
+        QueueLockManager::releaseLock($queue_id);
+        
+        if ($result) {
+            return [
+                'success' => true, 
+                'message' => '큐 상태가 변경되었습니다.',
+                'old_status' => $current_queue['status'],
+                'new_status' => $next_status
+            ];
+        } else {
+            return ['success' => false, 'message' => '상태 변경에 실패했습니다.'];
+        }
+        
+    } catch (Exception $e) {
+        // 락 해제 (안전장치)
+        QueueLockManager::releaseLock($queue_id);
+        error_log("Move queue status error: " . $e->getMessage());
+        return ['success' => false, 'message' => '서버 오류가 발생했습니다.'];
+    }
+}
+
+/**
+ * 🧹 만료된 락 파일 정리
+ */
+function cleanup_expired_locks() {
+    if (!is_dir(QUEUE_LOCKS_DIR)) {
+        return 0;
+    }
+    
+    $cleaned = 0;
+    $lock_files = glob(QUEUE_LOCKS_DIR . '/*.lock');
+    
+    foreach ($lock_files as $lock_file) {
+        $lock_time = filemtime($lock_file);
+        if (time() - $lock_time > 60) { // 1분 이상 된 락 파일 삭제
+            unlink($lock_file);
+            $cleaned++;
+        }
+    }
+    
+    if ($cleaned > 0) {
+        error_log("Cleaned up {$cleaned} expired lock files");
+    }
+    
+    return $cleaned;
+}
+
+/**
+ * 🧹 만료된 트랜잭션 로그 정리
+ */
+function cleanup_expired_transactions() {
+    if (!is_dir(QUEUE_TRANSACTIONS_DIR)) {
+        return 0;
+    }
+    
+    $cleaned = 0;
+    $transaction_files = glob(QUEUE_TRANSACTIONS_DIR . '/*.log');
+    
+    foreach ($transaction_files as $transaction_file) {
+        $transaction_time = filemtime($transaction_file);
+        if (time() - $transaction_time > 300) { // 5분 이상 된 트랜잭션 로그 삭제
+            unlink($transaction_file);
+            $cleaned++;
+        }
+    }
+    
+    if ($cleaned > 0) {
+        error_log("Cleaned up {$cleaned} expired transaction files");
+    }
+    
+    return $cleaned;
+}
+
 ?>
