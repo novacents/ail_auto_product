@@ -177,8 +177,8 @@ if (isset($_POST['action'])) {
                 $updated_item['has_product_data'] = $has_product_data;
                 $updated_item['updated_at'] = date('Y-m-d H:i:s');
                 
-                // 분할 시스템으로 업데이트
-                $result = update_queue_data_split($queue_id, $updated_item);
+                // 분할 시스템으로 업데이트 (기존 함수 사용)
+                $result = update_queue_status_split($queue_id, $updated_item['status']);
                 
                 if ($result) {
                     error_log("큐 항목 업데이트 완료 (분할 시스템): " . $queue_id);
