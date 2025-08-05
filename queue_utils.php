@@ -1,67 +1,68 @@
 <?php
+
+// WordPress 함수들을 사용할 수 없는 환경에서 정의
+if (!defined('ABSPATH')) {
+    define('ABSPATH', dirname(__FILE__) . '/');
+}
+
 /**
- * 큐 파일 분할 관리 유틸리티 함수들
- * 대용량 product_queue.json 성능 문제 해결을 위한 파일 분할 시스템
+ * 분할 큐 시스템 유틸리티 함수들
+ * AliExpress 어필리에이트 상품 자동 등록 시스템
  * 
- * @author Claude AI
- * @version 1.1
- * @date 2025-07-24
+ * 큐 디렉토리 구조:
+ * /var/www/novacents/tools/queues/
+ * ├── pending/     # 대기 중
+ * ├── processing/  # 처리 중
+ * ├── completed/   # 완료
+ * └── failed/      # 실패
  */
 
-// 디렉토리 및 파일 경로 상수
-define('QUEUE_BASE_DIR', '/var/www/novacents/tools');
-define('QUEUE_SPLIT_DIR', QUEUE_BASE_DIR . '/queues');
+// 큐 디렉토리 상수
+define('QUEUE_SPLIT_DIR', '/var/www/novacents/tools/queues');
 define('QUEUE_PENDING_DIR', QUEUE_SPLIT_DIR . '/pending');
 define('QUEUE_PROCESSING_DIR', QUEUE_SPLIT_DIR . '/processing');
 define('QUEUE_COMPLETED_DIR', QUEUE_SPLIT_DIR . '/completed');
 define('QUEUE_FAILED_DIR', QUEUE_SPLIT_DIR . '/failed');
-define('QUEUE_INDEX_FILE', QUEUE_BASE_DIR . '/queue_index.json');
-define('QUEUE_LEGACY_FILE', QUEUE_BASE_DIR . '/product_queue.json');
+
+// 큐 인덱스 파일
+define('QUEUE_INDEX_FILE', '/var/www/novacents/tools/queue_index.json');
+
+// 레거시 호환을 위한 파일
+define('LEGACY_QUEUE_FILE', '/var/www/novacents/tools/product_queue.json');
+
+// 📝 보안 강화를 위한 새로운 디렉토리들
+define('QUEUE_LOCKS_DIR', '/var/www/novacents/tools/locks');
+define('QUEUE_TRANSACTIONS_DIR', '/var/www/novacents/tools/transactions');
+define('PYTHON_PID_FILE', '/var/www/novacents/tools/auto_post_products.pid');
 
 /**
  * 큐 디렉토리 초기화
  */
 function initialize_queue_directories() {
-    $dirs = [
+    $directories = [
         QUEUE_SPLIT_DIR,
         QUEUE_PENDING_DIR,
         QUEUE_PROCESSING_DIR,
         QUEUE_COMPLETED_DIR,
-        QUEUE_FAILED_DIR
+        QUEUE_FAILED_DIR,
+        QUEUE_LOCKS_DIR,
+        QUEUE_TRANSACTIONS_DIR
     ];
     
-    foreach ($dirs as $dir) {
+    foreach ($directories as $dir) {
         if (!is_dir($dir)) {
             if (!mkdir($dir, 0755, true)) {
                 error_log("Failed to create queue directory: {$dir}");
                 return false;
             }
         }
-        
-        // 디렉토리 쓰기 권한 확인
-        if (!is_writable($dir)) {
-            error_log("Queue directory is not writable: {$dir}");
-            return false;
-        }
-    }
-    
-    // 인덱스 파일 초기화
-    if (!file_exists(QUEUE_INDEX_FILE)) {
-        save_queue_index([]);
     }
     
     return true;
 }
 
 /**
- * 큐 ID 생성
- */
-function generate_queue_id() {
-    return 'queue_' . date('YmdHis') . '_' . mt_rand(1000, 9999);
-}
-
-/**
- * 상태별 디렉토리 경로 반환
+ * 상태에 따른 큐 디렉토리 반환
  */
 function get_queue_directory_by_status($status) {
     switch ($status) {
@@ -93,21 +94,20 @@ function load_queue_index() {
     }
     
     $index = json_decode($content, true);
-    return is_array($index) ? $index : [];
+    return $index !== null ? $index : [];
 }
 
 /**
  * 큐 인덱스 저장
  */
 function save_queue_index($index) {
-    $json_content = json_encode($index, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $json_content = json_encode($index, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     if ($json_content === false) {
-        error_log("Failed to encode queue index to JSON");
+        error_log("Failed to encode queue index");
         return false;
     }
     
-    $result = file_put_contents(QUEUE_INDEX_FILE, $json_content, LOCK_EX);
-    if ($result === false) {
+    if (file_put_contents(QUEUE_INDEX_FILE, $json_content, LOCK_EX) === false) {
         error_log("Failed to save queue index file");
         return false;
     }
@@ -129,53 +129,49 @@ function update_queue_index($queue_id, $queue_info) {
  */
 function remove_from_queue_index($queue_id) {
     $index = load_queue_index();
-    unset($index[$queue_id]);
-    return save_queue_index($index);
+    if (isset($index[$queue_id])) {
+        unset($index[$queue_id]);
+        return save_queue_index($index);
+    }
+    return true;
 }
 
 /**
- * 분할된 큐 추가
+ * 새로운 큐 추가 (분할 시스템)
  */
 function add_queue_split($queue_data) {
-    // 디렉토리 초기화
-    if (!initialize_queue_directories()) {
-        error_log("Failed to initialize queue directories");
-        return false;
-    }
+    initialize_queue_directories();
     
-    // 큐 ID 생성 (기존에 없으면)
-    if (!isset($queue_data['queue_id']) || empty($queue_data['queue_id'])) {
-        $queue_data['queue_id'] = generate_queue_id();
-    }
+    // 큐 ID 생성 (중복 방지)
+    $queue_id = 'queue_' . date('Ymd_His') . '_' . substr(md5(uniqid()), 0, 8);
+    $filename = $queue_id . '.json';
     
-    $queue_id = $queue_data['queue_id'];
-    $timestamp = date('YmdHis');
-    $filename = "queue_{$timestamp}_{$queue_id}.json";
-    
-    // 큐 데이터에 메타정보 추가
-    $queue_data['status'] = $queue_data['status'] ?? 'pending';
-    $queue_data['created_at'] = $queue_data['created_at'] ?? date('Y-m-d H:i:s');
-    $queue_data['updated_at'] = date('Y-m-d H:i:s');
-    $queue_data['attempts'] = $queue_data['attempts'] ?? 0;
+    // 기본값 설정
+    $queue_data['queue_id'] = $queue_id;
     $queue_data['filename'] = $filename;
+    $queue_data['status'] = $queue_data['status'] ?? 'pending';
+    $queue_data['created_at'] = date('Y-m-d H:i:s');
+    $queue_data['updated_at'] = date('Y-m-d H:i:s');
+    $queue_data['attempts'] = 0;
+    $queue_data['priority'] = $queue_data['priority'] ?? 1;
     
-    // 상태별 디렉토리 결정
+    // 상태에 따른 디렉토리 결정
     $dir = get_queue_directory_by_status($queue_data['status']);
     $filepath = $dir . '/' . $filename;
     
-    // 개별 큐 파일 저장
+    // JSON 파일로 저장
     $json_content = json_encode($queue_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     if ($json_content === false) {
-        error_log("Failed to encode queue data to JSON for queue_id: {$queue_id}");
+        error_log("Failed to encode queue data for queue_id: {$queue_id}");
         return false;
     }
     
-    if (!file_put_contents($filepath, $json_content, LOCK_EX)) {
+    if (file_put_contents($filepath, $json_content, LOCK_EX) === false) {
         error_log("Failed to save queue file: {$filepath}");
         return false;
     }
     
-    // 인덱스 업데이트
+    // 인덱스에 추가
     $index_info = [
         'queue_id' => $queue_id,
         'filename' => $filename,
@@ -184,15 +180,13 @@ function add_queue_split($queue_data) {
         'created_at' => $queue_data['created_at'],
         'updated_at' => $queue_data['updated_at'],
         'attempts' => $queue_data['attempts'],
-        'category_name' => $queue_data['category_name'] ?? '',
-        'prompt_type_name' => $queue_data['prompt_type_name'] ?? '',
-        'priority' => $queue_data['priority'] ?? 1
+        'category_name' => get_category_name($queue_data['category_id'] ?? ''),
+        'prompt_type_name' => get_prompt_type_name($queue_data['prompt_type'] ?? ''),
+        'priority' => $queue_data['priority']
     ];
     
     if (!update_queue_index($queue_id, $index_info)) {
-        error_log("Failed to update queue index for queue_id: {$queue_id}");
-        // 파일은 생성되었지만 인덱스 업데이트 실패 - 파일 제거
-        unlink($filepath);
+        error_log("Failed to update queue index for new queue: {$queue_id}");
         return false;
     }
     
@@ -203,117 +197,35 @@ function add_queue_split($queue_data) {
 }
 
 /**
- * 대기 중인 큐 목록 조회
+ * 카테고리 이름 가져오기
  */
-function get_pending_queues_split($limit = null) {
-    $index = load_queue_index();
-    $pending_queues = [];
+function get_category_name($category_id) {
+    $categories = [
+        '354' => '스마트 리빙',
+        '355' => '패션 & 뷰티', 
+        '356' => '전자기기',
+        '12' => '기타'
+    ];
     
-    // pending 상태만 필터링
-    foreach ($index as $queue_id => $queue_info) {
-        if ($queue_info['status'] === 'pending') {
-            $pending_queues[] = $queue_info;
-        }
-    }
-    
-    // 생성 시간순 정렬 (오래된 것부터)
-    usort($pending_queues, function($a, $b) {
-        return strtotime($a['created_at']) - strtotime($b['created_at']);
-    });
-    
-    // 제한 적용
-    if ($limit !== null && $limit > 0) {
-        $pending_queues = array_slice($pending_queues, 0, $limit);
-    }
-    
-    // 실제 큐 데이터 로드
-    $queues = [];
-    foreach ($pending_queues as $queue_info) {
-        $queue_data = load_queue_split($queue_info['queue_id']);
-        if ($queue_data !== null) {
-            $queues[] = $queue_data;
-        }
-    }
-    
-    return $queues;
+    return $categories[$category_id] ?? '알 수 없는 카테고리';
 }
 
 /**
- * 🆕 전체 큐 목록 조회 (모든 상태)
+ * 프롬프트 타입 이름 가져오기
  */
-function get_all_queues_split($limit = null, $sort_by = 'created_at', $sort_order = 'DESC') {
-    $index = load_queue_index();
-    $all_queues = array_values($index);
+function get_prompt_type_name($prompt_type) {
+    $types = [
+        'essential_items' => '필수템형',
+        'friend_review' => '친구 추천형',
+        'professional_analysis' => '전문 분석형',
+        'amazing_discovery' => '놀라움 발견형'
+    ];
     
-    // 정렬
-    usort($all_queues, function($a, $b) use ($sort_by, $sort_order) {
-        $val_a = $a[$sort_by] ?? '';
-        $val_b = $b[$sort_by] ?? '';
-        
-        if ($sort_by === 'created_at' || $sort_by === 'updated_at') {
-            $val_a = strtotime($val_a);
-            $val_b = strtotime($val_b);
-        }
-        
-        $result = $val_a <=> $val_b;
-        return $sort_order === 'DESC' ? -$result : $result;
-    });
-    
-    // 제한 적용
-    if ($limit !== null && $limit > 0) {
-        $all_queues = array_slice($all_queues, 0, $limit);
-    }
-    
-    // 실제 큐 데이터 로드 (queue_manager.php용으로 전체 데이터 필요)
-    $queues = [];
-    foreach ($all_queues as $queue_info) {
-        $queue_data = load_queue_split($queue_info['queue_id']);
-        if ($queue_data !== null) {
-            $queues[] = $queue_data;
-        }
-    }
-    
-    return $queues;
+    return $types[$prompt_type] ?? '기본형';
 }
 
 /**
- * 🆕 상태별 큐 조회
- */
-function get_queues_by_status_split($status, $limit = null) {
-    $index = load_queue_index();
-    $filtered_queues = [];
-    
-    // 해당 상태만 필터링
-    foreach ($index as $queue_id => $queue_info) {
-        if ($queue_info['status'] === $status) {
-            $filtered_queues[] = $queue_info;
-        }
-    }
-    
-    // 생성 시간순 정렬 (최신순)
-    usort($filtered_queues, function($a, $b) {
-        return strtotime($b['created_at']) - strtotime($a['created_at']);
-    });
-    
-    // 제한 적용
-    if ($limit !== null && $limit > 0) {
-        $filtered_queues = array_slice($filtered_queues, 0, $limit);
-    }
-    
-    // 실제 큐 데이터 로드
-    $queues = [];
-    foreach ($filtered_queues as $queue_info) {
-        $queue_data = load_queue_split($queue_info['queue_id']);
-        if ($queue_data !== null) {
-            $queues[] = $queue_data;
-        }
-    }
-    
-    return $queues;
-}
-
-/**
- * 특정 큐 데이터 로드
+ * 특정 큐 로드 (분할 시스템)
  */
 function load_queue_split($queue_id) {
     $index = load_queue_index();
@@ -326,14 +238,11 @@ function load_queue_split($queue_id) {
     $status = $queue_info['status'];
     $filename = $queue_info['filename'];
     
-    // 상태에 따라 디렉토리 결정
     $dir = get_queue_directory_by_status($status);
     $filepath = $dir . '/' . $filename;
     
     if (!file_exists($filepath)) {
-        // 인덱스에는 있지만 파일이 없는 경우 - 인덱스에서 제거
-        remove_from_queue_index($queue_id);
-        error_log("Queue file not found, removed from index: {$filepath}");
+        error_log("Queue file not found: {$filepath}");
         return null;
     }
     
@@ -344,8 +253,8 @@ function load_queue_split($queue_id) {
     }
     
     $queue_data = json_decode($content, true);
-    if (json_last_error() !== JSON_ERROR_NONE) {
-        error_log("Failed to decode queue JSON: " . json_last_error_msg() . " - File: {$filepath}");
+    if ($queue_data === null) {
+        error_log("Failed to parse queue file: {$filepath}");
         return null;
     }
     
@@ -353,9 +262,41 @@ function load_queue_split($queue_id) {
 }
 
 /**
- * 큐 상태 업데이트
+ * 모든 큐 목록 가져오기 (분할 시스템)
  */
-function update_queue_status_split($queue_id, $new_status, $error_message = null) {
+function get_all_queues_split($status = null, $limit = 100) {
+    $index = load_queue_index();
+    $queues = [];
+    
+    foreach ($index as $queue_info) {
+        // 상태 필터링
+        if ($status !== null && $queue_info['status'] !== $status) {
+            continue;
+        }
+        
+        $queue_data = load_queue_split($queue_info['queue_id']);
+        if ($queue_data !== null) {
+            $queues[] = $queue_data;
+        }
+    }
+    
+    // 생성일 기준 내림차순 정렬
+    usort($queues, function($a, $b) {
+        return strtotime($b['created_at']) - strtotime($a['created_at']);
+    });
+    
+    // 제한 적용
+    if ($limit > 0) {
+        $queues = array_slice($queues, 0, $limit);
+    }
+    
+    return $queues;
+}
+
+/**
+ * 큐 상태 업데이트 (분할 시스템)
+ */
+function update_queue_status_split($queue_id, $status, $error_message = null) {
     $queue_data = load_queue_split($queue_id);
     if ($queue_data === null) {
         error_log("Queue not found for status update: {$queue_id}");
@@ -363,23 +304,26 @@ function update_queue_status_split($queue_id, $new_status, $error_message = null
     }
     
     $old_status = $queue_data['status'];
-    $old_filename = $queue_data['filename'];
-    
-    // 큐 데이터 업데이트
-    $queue_data['status'] = $new_status;
+    $queue_data['status'] = $status;
     $queue_data['updated_at'] = date('Y-m-d H:i:s');
     
-    if ($error_message) {
-        $queue_data['last_error'] = $error_message;
+    // 오류 메시지가 있으면 추가
+    if ($error_message !== null) {
+        $queue_data['error_message'] = $error_message;
+    }
+    
+    // 시도 횟수 증가 (실패한 경우)
+    if ($status === 'failed') {
         $queue_data['attempts'] = ($queue_data['attempts'] ?? 0) + 1;
     }
     
-    // 상태가 변경되면 파일 이동
+    // 상태가 변경된 경우 파일 이동
     $old_dir = get_queue_directory_by_status($old_status);
-    $new_dir = get_queue_directory_by_status($new_status);
+    $new_dir = get_queue_directory_by_status($status);
+    $filename = $queue_data['filename'];
     
-    $old_path = $old_dir . '/' . $old_filename;
-    $new_path = $new_dir . '/' . $old_filename;
+    $old_path = $old_dir . '/' . $filename;
+    $new_path = $new_dir . '/' . $filename;
     
     // 새 위치에 파일 저장
     $json_content = json_encode($queue_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -388,7 +332,7 @@ function update_queue_status_split($queue_id, $new_status, $error_message = null
         return false;
     }
     
-    if (!file_put_contents($new_path, $json_content, LOCK_EX)) {
+    if (file_put_contents($new_path, $json_content, LOCK_EX) === false) {
         error_log("Failed to save updated queue file: {$new_path}");
         return false;
     }
@@ -401,10 +345,10 @@ function update_queue_status_split($queue_id, $new_status, $error_message = null
     // 인덱스 업데이트
     $index_info = [
         'queue_id' => $queue_id,
-        'filename' => $old_filename,
-        'status' => $new_status,
+        'filename' => $filename,
+        'status' => $status,
         'title' => $queue_data['title'] ?? '',
-        'created_at' => $queue_data['created_at'],
+        'created_at' => $queue_data['created_at'] ?? date('Y-m-d H:i:s'),
         'updated_at' => $queue_data['updated_at'],
         'attempts' => $queue_data['attempts'] ?? 0,
         'category_name' => $queue_data['category_name'] ?? '',
@@ -413,7 +357,7 @@ function update_queue_status_split($queue_id, $new_status, $error_message = null
     ];
     
     if (!update_queue_index($queue_id, $index_info)) {
-        error_log("Failed to update queue index for status change: {$queue_id}");
+        error_log("Failed to update queue index for status update: {$queue_id}");
         return false;
     }
     
@@ -424,9 +368,9 @@ function update_queue_status_split($queue_id, $new_status, $error_message = null
 }
 
 /**
- * 🆕 큐 데이터 전체 업데이트 (queue_manager.php 용)
+ * 큐 데이터 업데이트 (분할 시스템)
  */
-function update_queue_data_split($queue_id, $updated_data) {
+function update_queue_split($queue_id, $updated_data) {
     $queue_data = load_queue_split($queue_id);
     if ($queue_data === null) {
         error_log("Queue not found for data update: {$queue_id}");
@@ -436,15 +380,8 @@ function update_queue_data_split($queue_id, $updated_data) {
     $old_status = $queue_data['status'];
     $old_filename = $queue_data['filename'];
     
-    // 기존 메타 정보 보존하면서 데이터 업데이트
-    $preserved_fields = ['queue_id', 'filename', 'created_at', 'attempts'];
-    foreach ($preserved_fields as $field) {
-        if (isset($queue_data[$field])) {
-            $updated_data[$field] = $queue_data[$field];
-        }
-    }
-    
-    // updated_at는 항상 현재 시간으로
+    // 기존 데이터와 업데이트 데이터 병합
+    $updated_data = array_merge($queue_data, $updated_data);
     $updated_data['updated_at'] = date('Y-m-d H:i:s');
     
     // 상태가 변경된 경우 파일 이동
@@ -647,9 +584,9 @@ function cleanup_completed_queues_split($days_old = 7) {
     $cleaned_count = 0;
     
     foreach ($index as $queue_id => $queue_info) {
-        if (in_array($queue_info['status'], ['completed', 'failed'])) {
-            $created_time = strtotime($queue_info['created_at']);
-            if ($created_time < $cutoff_time) {
+        if ($queue_info['status'] === 'completed') {
+            $updated_time = strtotime($queue_info['updated_at']);
+            if ($updated_time < $cutoff_time) {
                 if (remove_queue_split($queue_id)) {
                     $cleaned_count++;
                 }
@@ -661,229 +598,161 @@ function cleanup_completed_queues_split($days_old = 7) {
 }
 
 /**
- * 호환성을 위한 레거시 파일 업데이트
- * 기존 코드가 product_queue.json을 읽을 수 있도록 유지
- */
-function update_legacy_queue_file() {
-    $pending_queues = get_pending_queues_split();
-    
-    // 기존 형태로 변환 (기존 코드 호환)
-    $legacy_format = [];
-    foreach ($pending_queues as $queue) {
-        $legacy_format[] = $queue;
-    }
-    
-    $json_content = json_encode($legacy_format, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    if ($json_content === false) {
-        error_log("Failed to encode legacy queue data");
-        return false;
-    }
-    
-    $result = file_put_contents(QUEUE_LEGACY_FILE, $json_content, LOCK_EX);
-    if ($result === false) {
-        error_log("Failed to update legacy queue file");
-        return false;
-    }
-    
-    return true;
-}
-
-/**
- * 기존 product_queue.json에서 분할 시스템으로 마이그레이션
- */
-function migrate_legacy_queue_to_split() {
-    if (!file_exists(QUEUE_LEGACY_FILE)) {
-        return ['migrated' => 0, 'errors' => []];
-    }
-    
-    $content = file_get_contents(QUEUE_LEGACY_FILE);
-    if ($content === false) {
-        return ['migrated' => 0, 'errors' => ['Failed to read legacy queue file']];
-    }
-    
-    $legacy_queues = json_decode($content, true);
-    if (!is_array($legacy_queues)) {
-        return ['migrated' => 0, 'errors' => ['Invalid JSON format in legacy file']];
-    }
-    
-    $migrated = 0;
-    $errors = [];
-    
-    foreach ($legacy_queues as $queue_data) {
-        try {
-            // 기존 queue_id가 있으면 사용, 없으면 새로 생성
-            if (!isset($queue_data['queue_id']) || empty($queue_data['queue_id'])) {
-                $queue_data['queue_id'] = generate_queue_id();
-            }
-            
-            // 필수 필드 확인 및 기본값 설정
-            if (!isset($queue_data['status'])) {
-                $queue_data['status'] = 'pending';
-            }
-            if (!isset($queue_data['created_at'])) {
-                $queue_data['created_at'] = date('Y-m-d H:i:s');
-            }
-            if (!isset($queue_data['updated_at'])) {
-                $queue_data['updated_at'] = date('Y-m-d H:i:s');
-            }
-            if (!isset($queue_data['attempts'])) {
-                $queue_data['attempts'] = 0;
-            }
-            
-            // 분할 시스템에 추가
-            $result = add_queue_split($queue_data);
-            if ($result) {
-                $migrated++;
-            } else {
-                $errors[] = "Failed to migrate queue: " . ($queue_data['title'] ?? 'Unknown');
-            }
-            
-        } catch (Exception $e) {
-            $errors[] = "Migration error: " . $e->getMessage();
-        }
-    }
-    
-    // 마이그레이션 완료 후 레거시 파일 백업
-    if ($migrated > 0) {
-        $backup_file = QUEUE_LEGACY_FILE . '.backup.' . date('YmdHis');
-        copy(QUEUE_LEGACY_FILE, $backup_file);
-    }
-    
-    return ['migrated' => $migrated, 'errors' => $errors];
-}
-
-/**
- * 디버그 정보 출력 (개발용)
+ * 큐 시스템 디버그 정보
  */
 function debug_queue_split_info() {
-    $info = [
-        'directories' => [
-            'base' => QUEUE_BASE_DIR,
-            'split' => QUEUE_SPLIT_DIR,
-            'pending' => QUEUE_PENDING_DIR,
-            'processing' => QUEUE_PROCESSING_DIR,
-            'completed' => QUEUE_COMPLETED_DIR,
-            'failed' => QUEUE_FAILED_DIR
-        ],
-        'files' => [
-            'index' => QUEUE_INDEX_FILE,
-            'legacy' => QUEUE_LEGACY_FILE
-        ],
-        'stats' => get_queue_stats_split(),
-        'directory_status' => []
+    $info = [];
+    
+    // 디렉토리 정보
+    $directories = [
+        'pending' => QUEUE_PENDING_DIR,
+        'processing' => QUEUE_PROCESSING_DIR,
+        'completed' => QUEUE_COMPLETED_DIR,
+        'failed' => QUEUE_FAILED_DIR
     ];
     
-    // 디렉토리 상태 확인
-    foreach ($info['directories'] as $name => $path) {
-        $info['directory_status'][$name] = [
-            'exists' => is_dir($path),
-            'writable' => is_writable($path),
-            'files_count' => is_dir($path) ? count(glob($path . '/*.json')) : 0
+    foreach ($directories as $status => $dir) {
+        $files = is_dir($dir) ? array_filter(scandir($dir), function($f) { return substr($f, -5) === '.json'; }) : [];
+        $info['directories'][$status] = [
+            'path' => $dir,
+            'exists' => is_dir($dir),
+            'writable' => is_writable($dir),
+            'file_count' => count($files),
+            'files' => array_values($files)
         ];
+    }
+    
+    // 인덱스 정보
+    $index = load_queue_index();
+    $info['index'] = [
+        'file_exists' => file_exists(QUEUE_INDEX_FILE),
+        'total_entries' => count($index),
+        'by_status' => []
+    ];
+    
+    foreach ($index as $queue_info) {
+        $status = $queue_info['status'];
+        $info['index']['by_status'][$status] = ($info['index']['by_status'][$status] ?? 0) + 1;
     }
     
     return $info;
 }
 
-// =====================================================================
-// 🔒 보안 강화 기능들 - Move 버튼 안전성 보장
-// =====================================================================
-
-// 보안 관련 상수 정의
-define('QUEUE_LOCKS_DIR', QUEUE_BASE_DIR . '/locks');
-define('QUEUE_TRANSACTIONS_DIR', QUEUE_BASE_DIR . '/transactions');
-define('PYTHON_PID_FILE', '/var/www/auto_post_products.pid');
+/**
+ * 레거시 호환을 위한 product_queue.json 업데이트
+ */
+function update_legacy_queue_file() {
+    $all_queues = get_all_queues_split();
+    
+    // 레거시 형식으로 변환
+    $legacy_data = [];
+    foreach ($all_queues as $queue) {
+        $legacy_data[] = [
+            'id' => $queue['queue_id'],
+            'title' => $queue['title'] ?? '',
+            'status' => $queue['status'],
+            'created_at' => $queue['created_at'] ?? '',
+            'updated_at' => $queue['updated_at'] ?? '',
+            'data' => $queue
+        ];
+    }
+    
+    $json_content = json_encode($legacy_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    if ($json_content !== false) {
+        file_put_contents(LEGACY_QUEUE_FILE, $json_content, LOCK_EX);
+    }
+}
 
 /**
- * 🔒 큐 잠금 관리자 클래스
+ * 큐 통계를 위한 별칭 함수 (queue_manager.php 호환)
+ */
+function get_queue_statistics() {
+    return get_queue_stats_split();
+}
+
+/**
+ * 🔒 파일 락킹 시스템 (동시 접근 방지)
  */
 class QueueLockManager {
-    private static $lock_dir = QUEUE_LOCKS_DIR;
-    
     /**
-     * 큐 잠금 획득
+     * 큐 락 획득
      */
     public static function acquireLock($queue_id, $timeout = 10) {
-        if (!is_dir(self::$lock_dir)) {
-            if (!mkdir(self::$lock_dir, 0755, true)) {
-                error_log("Failed to create locks directory: " . self::$lock_dir);
-                return false;
-            }
-        }
-        
-        $lock_file = self::$lock_dir . "/{$queue_id}.lock";
+        $lock_file = QUEUE_LOCKS_DIR . '/' . $queue_id . '.lock';
         $start_time = time();
         
-        while (time() - $start_time < $timeout) {
-            // 기존 락 파일 만료 확인 (30초 이상 된 락은 만료)
-            if (file_exists($lock_file)) {
-                $lock_time = filemtime($lock_file);
-                if (time() - $lock_time > 30) {
-                    unlink($lock_file); // 만료된 락 제거
-                    error_log("Expired lock removed: {$queue_id}");
-                }
-            }
-            
-            // 락 획득 시도
-            $lock_data = [
-                'queue_id' => $queue_id,
-                'process_id' => getmypid(),
-                'user_id' => self::getCurrentUserId(),
-                'timestamp' => time(),
-                'action' => 'move_status'
-            ];
-            
-            if (!file_exists($lock_file)) {
-                if (file_put_contents($lock_file, json_encode($lock_data), LOCK_EX) !== false) {
-                    error_log("Lock acquired: {$queue_id}");
-                    return true; // 락 획득 성공
-                }
-            }
-            
-            usleep(100000); // 0.1초 대기
+        // 디렉토리 존재 확인
+        if (!is_dir(QUEUE_LOCKS_DIR)) {
+            mkdir(QUEUE_LOCKS_DIR, 0755, true);
         }
         
-        error_log("Failed to acquire lock: {$queue_id}");
-        return false; // 락 획득 실패
+        while (time() - $start_time < $timeout) {
+            // 기존 락 파일이 있는지 확인
+            if (file_exists($lock_file)) {
+                $lock_time = filemtime($lock_file);
+                // 5분 이상 된 락은 만료된 것으로 간주
+                if (time() - $lock_time > 300) {
+                    unlink($lock_file);
+                } else {
+                    usleep(100000); // 0.1초 대기
+                    continue;
+                }
+            }
+            
+            // 락 파일 생성
+            $lock_data = [
+                'queue_id' => $queue_id,
+                'created_at' => date('Y-m-d H:i:s'),
+                'process_id' => getmypid(),
+                'ip_address' => $_SERVER['REMOTE_ADDR'] ?? 'unknown'
+            ];
+            
+            if (file_put_contents($lock_file, json_encode($lock_data), LOCK_EX) !== false) {
+                return true;
+            }
+            
+            usleep(100000); // 0.1초 대기 후 재시도
+        }
+        
+        return false; // 타임아웃
     }
     
     /**
-     * 큐 잠금 해제
+     * 큐 락 해제
      */
     public static function releaseLock($queue_id) {
-        $lock_file = self::$lock_dir . "/{$queue_id}.lock";
+        $lock_file = QUEUE_LOCKS_DIR . '/' . $queue_id . '.lock';
+        
         if (file_exists($lock_file)) {
-            unlink($lock_file);
-            error_log("Lock released: {$queue_id}");
+            return unlink($lock_file);
         }
+        
+        return true;
     }
     
     /**
-     * 큐 잠금 상태 확인
+     * 락 상태 확인
      */
     public static function isLocked($queue_id) {
-        $lock_file = self::$lock_dir . "/{$queue_id}.lock";
+        $lock_file = QUEUE_LOCKS_DIR . '/' . $queue_id . '.lock';
+        
         if (!file_exists($lock_file)) {
             return false;
         }
         
         $lock_time = filemtime($lock_file);
-        return (time() - $lock_time) < 30; // 30초 이내면 락 유효
-    }
-    
-    /**
-     * 현재 사용자 ID 가져오기
-     */
-    private static function getCurrentUserId() {
-        if (function_exists('get_current_user_id')) {
-            return get_current_user_id();
+        // 5분 이상 된 락은 만료로 간주
+        if (time() - $lock_time > 300) {
+            unlink($lock_file);
+            return false;
         }
-        return 'system';
+        
+        return true;
     }
 }
 
 /**
- * 🔍 큐 상태 검증자 클래스
+ * 🛡️ 큐 상태 검증자 (허용되지 않는 전환 방지)
  */
 class QueueStatusValidator {
     // 허용되는 상태 전환 규칙
@@ -968,44 +837,49 @@ class QueueTransactionManager {
      * 트랜잭션 시작
      */
     public static function beginTransaction($queue_id, $action, $backup_data) {
-        if (!is_dir(self::$transaction_dir)) {
-            if (!mkdir(self::$transaction_dir, 0755, true)) {
-                error_log("Failed to create transactions directory: " . self::$transaction_dir);
-                return false;
-            }
-        }
+        $transaction_id = 'tx_' . $queue_id . '_' . time() . '_' . substr(md5(uniqid()), 0, 8);
+        $transaction_file = self::$transaction_dir . '/' . $transaction_id . '.json';
         
-        $transaction_id = "txn_" . time() . "_" . mt_rand(1000, 9999);
-        $transaction_log = self::$transaction_dir . "/{$transaction_id}.log";
+        // 디렉토리 존재 확인
+        if (!is_dir(self::$transaction_dir)) {
+            mkdir(self::$transaction_dir, 0755, true);
+        }
         
         $transaction_data = [
             'transaction_id' => $transaction_id,
             'queue_id' => $queue_id,
             'action' => $action,
-            'backup_data' => $backup_data,
-            'timestamp' => date('Y-m-d H:i:s'),
-            'status' => 'started'
+            'status' => 'active',
+            'started_at' => date('Y-m-d H:i:s'),
+            'backup_data' => $backup_data
         ];
         
-        if (file_put_contents($transaction_log, json_encode($transaction_data, JSON_PRETTY_PRINT), LOCK_EX) === false) {
-            error_log("Failed to create transaction log: {$transaction_id}");
-            return false;
+        if (file_put_contents($transaction_file, json_encode($transaction_data, JSON_PRETTY_PRINT), LOCK_EX) !== false) {
+            return $transaction_id;
         }
         
-        error_log("Transaction started: {$transaction_id} for queue: {$queue_id}");
-        return $transaction_id;
+        return false;
     }
     
     /**
      * 트랜잭션 완료
      */
     public static function commitTransaction($transaction_id) {
-        $transaction_log = self::$transaction_dir . "/{$transaction_id}.log";
+        $transaction_file = self::$transaction_dir . '/' . $transaction_id . '.json';
         
-        if (file_exists($transaction_log)) {
-            unlink($transaction_log);
-            error_log("Transaction committed: {$transaction_id}");
-            return true;
+        if (file_exists($transaction_file)) {
+            $transaction_data = json_decode(file_get_contents($transaction_file), true);
+            if ($transaction_data) {
+                $transaction_data['status'] = 'committed';
+                $transaction_data['completed_at'] = date('Y-m-d H:i:s');
+                
+                file_put_contents($transaction_file, json_encode($transaction_data, JSON_PRETTY_PRINT), LOCK_EX);
+                
+                // 완료된 트랜잭션은 삭제 (선택적)
+                // unlink($transaction_file);
+                
+                return true;
+            }
         }
         
         return false;
@@ -1015,85 +889,53 @@ class QueueTransactionManager {
      * 트랜잭션 롤백
      */
     public static function rollbackTransaction($transaction_id) {
-        $transaction_log = self::$transaction_dir . "/{$transaction_id}.log";
+        $transaction_file = self::$transaction_dir . '/' . $transaction_id . '.json';
         
-        if (!file_exists($transaction_log)) {
-            return false;
-        }
-        
-        $transaction_data = json_decode(file_get_contents($transaction_log), true);
-        if (!$transaction_data) {
-            return false;
-        }
-        
-        $backup_data = $transaction_data['backup_data'];
-        $queue_id = $transaction_data['queue_id'];
-        
-        // 백업 데이터로 복원
-        $restored = self::restoreFromBackup($backup_data);
-        
-        // 트랜잭션 로그 삭제
-        unlink($transaction_log);
-        
-        error_log("Transaction rolled back: {$transaction_id} for queue: {$queue_id}");
-        return $restored;
-    }
-    
-    /**
-     * 백업 데이터로부터 큐 복원
-     */
-    private static function restoreFromBackup($backup_data) {
-        try {
-            $queue_id = $backup_data['queue_id'];
-            $old_status = $backup_data['old_status'];
-            $old_data = $backup_data['old_data'];
-            
-            // 1. 현재 파일 제거 (실패해도 계속 진행)
-            if (isset($backup_data['new_status'])) {
-                $current_dir = get_queue_directory_by_status($backup_data['new_status']);
-                $current_file = $current_dir . '/' . $old_data['filename'];
+        if (file_exists($transaction_file)) {
+            $transaction_data = json_decode(file_get_contents($transaction_file), true);
+            if ($transaction_data && isset($transaction_data['backup_data'])) {
+                $backup_data = $transaction_data['backup_data'];
+                $queue_id = $transaction_data['queue_id'];
                 
-                if (file_exists($current_file)) {
-                    unlink($current_file);
+                // 백업 데이터로 복원 시도
+                if (isset($backup_data['old_data'])) {
+                    $old_data = $backup_data['old_data'];
+                    $old_status = $backup_data['old_status'];
+                    
+                    // 파일 복원
+                    $dir = get_queue_directory_by_status($old_status);
+                    $filepath = $dir . '/' . $old_data['filename'];
+                    
+                    $json_content = json_encode($old_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    if (file_put_contents($filepath, $json_content, LOCK_EX) !== false) {
+                        // 인덱스 복원
+                        $index_info = [
+                            'queue_id' => $queue_id,
+                            'filename' => $old_data['filename'],
+                            'status' => $old_status,
+                            'title' => $old_data['title'] ?? '',
+                            'created_at' => $old_data['created_at'] ?? date('Y-m-d H:i:s'),
+                            'updated_at' => $old_data['updated_at'] ?? date('Y-m-d H:i:s'),
+                            'attempts' => $old_data['attempts'] ?? 0,
+                            'category_name' => $old_data['category_name'] ?? '',
+                            'prompt_type_name' => $old_data['prompt_type_name'] ?? '',
+                            'priority' => $old_data['priority'] ?? 1
+                        ];
+                        
+                        update_queue_index($queue_id, $index_info);
+                    }
                 }
+                
+                // 트랜잭션 상태 업데이트
+                $transaction_data['status'] = 'rolled_back';
+                $transaction_data['completed_at'] = date('Y-m-d H:i:s');
+                file_put_contents($transaction_file, json_encode($transaction_data, JSON_PRETTY_PRINT), LOCK_EX);
+                
+                return true;
             }
-            
-            // 2. 이전 상태로 파일 복원
-            $old_dir = get_queue_directory_by_status($old_status);
-            $old_file = $old_dir . '/' . $old_data['filename'];
-            
-            $json_content = json_encode($old_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            if (file_put_contents($old_file, $json_content, LOCK_EX) === false) {
-                error_log("Failed to restore queue file: {$old_file}");
-                return false;
-            }
-            
-            // 3. 인덱스 복원
-            $index_info = [
-                'queue_id' => $queue_id,
-                'filename' => $old_data['filename'],
-                'status' => $old_status,
-                'title' => $old_data['title'] ?? '',
-                'created_at' => $old_data['created_at'],
-                'updated_at' => $old_data['updated_at'],
-                'attempts' => $old_data['attempts'] ?? 0,
-                'category_name' => $old_data['category_name'] ?? '',
-                'prompt_type_name' => $old_data['prompt_type_name'] ?? '',
-                'priority' => $old_data['priority'] ?? 1
-            ];
-            
-            if (!update_queue_index($queue_id, $index_info)) {
-                error_log("Failed to restore queue index: {$queue_id}");
-                return false;
-            }
-            
-            error_log("Queue restored from backup: {$queue_id}");
-            return true;
-            
-        } catch (Exception $e) {
-            error_log("Restore failed: {$e->getMessage()}");
-            return false;
         }
+        
+        return false;
     }
 }
 
@@ -1177,7 +1019,7 @@ function update_queue_status_split_safe($queue_id, $new_status, $error_message =
 }
 
 /**
- * 🔒 완전한 Move 버튼 처리 함수
+ * 🔒 완전한 Move 버튼 처리 함수 (단순 상태 변경만)
  */
 function process_move_queue_status($queue_id) {
     try {
@@ -1205,8 +1047,8 @@ function process_move_queue_status($queue_id) {
             return ['success' => false, 'message' => '다른 사용자가 이 큐를 수정 중입니다. 잠시 후 다시 시도하세요.'];
         }
         
-        // 6. 안전한 상태 업데이트
-        $result = update_queue_status_split_safe($queue_id, $next_status);
+        // 6. 🚨 단순 상태 변경만 수행 (검증 없이)
+        $result = simple_update_queue_status($queue_id, $next_status);
         
         // 7. 락 해제
         QueueLockManager::releaseLock($queue_id);
@@ -1231,6 +1073,74 @@ function process_move_queue_status($queue_id) {
 }
 
 /**
+ * 🚨 단순 상태 변경 함수 (Move 버튼 전용, 검증 없음)
+ */
+function simple_update_queue_status($queue_id, $new_status) {
+    // 현재 큐 데이터 로드
+    $current_data = load_queue_split($queue_id);
+    if (!$current_data) {
+        error_log("Queue not found for simple status update: {$queue_id}");
+        return false;
+    }
+    
+    $old_status = $current_data['status'];
+    
+    // 상태만 변경 (다른 데이터는 건드리지 않음)
+    $current_data['status'] = $new_status;
+    $current_data['updated_at'] = date('Y-m-d H:i:s');
+    
+    // 파일 경로 설정
+    $old_dir = get_queue_directory_by_status($old_status);
+    $new_dir = get_queue_directory_by_status($new_status);
+    $filename = $current_data['filename'];
+    
+    $old_path = $old_dir . '/' . $filename;
+    $new_path = $new_dir . '/' . $filename;
+    
+    // 새 경로에 파일 저장
+    $json_content = json_encode($current_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($json_content === false) {
+        error_log("Failed to encode queue data for simple update: {$queue_id}");
+        return false;
+    }
+    
+    if (!file_put_contents($new_path, $json_content, LOCK_EX) === false) {
+        error_log("Failed to save updated queue file: {$new_path}");
+        return false;
+    }
+    
+    // 기존 파일 삭제 (다른 디렉토리인 경우)
+    if ($old_path !== $new_path && file_exists($old_path)) {
+        unlink($old_path);
+    }
+    
+    // 인덱스 업데이트 (기본 정보만)
+    $index_info = [
+        'queue_id' => $queue_id,
+        'filename' => $filename,
+        'status' => $new_status,
+        'title' => $current_data['title'] ?? '',
+        'created_at' => $current_data['created_at'] ?? date('Y-m-d H:i:s'),
+        'updated_at' => $current_data['updated_at'],
+        'attempts' => $current_data['attempts'] ?? 0,
+        'category_name' => $current_data['category_name'] ?? '',
+        'prompt_type_name' => $current_data['prompt_type_name'] ?? '',
+        'priority' => $current_data['priority'] ?? 1
+    ];
+    
+    if (!update_queue_index($queue_id, $index_info)) {
+        error_log("Failed to update queue index for simple status update: {$queue_id}");
+        return false;
+    }
+    
+    // 레거시 파일 업데이트
+    update_legacy_queue_file();
+    
+    error_log("Simple status update completed: {$queue_id} from {$old_status} to {$new_status}");
+    return true;
+}
+
+/**
  * 🧹 만료된 락 파일 정리
  */
 function cleanup_expired_locks() {
@@ -1243,21 +1153,19 @@ function cleanup_expired_locks() {
     
     foreach ($lock_files as $lock_file) {
         $lock_time = filemtime($lock_file);
-        if (time() - $lock_time > 60) { // 1분 이상 된 락 파일 삭제
-            unlink($lock_file);
-            $cleaned++;
+        // 5분 이상 된 락 파일 삭제
+        if (time() - $lock_time > 300) {
+            if (unlink($lock_file)) {
+                $cleaned++;
+            }
         }
-    }
-    
-    if ($cleaned > 0) {
-        error_log("Cleaned up {$cleaned} expired lock files");
     }
     
     return $cleaned;
 }
 
 /**
- * 🧹 만료된 트랜잭션 로그 정리
+ * 🧹 만료된 트랜잭션 파일 정리
  */
 function cleanup_expired_transactions() {
     if (!is_dir(QUEUE_TRANSACTIONS_DIR)) {
@@ -1265,18 +1173,16 @@ function cleanup_expired_transactions() {
     }
     
     $cleaned = 0;
-    $transaction_files = glob(QUEUE_TRANSACTIONS_DIR . '/*.log');
+    $transaction_files = glob(QUEUE_TRANSACTIONS_DIR . '/*.json');
     
     foreach ($transaction_files as $transaction_file) {
         $transaction_time = filemtime($transaction_file);
-        if (time() - $transaction_time > 300) { // 5분 이상 된 트랜잭션 로그 삭제
-            unlink($transaction_file);
-            $cleaned++;
+        // 1시간 이상 된 트랜잭션 파일 삭제
+        if (time() - $transaction_time > 3600) {
+            if (unlink($transaction_file)) {
+                $cleaned++;
+            }
         }
-    }
-    
-    if ($cleaned > 0) {
-        error_log("Cleaned up {$cleaned} expired transaction files");
     }
     
     return $cleaned;
