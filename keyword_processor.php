@@ -5,7 +5,7 @@
  * 워드프레스 환경에 전혀 종속되지 않으며, 순수 PHP로만 작동합니다.
  *
  * 파일 위치: /var/www/novacents/tools/keyword_processor.php
- * 버전: v4.8 (validate_user_details 함수 수정 - 중첩 배열 처리)
+ * 버전: v4.9 (trim 배열 오류 수정)
  */
 
 // 1. 초기 에러 리포팅 설정 (프로덕션 모드)
@@ -348,39 +348,24 @@ function validate_user_details($user_details) {
     return $is_valid;
 }
 
-// 14. 사용자 상세 정보 요약 생성 함수
+// 14. 사용자 상세 정보 요약 생성 함수 (🔧 배열 처리 수정)
 function format_user_details_summary($user_details) {
     if (!is_array($user_details)) {
         return 'Invalid user details';
     }
     
     $summary_parts = [];
+    $field_count = 0;
     
-    if (isset($user_details['age']) && !empty($user_details['age'])) {
-        $summary_parts[] = "연령: " . $user_details['age'];
-    }
-    
-    if (isset($user_details['gender']) && !empty($user_details['gender'])) {
-        $summary_parts[] = "성별: " . $user_details['gender'];
-    }
-    
-    if (isset($user_details['lifestyle']) && !empty($user_details['lifestyle'])) {
-        if (is_array($user_details['lifestyle'])) {
-            $summary_parts[] = "라이프스타일: " . implode(', ', array_slice($user_details['lifestyle'], 0, 2));
-        } else {
-            $summary_parts[] = "라이프스타일: " . $user_details['lifestyle'];
+    foreach ($user_details as $key => $value) {
+        if (is_string($value) && !empty(trim($value))) {
+            $field_count++;
+        } elseif (is_array($value) && !empty($value)) {
+            $field_count++;
         }
     }
     
-    if (isset($user_details['interests']) && !empty($user_details['interests'])) {
-        if (is_array($user_details['interests'])) {
-            $summary_parts[] = "관심사: " . implode(', ', array_slice($user_details['interests'], 0, 2));
-        } else {
-            $summary_parts[] = "관심사: " . $user_details['interests'];
-        }
-    }
-    
-    return empty($summary_parts) ? 'No valid details' : implode(', ', $summary_parts);
+    return "{$field_count}개 필드";
 }
 
 // 15. 카테고리 이름 가져오기 함수
