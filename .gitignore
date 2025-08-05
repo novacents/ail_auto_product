@@ -13,6 +13,7 @@ __pycache__/
 
 # Temporary directory
 temp/
+temp/.gitkeep
 
 # 큐 관련 파일들 (동적 데이터)
 product_queue.json
