@@ -130,7 +130,8 @@ function toggleDragSort() {
 }
 
 function addDragEvents() {
-    document.querySelectorAll('.queue-item').forEach(item => {
+    // 기존 queue-item과 새로운 queue-card 모두 지원
+    document.querySelectorAll('.queue-item, .queue-card').forEach(item => {
         item.addEventListener('dragstart', handleDragStart);
         item.addEventListener('dragover', handleDragOver);
         item.addEventListener('drop', handleDrop);
@@ -151,7 +152,7 @@ function handleDrop(e) {
         saveQueueOrder(); applyFiltersAndSearch();
     }
 }
-function handleDragEnd(e) { this.classList.remove('dragging'); document.querySelectorAll('.queue-item').forEach(item => item.classList.remove('drag-over')); }
+function handleDragEnd() { this.classList.remove('dragging'); document.querySelectorAll('.queue-item').forEach(item => item.classList.remove('drag-over')); }
 
 async function saveQueueOrder() {
     try {
@@ -1089,6 +1090,205 @@ function hideLoading() { document.getElementById('loadingOverlay').style.display
 document.getElementById('editModal').addEventListener('click', function(e) { if (e.target === this) closeEditModal(); });
 document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && document.getElementById('editModal').style.display === 'flex') closeEditModal(); });
 
+// 🃏 컴팩트 카드 기능들
+
+// 컴팩트 상품 이미지 HTML 생성
+function generateCompactProductImages(productsSummary) {
+    if (!productsSummary || productsSummary.product_samples.length === 0) {
+        return `<div class="queue-products-preview">
+            <h4>🖼️ 상품 이미지</h4>
+            <div class="product-images-compact">
+                <div class="product-image-compact" style="background: #f5f5f5; display: flex; align-items: center; justify-content: center; color: #999; font-size: 12px;">
+                    이미지<br>없음
+                </div>
+            </div>
+        </div>`;
+    }
+    
+    const maxDisplay = 6; // 최대 6개까지 표시
+    const imagesToShow = productsSummary.product_samples.slice(0, maxDisplay);
+    const remainingCount = productsSummary.total_products - maxDisplay;
+    
+    let imagesHtml = imagesToShow.map(product => {
+        if (product.image_url) {
+            return `<div class="product-image-compact">
+                <img src="${product.image_url}" alt="${product.title}" title="${product.title}">
+            </div>`;
+        } else {
+            return `<div class="product-image-compact" style="background: #f5f5f5; display: flex; align-items: center; justify-content: center; color: #999; font-size: 10px;">
+                이미지<br>없음
+            </div>`;
+        }
+    }).join('');
+    
+    // 더 많은 상품이 있으면 +N 표시
+    if (remainingCount > 0) {
+        imagesHtml += `<div class="product-image-compact" style="background: linear-gradient(135deg, #f0f0f0, #e0e0e0); display: flex; align-items: center; justify-content: center; color: #666; font-size: 14px; font-weight: 600;">
+            +${remainingCount}
+        </div>`;
+    }
+    
+    return `<div class="queue-products-preview">
+        <h4>🖼️ 상품 이미지</h4>
+        <div class="product-images-compact">
+            ${imagesHtml}
+        </div>
+    </div>`;
+}
+
+// 컴팩트 키워드 HTML 생성
+function generateCompactKeywords(keywords) {
+    if (!keywords || keywords.length === 0) {
+        return '';
+    }
+    
+    const maxDisplay = 5; // 최대 5개까지 표시
+    const keywordsToShow = keywords.slice(0, maxDisplay);
+    const remainingCount = keywords.length - maxDisplay;
+    
+    let keywordsHtml = keywordsToShow.map(keyword => 
+        `<span class="keyword-tag-compact">${keyword.name}</span>`
+    ).join('');
+    
+    // 더 많은 키워드가 있으면 +N 표시
+    if (remainingCount > 0) {
+        keywordsHtml += `<span class="keyword-tag-compact" style="background: #e0e0e0; color: #666;">+${remainingCount}</span>`;
+    }
+    
+    return `<div class="queue-keywords-compact">
+        <h4>🏷️ 키워드</h4>
+        <div class="keywords-list-compact">
+            ${keywordsHtml}
+        </div>
+    </div>`;
+}
+
+// 날짜 포맷 함수
+function formatDate(dateString) {
+    if (!dateString) return '날짜 없음';
+    
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = now - date;
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) {
+        return '오늘';
+    } else if (diffDays === 1) {
+        return '어제';
+    } else if (diffDays < 7) {
+        return `${diffDays}일 전`;
+    } else {
+        return date.toLocaleDateString('ko-KR', {month: 'short', day: 'numeric'});
+    }
+}
+
+// 큐 카드 토글 기능
+function toggleQueueCard(queueId) {
+    const card = document.querySelector(`[data-queue-id="${queueId}"]`);
+    const button = card.querySelector('.show-more-btn');
+    
+    if (card.classList.contains('expanded')) {
+        // 축소
+        card.classList.remove('expanded');
+        button.textContent = '더보기';
+    } else {
+        // 확장
+        card.classList.add('expanded');
+        button.textContent = '접기';
+        
+        // 확장 시 상세 정보 로드 (필요시)
+        loadExpandedCardContent(queueId, card);
+    }
+}
+
+// 확장된 카드 콘텐츠 로드
+function loadExpandedCardContent(queueId, cardElement) {
+    // 이미 상세 콘텐츠가 로드되었는지 확인
+    if (cardElement.querySelector('.expanded-content')) {
+        return; // 이미 로드됨
+    }
+    
+    // 해당 큐 데이터 찾기
+    const queueItem = currentQueue.find(item => item.queue_id === queueId);
+    if (!queueItem) return;
+    
+    // 상세 콘텐츠 HTML 생성
+    const expandedHtml = `<div class="expanded-content">
+        <div class="expanded-section">
+            <h5>🔍 상세 정보</h5>
+            <div class="expanded-stats">
+                <div class="expanded-stat">
+                    <span class="stat-label">우선순위:</span>
+                    <span class="stat-value">${queueItem.priority || 1}</span>
+                </div>
+                <div class="expanded-stat">
+                    <span class="stat-label">상세정보:</span>
+                    <span class="stat-value">${queueItem.has_user_details ? '입력완료' : '미입력'}</span>
+                </div>
+                <div class="expanded-stat">
+                    <span class="stat-label">상품데이터:</span>
+                    <span class="stat-value">${queueItem.has_product_data ? '분석완료' : '미분석'}</span>
+                </div>
+            </div>
+        </div>
+        
+        ${queueItem.keywords && queueItem.keywords.length > 0 ? `
+        <div class="expanded-section">
+            <h5>🏷️ 전체 키워드</h5>
+            <div class="expanded-keywords">
+                ${queueItem.keywords.map(k => `<span class="keyword-tag-expanded">${k.name}</span>`).join('')}
+            </div>
+        </div>` : ''}
+        
+        ${generateExpandedProductsPreview(getProductsSummary(queueItem.keywords))}
+        
+        ${queueItem.thumbnail_url ? `
+        <div class="expanded-section">
+            <h5>🖼️ 썸네일 미리보기</h5>
+            <div class="thumbnail-preview-expanded">
+                <img src="${queueItem.thumbnail_url}" alt="썸네일" style="max-width: 200px; max-height: 120px; border-radius: 8px; object-fit: cover; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" onerror="this.style.display='none'">
+            </div>
+        </div>` : ''}
+    </div>`;
+    
+    // 카드 콘텐츠 영역에 추가
+    const contentArea = cardElement.querySelector('.queue-card-content');
+    contentArea.insertAdjacentHTML('beforeend', expandedHtml);
+}
+
+// 확장된 상품 미리보기 생성
+function generateExpandedProductsPreview(productsSummary) {
+    if (!productsSummary || productsSummary.product_samples.length === 0) {
+        return `<div class="expanded-section">
+            <h5>📦 상품 상세 정보</h5>
+            <p style="color: #666; font-style: italic;">상품 분석 데이터가 없습니다.</p>
+        </div>`;
+    }
+    
+    const productsHtml = productsSummary.product_samples.map(product => {
+        const imageHtml = product.image_url ? 
+            `<img src="${product.image_url}" alt="${product.title}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 6px;">` :
+            `<div style="width: 80px; height: 80px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; color: #999; font-size: 10px; border-radius: 6px;">이미지<br>없음</div>`;
+        
+        return `<div class="expanded-product-item" style="display: flex; gap: 10px; padding: 10px; background: #f9f9f9; border-radius: 8px; margin-bottom: 8px;">
+            ${imageHtml}
+            <div style="flex: 1;">
+                <h6 style="margin: 0 0 5px 0; font-size: 14px; line-height: 1.3;">${product.title}</h6>
+                <p style="margin: 0; color: #e62e04; font-weight: 600;">${formatPrice(product.price)}</p>
+                <p style="margin: 2px 0 0 0; font-size: 12px; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${product.url}</p>
+            </div>
+        </div>`;
+    }).join('');
+    
+    return `<div class="expanded-section">
+        <h5>📦 상품 상세 정보 (${productsSummary.products_with_data}/${productsSummary.total_products}개 분석완료)</h5>
+        <div class="expanded-products">
+            ${productsHtml}
+        </div>
+    </div>`;
+}
+
 // 🆕 필터링 및 검색 기능
 function filterByStatus(status) {
     currentFilter = status;
@@ -1167,42 +1367,46 @@ function displayFilteredQueue() {
     let html = '';
     filteredQueue.forEach(item => {
         const keywordCount = item.keywords ? item.keywords.length : 0;
-        const totalLinks = item.keywords ? item.keywords.reduce((sum, k) => sum + (k.coupang?.length || 0) + (k.aliexpress?.length || 0), 0) : 0;
-        const statusClass = `status-${item.status}`;
+        const statusClass = `queue-status-${item.status}`;
         const statusText = getStatusText(item.status);
         const productsSummary = getProductsSummary(item.keywords);
         
-        // 🔧 썸네일 URL 표시 추가
-        const thumbnailDisplay = item.thumbnail_url ? 
-            `<div class="thumbnail-preview"><img src="${item.thumbnail_url}" alt="썸네일" style="max-width: 100px; max-height: 60px; border-radius: 4px; object-fit: cover;" onerror="this.style.display='none'"><span class="thumbnail-text">썸네일 있음</span></div>` :
-            `<div class="thumbnail-preview"><span class="thumbnail-text">썸네일 없음</span></div>`;
+        // 컴팩트 상품 이미지 HTML 생성
+        const compactProductImages = generateCompactProductImages(productsSummary);
         
-        html += `<div class="queue-item queue-${item.status}" data-queue-id="${item.queue_id}" data-status="${item.status}" draggable="${dragEnabled}">
-            <div class="queue-header">
-                <div>
-                    <h3 class="queue-title">${item.title}</h3>
-                    <p class="queue-meta">${item.category_name} | ${item.prompt_type_name || '기본형'} | ${item.created_at} | <span class="status-badge ${statusClass}">${statusText}</span></p>
+        // 컴팩트 키워드 HTML 생성
+        const compactKeywords = generateCompactKeywords(item.keywords);
+        
+        html += `<div class="queue-card ${statusClass}" data-queue-id="${item.queue_id}" data-status="${item.status}" draggable="${dragEnabled}">
+            <div class="queue-card-content">
+                <div class="queue-card-header">
+                    <h3 class="queue-card-title">${item.title}</h3>
+                    <span class="queue-card-status ${statusClass}">${statusText}</span>
                 </div>
-                <div class="queue-actions">
+                
+                <div class="queue-card-meta">
+                    <span>📂 ${item.category_name}</span>
+                    <span>🎯 ${item.prompt_type_name || '기본형'}</span>
+                    <span>📅 ${formatDate(item.created_at)}</span>
+                </div>
+                
+                <div class="queue-card-stats">
+                    <span class="products-count-badge">📦 ${productsSummary.products_with_data}/${productsSummary.total_products}개 상품</span>
+                    <span>🏷️ ${keywordCount}개 키워드</span>
+                    <span>🖼️ ${item.has_thumbnail_url ? '썸네일 ✓' : '썸네일 X'}</span>
+                </div>
+                
+                ${compactKeywords}
+                ${compactProductImages}
+                
+                <div class="queue-card-actions">
                     <button class="btn btn-primary btn-small" onclick="editQueue('${item.queue_id}')">✏️ 편집</button>
-                    <button class="btn btn-orange btn-small" onclick="immediatePublish('${item.queue_id}')">🚀 즉시발행</button>
+                    <button class="btn btn-success btn-small" onclick="immediatePublish('${item.queue_id}')">⚡ 즉시발행</button>
                     <button class="btn btn-danger btn-small" onclick="deleteQueue('${item.queue_id}')">🗑️ 삭제</button>
                 </div>
             </div>
-            <div class="queue-content">
-                <div class="queue-info">
-                    <div class="info-item"><div class="info-value">${keywordCount}</div><div class="info-label">키워드</div></div>
-                    <div class="info-item"><div class="info-value">${totalLinks}</div><div class="info-label">총 링크</div></div>
-                    <div class="info-item"><div class="info-value">${productsSummary.products_with_data}</div><div class="info-label">분석완료</div></div>
-                    <div class="info-item"><div class="info-value">${item.priority || 1}</div><div class="info-label">우선순위</div></div>
-                    <div class="info-item"><div class="info-value">${item.has_user_details ? 'O' : 'X'}</div><div class="info-label">상세정보</div></div>
-                    <div class="info-item"><div class="info-value">${item.has_product_data ? 'O' : 'X'}</div><div class="info-label">상품데이터</div></div>
-                    <div class="info-item"><div class="info-value">${item.has_thumbnail_url ? 'O' : 'X'}</div><div class="info-label">썸네일</div></div>
-                </div>
-                ${item.keywords && item.keywords.length > 0 ? `<div class="keywords-preview"><h4>키워드:</h4><div class="keyword-tags">${item.keywords.map(k => `<span class="keyword-tag">${k.name}</span>`).join('')}</div></div>` : ''}
-                ${generateProductsPreview(productsSummary)}
-                ${thumbnailDisplay}
-            </div>
+            
+            <button class="show-more-btn" onclick="toggleQueueCard('${item.queue_id}')">더보기</button>
         </div>`;
     });
     
