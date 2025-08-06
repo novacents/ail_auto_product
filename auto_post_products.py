@@ -433,13 +433,8 @@ class AliExpressPostingSystem:
             if result['success']:
                 print(f"✅ 작업 완료: {title}")
                 
-                # 즉시 발행 모드와 일반 모드 구분 처리
-                if self.immediate_mode:
-                    # 즉시 발행인 경우 큐에서 제거
-                    self.remove_job_from_queue(job_id)
-                else:
-                    # 일반 큐 처리인 경우 상태 업데이트
-                    self.update_queue_status_split(job_id, 'completed', f"발행 완료: {result['post_url']}")
+                # 즉시 발행과 일반 처리 모두 completed 상태로 업데이트
+                self.update_queue_status_split(job_id, 'completed', f"발행 완료: {result['post_url']}")
                 
                 return result
             else:
