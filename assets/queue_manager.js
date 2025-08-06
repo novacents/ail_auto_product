@@ -517,7 +517,7 @@ function immediatePublish(queueId) {
  */
 function getCategoryName(categoryId) {
     const categories = {
-        '354': 'Today\\'s Pick',
+        '354': "Today's Pick",
         '355': '기발한 잡화점',
         '356': '스마트 리빙',
         '12': '우리잇템'
