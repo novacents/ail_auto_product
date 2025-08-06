@@ -6,76 +6,73 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * 분할 큐 시스템 유틸리티 함수들
- * AliExpress 어필리에이트 상품 자동 등록 시스템
+ * 큐 파일 관리 유틸리티 함수들 - 2단계 시스템 (pending/completed)
+ * 버전: v4.0 (queue_manager_plan.md 기반 재구현)
  * 
  * 큐 디렉토리 구조:
  * /var/www/novacents/tools/queues/
  * ├── pending/     # 대기 중
- * ├── processing/  # 처리 중
- * ├── completed/   # 완료
- * └── failed/      # 실패
+ * └── completed/   # 완료
+ * 
+ * @author Claude AI
+ * @version 4.0
+ * @date 2025-08-05
  */
 
-// 큐 디렉토리 상수
-define('QUEUE_SPLIT_DIR', '/var/www/novacents/tools/queues');
+// 디렉토리 및 파일 경로 상수 (2단계 시스템)
+define('QUEUE_BASE_DIR', '/var/www/novacents/tools');
+define('QUEUE_SPLIT_DIR', QUEUE_BASE_DIR . '/queues');
 define('QUEUE_PENDING_DIR', QUEUE_SPLIT_DIR . '/pending');
-define('QUEUE_PROCESSING_DIR', QUEUE_SPLIT_DIR . '/processing');
 define('QUEUE_COMPLETED_DIR', QUEUE_SPLIT_DIR . '/completed');
-define('QUEUE_FAILED_DIR', QUEUE_SPLIT_DIR . '/failed');
+// 🚫 QUEUE_LEGACY_FILE 제거됨 - product_queue.json 더이상 사용하지 않음
 
-// 큐 인덱스 파일
-define('QUEUE_INDEX_FILE', '/var/www/novacents/tools/queue_index.json');
+define('QUEUE_INDEX_FILE', QUEUE_BASE_DIR . '/queue_index.json');
 
-// 레거시 호환을 위한 파일
-define('LEGACY_QUEUE_FILE', '/var/www/novacents/tools/product_queue.json');
-
-// 📝 보안 강화를 위한 새로운 디렉토리들
-define('QUEUE_LOCKS_DIR', '/var/www/novacents/tools/locks');
-define('QUEUE_TRANSACTIONS_DIR', '/var/www/novacents/tools/transactions');
-define('PYTHON_PID_FILE', '/var/www/novacents/tools/auto_post_products.pid');
 
 /**
- * 큐 디렉토리 초기화
+ * 큐 디렉토리 초기화 (2단계 시스템)
  */
 function initialize_queue_directories() {
-    $directories = [
+    $dirs = [
         QUEUE_SPLIT_DIR,
         QUEUE_PENDING_DIR,
-        QUEUE_PROCESSING_DIR,
-        QUEUE_COMPLETED_DIR,
-        QUEUE_FAILED_DIR,
-        QUEUE_LOCKS_DIR,
-        QUEUE_TRANSACTIONS_DIR
+        QUEUE_COMPLETED_DIR
     ];
     
-    foreach ($directories as $dir) {
+    foreach ($dirs as $dir) {
         if (!is_dir($dir)) {
             if (!mkdir($dir, 0755, true)) {
                 error_log("Failed to create queue directory: {$dir}");
                 return false;
             }
         }
+        
+        // 디렉토리 쓰기 권한 확인
+        if (!is_writable($dir)) {
+            error_log("Queue directory is not writable: {$dir}");
+            return false;
+        }
+    }
+    
+    // 인덱스 파일 초기화
+    if (!file_exists(QUEUE_INDEX_FILE)) {
+        save_queue_index([]);
     }
     
     return true;
 }
 
 /**
- * 상태에 따른 큐 디렉토리 반환
+ * 상태별 디렉토리 경로 반환 (2단계 시스템)
  */
 function get_queue_directory_by_status($status) {
     switch ($status) {
         case 'pending':
             return QUEUE_PENDING_DIR;
-        case 'processing':
-            return QUEUE_PROCESSING_DIR;
         case 'completed':
             return QUEUE_COMPLETED_DIR;
-        case 'failed':
-            return QUEUE_FAILED_DIR;
         default:
-            return QUEUE_PENDING_DIR;
+            return QUEUE_PENDING_DIR; // 기본값: pending
     }
 }
 
@@ -190,8 +187,7 @@ function add_queue_split($queue_data) {
         return false;
     }
     
-    // 호환성을 위한 레거시 파일 업데이트
-    update_legacy_queue_file();
+    // 🚫 레거시 파일 업데이트 제거됨 - product_queue.json 더이상 사용하지 않음
     
     return $queue_id;
 }
@@ -293,6 +289,7 @@ function get_all_queues_split($status = null, $limit = 100) {
     return $queues;
 }
 
+
 /**
  * 큐 상태 업데이트 (분할 시스템)
  */
@@ -361,8 +358,7 @@ function update_queue_status_split($queue_id, $status, $error_message = null) {
         return false;
     }
     
-    // 호환성을 위한 레거시 파일 업데이트
-    update_legacy_queue_file();
+    // 🚫 레거시 파일 업데이트 제거됨 - product_queue.json 더이상 사용하지 않음
     
     return true;
 }
@@ -428,8 +424,7 @@ function update_queue_split($queue_id, $updated_data) {
         return false;
     }
     
-    // 호환성을 위한 레거시 파일 업데이트
-    update_legacy_queue_file();
+    // 🚫 레거시 파일 업데이트 제거됨 - product_queue.json 더이상 사용하지 않음
     
     return true;
 }
@@ -471,7 +466,7 @@ function reorder_queues_split($queue_ids_array) {
     // 인덱스 저장
     if ($reordered_count > 0) {
         save_queue_index($index);
-        update_legacy_queue_file();
+        // 🚫 레거시 파일 업데이트 제거됨
     }
     
     return $reordered_count;
@@ -505,8 +500,7 @@ function remove_queue_split($queue_id) {
         return false;
     }
     
-    // 호환성을 위한 레거시 파일 업데이트
-    update_legacy_queue_file();
+    // 🚫 레거시 파일 업데이트 제거됨 - product_queue.json 더이상 사용하지 않음
     
     return true;
 }
@@ -517,17 +511,16 @@ function remove_queue_split($queue_id) {
 function get_queue_stats_split() {
     $index = load_queue_index();
     $stats = [
-        'total' => count($index),
+        'total' => 0,
         'pending' => 0,
-        'processing' => 0,
-        'completed' => 0,
-        'failed' => 0
+        'completed' => 0
     ];
     
     foreach ($index as $queue_info) {
-        $status = $queue_info['status'];
-        if (isset($stats[$status])) {
-            $stats[$status]++;
+        // 2단계 시스템에서만 허용되는 상태만 카운트
+        if (in_array($queue_info['status'], ['pending', 'completed'])) {
+            $stats['total']++;
+            $stats[$queue_info['status']]++;
         }
     }
     
@@ -584,16 +577,19 @@ function cleanup_completed_queues_split($days_old = 7) {
     $cleaned_count = 0;
     
     foreach ($index as $queue_id => $queue_info) {
+        // completed 상태만 정리 (failed 상태 제거)
         if ($queue_info['status'] === 'completed') {
-            $updated_time = strtotime($queue_info['updated_at']);
-            if ($updated_time < $cutoff_time) {
+            $created_time = strtotime($queue_info['created_at']);
+            if ($created_time < $cutoff_time) {
                 if (remove_queue_split($queue_id)) {
                     $cleaned_count++;
+                    error_log("Cleaned up old completed queue: {$queue_id}");
                 }
             }
         }
     }
     
+    error_log("Cleanup completed: {$cleaned_count} old completed queues removed");
     return $cleaned_count;
 }
 
@@ -639,29 +635,9 @@ function debug_queue_split_info() {
 }
 
 /**
- * 레거시 호환을 위한 product_queue.json 업데이트
+ * 🚫 update_legacy_queue_file() 함수 제거됨
+ * product_queue.json 더이상 사용하지 않음 (queue_manager_plan.md 요구사항)
  */
-function update_legacy_queue_file() {
-    $all_queues = get_all_queues_split();
-    
-    // 레거시 형식으로 변환
-    $legacy_data = [];
-    foreach ($all_queues as $queue) {
-        $legacy_data[] = [
-            'id' => $queue['queue_id'],
-            'title' => $queue['title'] ?? '',
-            'status' => $queue['status'],
-            'created_at' => $queue['created_at'] ?? '',
-            'updated_at' => $queue['updated_at'] ?? '',
-            'data' => $queue
-        ];
-    }
-    
-    $json_content = json_encode($legacy_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-    if ($json_content !== false) {
-        file_put_contents(LEGACY_QUEUE_FILE, $json_content, LOCK_EX);
-    }
-}
 
 /**
  * 큐 통계를 위한 별칭 함수 (queue_manager.php 호환)
@@ -1133,8 +1109,7 @@ function simple_update_queue_status($queue_id, $new_status) {
         return false;
     }
     
-    // 레거시 파일 업데이트
-    update_legacy_queue_file();
+    // 🚫 레거시 파일 업데이트 제거됨 - product_queue.json 더이상 사용하지 않음
     
     error_log("Simple status update completed: {$queue_id} from {$old_status} to {$new_status}");
     return true;
@@ -1187,5 +1162,218 @@ function cleanup_expired_transactions() {
     
     return $cleaned;
 }
+
+/**
+ * 대기 중인 큐 목록 조회 (2단계 시스템)
+ */
+function get_pending_queues_split($limit = 100) {
+    $index = load_queue_index();
+    $pending_queues = [];
+    
+    // pending 상태만 필터링
+    foreach ($index as $queue_id => $queue_info) {
+        if ($queue_info['status'] === 'pending') {
+            $pending_queues[] = $queue_info;
+        }
+    }
+    
+    // 최신순 정렬 (modified_at > created_at 우선)
+    usort($pending_queues, function($a, $b) {
+        $timeA = $a['modified_at'] ?? $a['created_at'] ?? '0000-00-00 00:00:00';
+        $timeB = $b['modified_at'] ?? $b['created_at'] ?? '0000-00-00 00:00:00';
+        return strcmp($timeB, $timeA); // 최신순
+    });
+    
+    // 개수 제한
+    if ($limit !== null && $limit > 0) {
+        $pending_queues = array_slice($pending_queues, 0, $limit);
+    }
+    
+    // 실제 큐 데이터 로드
+    $queues = [];
+    foreach ($pending_queues as $queue_info) {
+        $queue_data = load_queue_split($queue_info['queue_id']);
+        if ($queue_data !== null) {
+            $queues[] = $queue_data;
+        }
+    }
+    
+    return $queues;
+}
+
+/**
+ * 완료된 큐 목록 조회 (2단계 시스템용 새 함수)
+ */
+function get_completed_queues_split($limit = 100) {
+    $index = load_queue_index();
+    $completed_queues = [];
+    
+    // completed 상태만 필터링
+    foreach ($index as $queue_id => $queue_info) {
+        if ($queue_info['status'] === 'completed') {
+            $completed_queues[] = $queue_info;
+        }
+    }
+    
+    // 최신순 정렬 (modified_at > created_at 우선)
+    usort($completed_queues, function($a, $b) {
+        $timeA = $a['modified_at'] ?? $a['created_at'] ?? '0000-00-00 00:00:00';
+        $timeB = $b['modified_at'] ?? $b['created_at'] ?? '0000-00-00 00:00:00';
+        return strcmp($timeB, $timeA); // 최신순
+    });
+    
+    // 개수 제한
+    if ($limit !== null && $limit > 0) {
+        $completed_queues = array_slice($completed_queues, 0, $limit);
+    }
+    
+    // 실제 큐 데이터 로드
+    $queues = [];
+    foreach ($completed_queues as $queue_info) {
+        $queue_data = load_queue_split($queue_info['queue_id']);
+        if ($queue_data !== null) {
+            $queues[] = $queue_data;
+        }
+    }
+    
+    return $queues;
+}
+
+/**
+ * 상태별 큐 목록 조회 (2단계 시스템)
+ */
+function get_queues_by_status_split($status, $limit = null) {
+    // 2단계 시스템에서만 허용되는 상태 검증
+    if (!in_array($status, ['pending', 'completed'])) {
+        return [];
+    }
+    
+    if ($status === 'pending') {
+        return get_pending_queues_split($limit);
+    } elseif ($status === 'completed') {
+        return get_completed_queues_split($limit);
+    }
+    
+    return [];
+}
+
+/**
+ * 큐 상태 업데이트 (2단계 시스템 전용)
+ */
+function update_queue_status_split($queue_id, $new_status, $error_message = null) {
+    // 2단계 시스템에서만 허용되는 상태 검증
+    if (!in_array($new_status, ['pending', 'completed'])) {
+        error_log("Invalid status for 2-stage system: {$new_status}");
+        return false;
+    }
+    
+    $queue_data = load_queue_split($queue_id);
+    if ($queue_data === null) {
+        error_log("Queue not found for status update: {$queue_id}");
+        return false;
+    }
+    
+    $old_status = $queue_data['status'];
+    $old_filename = $queue_data['filename'];
+    
+    // 큐 데이터 업데이트
+    $queue_data['status'] = $new_status;
+    $queue_data['updated_at'] = date('Y-m-d H:i:s');
+    $queue_data['modified_at'] = date('Y-m-d H:i:s');
+    
+    if ($error_message) {
+        $queue_data['last_error'] = $error_message;
+    }
+    
+    // 상태가 변경되면 파일 이동
+    $old_dir = get_queue_directory_by_status($old_status);
+    $new_dir = get_queue_directory_by_status($new_status);
+    
+    $old_path = $old_dir . '/' . $old_filename;
+    $new_path = $new_dir . '/' . $old_filename;
+    
+    // 새 위치에 파일 저장
+    $json_content = json_encode($queue_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($json_content === false) {
+        error_log("Failed to encode updated queue data for queue_id: {$queue_id}");
+        return false;
+    }
+    
+    if (!file_put_contents($new_path, $json_content, LOCK_EX)) {
+        error_log("Failed to save updated queue file: {$new_path}");
+        return false;
+    }
+    
+    // 기존 파일 삭제 (다른 디렉토리인 경우)
+    if ($old_path !== $new_path && file_exists($old_path)) {
+        unlink($old_path);
+    }
+    
+    // 인덱스 업데이트
+    $index_info = [
+        'queue_id' => $queue_id,
+        'filename' => $old_filename,
+        'status' => $new_status,
+        'title' => $queue_data['title'] ?? '',
+        'created_at' => $queue_data['created_at'],
+        'updated_at' => $queue_data['updated_at'],
+        'modified_at' => $queue_data['modified_at'],
+        'category_name' => $queue_data['category_name'] ?? '',
+        'prompt_type_name' => $queue_data['prompt_type_name'] ?? '',
+        'priority' => $queue_data['priority'] ?? 1
+    ];
+    
+    if (!update_queue_index($queue_id, $index_info)) {
+        error_log("Failed to update queue index for queue_id: {$queue_id}");
+        return false;
+    }
+    
+    return true;
+}
+
+/**
+ * ID 추가 (호환성을 위해)
+ */
+function load_queue_split($queue_id) {
+    $index = load_queue_index();
+    
+    if (!isset($index[$queue_id])) {
+        return null;
+    }
+    
+    $queue_info = $index[$queue_id];
+    $status = $queue_info['status'];
+    $filename = $queue_info['filename'];
+    
+    // 상태에 따라 디렉토리 결정
+    $dir = get_queue_directory_by_status($status);
+    $filepath = $dir . '/' . $filename;
+    
+    if (!file_exists($filepath)) {
+        // 인덱스에는 있지만 파일이 없는 경우 - 인덱스에서 제거
+        remove_from_queue_index($queue_id);
+        error_log("Queue file not found, removed from index: {$filepath}");
+        return null;
+    }
+    
+    $content = file_get_contents($filepath);
+    if ($content === false) {
+        error_log("Failed to read queue file: {$filepath}");
+        return null;
+    }
+    
+    $queue_data = json_decode($content, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        error_log("Failed to decode queue JSON: " . json_last_error_msg() . " - File: {$filepath}");
+        return null;
+    }
+    
+    // 큐 데이터에 ID 추가 (호환성)
+    $queue_data['id'] = $queue_id;
+    
+    return $queue_data;
+}
+
+error_log("queue_utils.php v4.0 loaded - 2-stage system (pending/completed)");
 
 ?>
