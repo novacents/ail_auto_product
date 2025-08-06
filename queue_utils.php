@@ -254,6 +254,9 @@ function load_queue_split($queue_id) {
         return null;
     }
     
+    // 큐 데이터에 ID 추가 (호환성)
+    $queue_data['id'] = $queue_id;
+    
     return $queue_data;
 }
 
@@ -294,6 +297,23 @@ function get_all_queues_split($status = null, $limit = 100) {
  * 큐 상태 업데이트 (분할 시스템)
  */
 function update_queue_status_split($queue_id, $status, $error_message = null) {
+    // 2단계 시스템 호출인지 확인 (queue_manager.php에서 호출)
+    $backtrace = debug_backtrace();
+    $is_2stage_call = false;
+    
+    foreach ($backtrace as $trace) {
+        if (isset($trace['file']) && strpos($trace['file'], 'queue_manager.php') !== false) {
+            $is_2stage_call = true;
+            break;
+        }
+    }
+    
+    // 2단계 시스템에서 호출된 경우 상태 제한
+    if ($is_2stage_call && !in_array($status, ['pending', 'completed'])) {
+        error_log("Invalid status for 2-stage system: {$status}");
+        return false;
+    }
+    
     $queue_data = load_queue_split($queue_id);
     if ($queue_data === null) {
         error_log("Queue not found for status update: {$queue_id}");
@@ -1260,7 +1280,7 @@ function get_queues_by_status_split($status, $limit = null) {
 /**
  * 큐 상태 업데이트 (2단계 시스템 전용)
  */
-function update_queue_status_split($queue_id, $new_status, $error_message = null) {
+function update_queue_status_split_v2($queue_id, $new_status, $error_message = null) {
     // 2단계 시스템에서만 허용되는 상태 검증
     if (!in_array($new_status, ['pending', 'completed'])) {
         error_log("Invalid status for 2-stage system: {$new_status}");
@@ -1331,48 +1351,6 @@ function update_queue_status_split($queue_id, $new_status, $error_message = null
     return true;
 }
 
-/**
- * ID 추가 (호환성을 위해)
- */
-function load_queue_split($queue_id) {
-    $index = load_queue_index();
-    
-    if (!isset($index[$queue_id])) {
-        return null;
-    }
-    
-    $queue_info = $index[$queue_id];
-    $status = $queue_info['status'];
-    $filename = $queue_info['filename'];
-    
-    // 상태에 따라 디렉토리 결정
-    $dir = get_queue_directory_by_status($status);
-    $filepath = $dir . '/' . $filename;
-    
-    if (!file_exists($filepath)) {
-        // 인덱스에는 있지만 파일이 없는 경우 - 인덱스에서 제거
-        remove_from_queue_index($queue_id);
-        error_log("Queue file not found, removed from index: {$filepath}");
-        return null;
-    }
-    
-    $content = file_get_contents($filepath);
-    if ($content === false) {
-        error_log("Failed to read queue file: {$filepath}");
-        return null;
-    }
-    
-    $queue_data = json_decode($content, true);
-    if (json_last_error() !== JSON_ERROR_NONE) {
-        error_log("Failed to decode queue JSON: " . json_last_error_msg() . " - File: {$filepath}");
-        return null;
-    }
-    
-    // 큐 데이터에 ID 추가 (호환성)
-    $queue_data['id'] = $queue_id;
-    
-    return $queue_data;
-}
 
 error_log("queue_utils.php v4.0 loaded - 2-stage system (pending/completed)");
 
