@@ -319,45 +319,53 @@ if (isset($_POST['action'])) {
         </div>
     </div>
 
-    <!-- 상단 메뉴 -->
-    <div class="top-menu">
-        <div class="menu-buttons">
-            <button type="button" class="btn menu-btn active" data-status="pending" onclick="switchStatus('pending')">
-                📝 대기중 큐 보기
-            </button>
-            <button type="button" class="btn menu-btn" data-status="completed" onclick="switchStatus('completed')">
-                ✅ 완료됨 큐 보기
-            </button>
+    <!-- 계획서 184-185줄 정확한 레이아웃 구현 -->
+    <div class="top-menu-layout" style="border: 2px solid #ddd; margin: 20px 0; padding: 15px; background: #f9f9f9;">
+        <!-- 첫 번째 줄: 상태 버튼 | 일괄 작업 버튼 -->
+        <div class="menu-row-1" style="display: flex; align-items: center; margin-bottom: 10px;">
+            <div class="status-buttons" style="display: flex; gap: 10px; margin-right: 20px;">
+                <button type="button" class="btn menu-btn active" data-status="pending" onclick="switchStatus('pending')" 
+                        style="background: #007bff; color: white; padding: 8px 15px; border: none; border-radius: 4px;">
+                    📝 대기중 큐 보기
+                </button>
+                <button type="button" class="btn menu-btn" data-status="completed" onclick="switchStatus('completed')"
+                        style="background: #6c757d; color: white; padding: 8px 15px; border: none; border-radius: 4px;">
+                    ✅ 완료됨 큐 보기
+                </button>
+            </div>
+            
+            <div style="color: #999; font-size: 18px; margin: 0 15px;">|</div>
+            
+            <div class="bulk-actions" style="display: flex; gap: 10px;">
+                <button type="button" class="btn btn-danger" id="bulkDeleteBtn" onclick="bulkDelete()" disabled
+                        style="background: #dc3545; color: white; padding: 8px 15px; border: none; border-radius: 4px;">
+                    🗑️ 일괄삭제
+                </button>
+                <button type="button" class="btn btn-secondary" id="bulkStatusBtn" onclick="bulkChangeStatus()" disabled
+                        style="background: #6c757d; color: white; padding: 8px 15px; border: none; border-radius: 4px;">
+                    🔄 일괄상태변경
+                </button>
+            </div>
         </div>
-        <div class="bulk-actions">
-            <button type="button" class="btn btn-danger" id="bulkDeleteBtn" onclick="bulkDelete()" disabled>
-                🗑️ 일괄삭제
-            </button>
-            <button type="button" class="btn btn-secondary" id="bulkStatusBtn" onclick="bulkChangeStatus()" disabled>
-                🔄 일괄상태변경
-            </button>
-        </div>
-        <div class="search-section">
-            <input type="text" id="searchInput" placeholder="🔍 제목/키워드 검색" onkeypress="if(event.key==='Enter') searchQueues()">
-            <button type="button" class="btn btn-small" onclick="searchQueues()">검색</button>
-            <button type="button" class="btn btn-small btn-secondary" onclick="clearSearch()">초기화</button>
+        
+        <!-- 두 번째 줄: 검색창 -->
+        <div class="menu-row-2" style="border-top: 1px solid #ddd; padding-top: 10px;">
+            <div style="display: flex; align-items: center;">
+                <span style="margin-right: 10px;">🔍</span>
+                <input type="text" id="searchInput" placeholder="제목/키워드 검색" 
+                       style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-right: 10px;"
+                       onkeypress="if(event.key==='Enter') searchQueues()">
+                <button type="button" onclick="searchQueues()" 
+                        style="background: #007bff; color: white; padding: 8px 15px; border: none; border-radius: 4px; margin-right: 5px;">검색</button>
+                <button type="button" onclick="clearSearch()" 
+                        style="background: #6c757d; color: white; padding: 8px 15px; border: none; border-radius: 4px;">초기화</button>
+            </div>
         </div>
     </div>
 
-    <!-- 통계 영역 -->
-    <div class="stats-section" id="statsSection">
-        <div class="stat-card">
-            <div class="stat-number" id="totalCount">0</div>
-            <div class="stat-label">전체 항목</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-number" id="pendingCount">0</div>
-            <div class="stat-label">대기중</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-number" id="completedCount">0</div>
-            <div class="stat-label">완료됨</div>
-        </div>
+    <!-- 간단한 통계 표시 (한 줄) -->
+    <div class="simple-stats" style="text-align: center; margin: 10px 0; color: #666; font-size: 14px;">
+        전체 <strong id="totalCount">0</strong>개 | 대기중 <strong id="pendingCount">0</strong>개 | 완료됨 <strong id="completedCount">0</strong>개
     </div>
 
     <!-- 큐 목록 영역 -->
