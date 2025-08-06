@@ -124,17 +124,17 @@ function displayQueues() {
         
         // 썸네일 HTML (계획서 82줄: 2열에 걸쳐 표시 - 크기 증가)
         const thumbnailHtml = thumbnailUrl ? 
-            `<img src="${thumbnailUrl}" class="thumbnail-preview" alt="썸네일" style="width:150px;height:150px;object-fit:cover;border:1px solid #ddd;" onerror="this.outerHTML='<div class=\\\\\"no-thumbnail\\\\\" style=\\\\\"width:150px;height:150px;display:flex;align-items:center;justify-content:center;border:1px solid #ddd;background:#f5f5f5;\\\\\">📷<br>썸네일</div>'">` :
+            `<img src="${thumbnailUrl}" class="thumbnail-preview" alt="썸네일" style="width:150px;height:150px;object-fit:cover;border:1px solid #ddd;">` :
             '<div class="no-thumbnail" style="width:150px;height:150px;display:flex;align-items:center;justify-content:center;border:1px solid #ddd;background:#f5f5f5;flex-direction:column;"><div style="font-size:24px;">📷</div><div style="font-size:12px;">썸네일</div></div>';
         
         // 버튼 HTML (계획서 84줄: completed는 즉시발행 비활성화)
         const buttonHtml = status === 'pending' ? `
-            <button class="btn btn-success btn-sm" onclick="immediatePublish('${queueId}')">즉시 발행</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteQueue('${queueId}')">삭제</button>
-            <button class="btn btn-secondary btn-sm" onclick="changeQueueStatus('${queueId}', 'completed')">완료처리</button>
+            <button style="background: #28a745; color: white; padding: 6px 12px; border: none; border-radius: 4px; margin: 0 2px; cursor: pointer; font-size: 12px;" onclick="immediatePublish('${queueId}')">즉시 발행</button>
+            <button style="background: #dc3545; color: white; padding: 6px 12px; border: none; border-radius: 4px; margin: 0 2px; cursor: pointer; font-size: 12px;" onclick="deleteQueue('${queueId}')">삭제</button>
+            <button style="background: #6c757d; color: white; padding: 6px 12px; border: none; border-radius: 4px; margin: 0 2px; cursor: pointer; font-size: 12px;" onclick="changeQueueStatus('${queueId}', 'completed')">완료처리</button>
         ` : `
-            <button class="btn btn-danger btn-sm" onclick="deleteQueue('${queueId}')">삭제</button>
-            <button class="btn btn-secondary btn-sm" onclick="changeQueueStatus('${queueId}', 'pending')">대기처리</button>
+            <button style="background: #dc3545; color: white; padding: 6px 12px; border: none; border-radius: 4px; margin: 0 2px; cursor: pointer; font-size: 12px;" onclick="deleteQueue('${queueId}')">삭제</button>
+            <button style="background: #6c757d; color: white; padding: 6px 12px; border: none; border-radius: 4px; margin: 0 2px; cursor: pointer; font-size: 12px;" onclick="changeQueueStatus('${queueId}', 'pending')">대기처리</button>
         `;
         
         // 계획서 66-78줄 정확한 레이아웃 구현 - 안정적인 Flexbox + 2행 구조
@@ -145,38 +145,32 @@ function displayQueues() {
                     ${buttonHtml}
                 </div>
                 
-                <!-- 메인 컨테이너 -->
-                <div class="queue-main-container" style="display: flex; gap: 15px; align-items: flex-start;">
-                    <!-- 체크박스 영역 -->
-                    <div class="checkbox-area" style="width: 40px; display: flex; justify-content: center; padding-top: 5px;">
-                        <input type="checkbox" class="queue-checkbox" value="${queueId}" onchange="updateSelectedQueues()" style="transform: scale(1.5);">
+                <!-- 한 줄 레이아웃: 체크박스 + 썸네일 + 정보 (모두 같은 줄에) -->
+                <div class="queue-main-row" style="display: flex; gap: 15px; align-items: flex-start;">
+                    <!-- 체크박스 -->
+                    <div class="checkbox-area" style="width: 30px; display: flex; justify-content: center; align-items: flex-start; padding-top: 10px;">
+                        <input type="checkbox" class="queue-checkbox" value="${queueId}" onchange="updateSelectedQueues()" style="transform: scale(1.2);">
                     </div>
                     
-                    <!-- 썸네일 영역 (계획서 82줄: 2행에 걸쳐 표시) -->
-                    <div class="thumbnail-area" style="width: 160px; flex-shrink: 0;">
-                        ${thumbnailHtml}
+                    <!-- 썸네일 (작은 크기) -->
+                    <div class="thumbnail-area" style="width: 120px; flex-shrink: 0;">
+                        ${thumbnailHtml.replace('width:150px;height:150px', 'width:120px;height:120px')}
                     </div>
                     
-                    <!-- 정보 영역 (2행 구조) -->
-                    <div class="info-area" style="flex: 1; min-width: 0;">
-                        <!-- 1행: 큐 정보 (계획서 69줄 레이아웃) -->
-                        <div class="queue-info-row-1" style="font-size: 16px; line-height: 1.6; margin-bottom: 12px;">
-                            <span class="queue-title" style="font-weight: bold; margin-right: 8px; color: #333;">${title}</span>
-                            <span style="color: #ccc; margin: 0 6px;">|</span>
-                            <span class="status-badge" style="background: ${status === 'pending' ? '#ffc107' : '#28a745'}; color: white; padding: 4px 8px; border-radius: 4px; margin: 0 6px; font-size: 14px;">${getStatusText(status)}</span>
-                            <span style="color: #ccc; margin: 0 6px;">|</span>
-                            <span class="category" style="margin: 0 6px; color: #555;">📂 ${categoryName}</span>
-                            <span style="color: #ccc; margin: 0 6px;">|</span>
-                            <span class="prompt-type" style="margin: 0 6px; color: #555;">${promptTypeName}</span>
-                            <span style="color: #ccc; margin: 0 6px;">|</span>
-                            <span class="counts" style="margin: 0 6px; color: #555;">키워드 ${keywordCount}개</span>
-                            <span style="color: #ccc; margin: 0 6px;">|</span>
-                            <span class="product-count" style="margin: 0 6px; color: #555;">상품 ${productCount}개</span>
+                    <!-- 큐 정보 (썸네일 옆에 배치) -->
+                    <div class="info-area" style="flex: 1; min-width: 0; padding-top: 5px;">
+                        <div class="queue-title" style="font-size: 18px; font-weight: bold; margin-bottom: 8px; color: #333;">
+                            ${title}
                         </div>
-                        
-                        <!-- 2행: 키워드 나열 (계획서 70,77줄) -->
-                        <div class="queue-info-row-2" style="color: #666; font-size: 14px; line-height: 1.4;">
-                            <strong style="color: #444;">등록된 키워드:</strong> <span style="color: #666;">${keywordsList}</span>
+                        <div class="queue-details" style="font-size: 14px; line-height: 1.5; margin-bottom: 8px;">
+                            <span class="status-badge" style="background: ${status === 'pending' ? '#ffc107' : '#28a745'}; color: white; padding: 3px 6px; border-radius: 3px; margin-right: 8px; font-size: 12px;">${getStatusText(status)}</span>
+                            <span style="margin-right: 12px;">📂 ${categoryName}</span>
+                            <span style="margin-right: 12px;">${promptTypeName}</span>
+                            <span style="margin-right: 12px;">키워드 ${keywordCount}개</span>
+                            <span>상품 ${productCount}개</span>
+                        </div>
+                        <div class="queue-keywords" style="color: #666; font-size: 13px;">
+                            <strong style="color: #444;">키워드:</strong> ${keywordsList}
                         </div>
                     </div>
                 </div>
