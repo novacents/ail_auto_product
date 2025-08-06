@@ -363,9 +363,20 @@ if (isset($_POST['action'])) {
         </div>
     </div>
 
-    <!-- 간단한 통계 표시 (한 줄) -->
-    <div class="simple-stats" style="text-align: center; margin: 10px 0; color: #666; font-size: 14px;">
-        전체 <strong id="totalCount">0</strong>개 | 대기중 <strong id="pendingCount">0</strong>개 | 완료됨 <strong id="completedCount">0</strong>개
+    <!-- 세련된 통계 박스들 (한 줄 배치) -->
+    <div class="stats-container" style="display: flex; justify-content: center; gap: 20px; margin: 20px 0; padding: 0 20px;">
+        <div class="stat-box total" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 25px; border-radius: 12px; text-align: center; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3); min-width: 120px;">
+            <div style="font-size: 24px; font-weight: bold; margin-bottom: 5px;" id="totalCount">0</div>
+            <div style="font-size: 14px; opacity: 0.9;">전체 항목</div>
+        </div>
+        <div class="stat-box pending" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 15px 25px; border-radius: 12px; text-align: center; box-shadow: 0 4px 15px rgba(245, 87, 108, 0.3); min-width: 120px;">
+            <div style="font-size: 24px; font-weight: bold; margin-bottom: 5px;" id="pendingCount">0</div>
+            <div style="font-size: 14px; opacity: 0.9;">대기중</div>
+        </div>
+        <div class="stat-box completed" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 15px 25px; border-radius: 12px; text-align: center; box-shadow: 0 4px 15px rgba(79, 172, 254, 0.3); min-width: 120px;">
+            <div style="font-size: 24px; font-weight: bold; margin-bottom: 5px;" id="completedCount">0</div>
+            <div style="font-size: 14px; opacity: 0.9;">완료됨</div>
+        </div>
     </div>
 
     <!-- 큐 목록 영역 -->
