@@ -111,7 +111,7 @@ function displayQueues() {
         
         // 썸네일 HTML (계획서 82줄: 2열에 걸쳐 표시 - 크기 증가)
         const thumbnailHtml = thumbnailUrl ? 
-            `<img src="${thumbnailUrl}" class="thumbnail-preview" alt="썸네일" style="width:150px;height:150px;object-fit:cover;border:1px solid #ddd;" onerror="this.outerHTML='<div class=\\"no-thumbnail\\" style=\\"width:150px;height:150px;display:flex;align-items:center;justify-content:center;border:1px solid #ddd;background:#f5f5f5;\\">📷<br>썸네일</div>'">` :
+            `<img src="${thumbnailUrl}" class="thumbnail-preview" alt="썸네일" style="width:150px;height:150px;object-fit:cover;border:1px solid #ddd;" onerror="this.outerHTML='<div class=\\\\\"no-thumbnail\\\\\" style=\\\\\"width:150px;height:150px;display:flex;align-items:center;justify-content:center;border:1px solid #ddd;background:#f5f5f5;\\\\\">📷<br>썸네일</div>'">` :
             '<div class="no-thumbnail" style="width:150px;height:150px;display:flex;align-items:center;justify-content:center;border:1px solid #ddd;background:#f5f5f5;flex-direction:column;"><div style="font-size:24px;">📷</div><div style="font-size:12px;">썸네일</div></div>';
         
         // 버튼 HTML (계획서 84줄: completed는 즉시발행 비활성화)
@@ -124,44 +124,47 @@ function displayQueues() {
             <button class="btn btn-secondary btn-sm" onclick="changeQueueStatus('${queueId}', 'pending')">대기처리</button>
         `;
         
-        // 계획서 66-78줄 정확한 레이아웃 구현 (수정된 버전)
+        // 계획서 66-78줄 정확한 레이아웃 구현 - 썸네일 2행 배치
         html += `
             <div class="queue-item" data-queue-id="${queueId}" style="border: 1px solid #ddd; margin-bottom: 15px; padding: 15px; border-radius: 8px; background: #fafafa;">
-                <!-- 버튼 영역 (계획서: 맨 위에 배치) -->
+                <!-- 버튼 영역 (계획서 68,75줄: 맨 위 오른쪽에 배치) -->
                 <div class="queue-actions-row" style="text-align: right; margin-bottom: 15px;">
                     ${buttonHtml}
                 </div>
                 
-                <!-- 메인 정보 행 (계획서 69줄 레이아웃 - 한 줄 배치) -->
-                <div class="queue-main-row" style="display: flex; align-items: flex-start; gap: 15px;">
-                    <!-- 체크박스 -->
-                    <div style="display: flex; align-items: center; width: 30px;">
-                        <input type="checkbox" class="queue-checkbox" value="${queueId}" onchange="updateSelectedQueues()" style="transform: scale(1.2);">
+                <!-- CSS Grid로 2행 레이아웃 구현 (계획서 82줄: 썸네일 2열 걸쳐 표시) -->
+                <div class="queue-grid-layout" style="display: grid; grid-template-columns: 40px 180px 1fr; grid-template-rows: auto auto; gap: 15px 10px; align-items: start;">
+                    
+                    <!-- 1행 1열: 체크박스 (69줄) -->
+                    <div style="grid-row: 1; grid-column: 1;">
+                        <input type="checkbox" class="queue-checkbox" value="${queueId}" onchange="updateSelectedQueues()" style="transform: scale(1.5); margin-top: 5px;">
                     </div>
                     
-                    <!-- 썸네일 영역 (계획서 82줄: 더 큰 사이즈) -->
-                    <div class="thumbnail-section" style="flex-shrink: 0;">
+                    <!-- 1-2행 2열: 썸네일 (계획서 69,70,82줄 - 2행에 걸쳐 표시) -->
+                    <div style="grid-row: 1 / 3; grid-column: 2; display: flex; align-items: center; justify-content: center;">
                         ${thumbnailHtml}
                     </div>
                     
-                    <!-- 큐 정보 표시 (계획서 69줄 형식: | 구분자로 배치, 같은 줄에) -->
-                    <div class="queue-info-area" style="flex: 1; min-width: 0;">
-                        <div class="queue-info-line" style="font-size: 16px; line-height: 1.5; margin-bottom: 10px;">
+                    <!-- 1행 3열: 큐 정보 (계획서 69줄 레이아웃) -->
+                    <div style="grid-row: 1; grid-column: 3;">
+                        <div class="queue-info-line" style="font-size: 16px; line-height: 1.6;">
                             <span class="queue-title" style="font-weight: bold; margin-right: 8px;">${title}</span>
-                            <span style="color: #ccc; margin: 0 5px;">|</span>
-                            <span class="status-badge" style="background: ${status === 'pending' ? '#ffc107' : '#28a745'}; color: white; padding: 3px 8px; border-radius: 3px; margin: 0 5px; font-size: 14px;">${getStatusText(status)}</span>
-                            <span style="color: #ccc; margin: 0 5px;">|</span>
-                            <span class="category" style="margin: 0 5px;">📂 ${categoryName}</span>
-                            <span style="color: #ccc; margin: 0 5px;">|</span>
-                            <span class="prompt-type" style="margin: 0 5px;">${promptTypeName}</span>
-                            <span style="color: #ccc; margin: 0 5px;">|</span>
-                            <span class="counts" style="margin: 0 5px;">${keywordCount}개 키워드</span>
-                            <span style="color: #ccc; margin: 0 5px;">|</span>
-                            <span class="product-count" style="margin: 0 5px;">${productCount}개 상품</span>
+                            <span style="color: #ccc; margin: 0 6px;">|</span>
+                            <span class="status-badge" style="background: ${status === 'pending' ? '#ffc107' : '#28a745'}; color: white; padding: 4px 8px; border-radius: 4px; margin: 0 6px; font-size: 14px;">${getStatusText(status)}</span>
+                            <span style="color: #ccc; margin: 0 6px;">|</span>
+                            <span class="category" style="margin: 0 6px;">📂 ${categoryName}</span>
+                            <span style="color: #ccc; margin: 0 6px;">|</span>
+                            <span class="prompt-type" style="margin: 0 6px;">${promptTypeName}</span>
+                            <span style="color: #ccc; margin: 0 6px;">|</span>
+                            <span class="counts" style="margin: 0 6px;">키워드 ${keywordCount}개</span>
+                            <span style="color: #ccc; margin: 0 6px;">|</span>
+                            <span class="product-count" style="margin: 0 6px;">상품 ${productCount}개</span>
                         </div>
-                        
-                        <!-- 키워드 나열 행 (계획서 70줄 - 썸네일 아래에) -->
-                        <div class="queue-keywords-row" style="color: #666; font-size: 14px; line-height: 1.4;">
+                    </div>
+                    
+                    <!-- 2행 3열: 키워드 나열 (계획서 70,77줄) -->
+                    <div style="grid-row: 2; grid-column: 3;">
+                        <div class="queue-keywords-row" style="color: #666; font-size: 14px; line-height: 1.4; padding-top: 8px;">
                             <strong>등록된 키워드:</strong> ${keywordsList}
                         </div>
                     </div>
@@ -442,7 +445,7 @@ function changeQueueStatus(queueId, newStatus) {
  * 즉시 발행 (계획서 110-114줄, auto_post_products.py 연동)
  */
 function immediatePublish(queueId) {
-    if (!confirm('이 큐를 즉시 발행하시겠습니까?\n\n발행이 완료되면 completed 상태로 변경됩니다.')) {
+    if (!confirm('이 큐를 즉시 발행하시겠습니까?\\n\\n발행이 완료되면 completed 상태로 변경됩니다.')) {
         return;
     }
     
@@ -463,8 +466,8 @@ function immediatePublish(queueId) {
             if (response.success) {
                 let message = '글이 성공적으로 발행되었습니다!';
                 if (response.post_url) {
-                    message += '\n\n발행된 글: ' + response.post_url;
-                    if (confirm(message + '\n\n발행된 글을 확인하시겠습니까?')) {
+                    message += '\\n\\n발행된 글: ' + response.post_url;
+                    if (confirm(message + '\\n\\n발행된 글을 확인하시겠습니까?')) {
                         window.open(response.post_url, '_blank');
                     }
                 } else {
@@ -483,7 +486,7 @@ function immediatePublish(queueId) {
             
             let errorMessage = '발행 중 오류가 발생했습니다.';
             if (status === 'timeout') {
-                errorMessage = '발행 처리 시간이 초과되었습니다.\n잠시 후 큐 목록을 확인해주세요.';
+                errorMessage = '발행 처리 시간이 초과되었습니다.\\n잠시 후 큐 목록을 확인해주세요.';
             }
             
             alert(errorMessage);
@@ -496,7 +499,7 @@ function immediatePublish(queueId) {
  */
 function getCategoryName(categoryId) {
     const categories = {
-        '354': 'Today\'s Pick',
+        '354': 'Today\\'s Pick',
         '355': '기발한 잡화점',
         '356': '스마트 리빙',
         '12': '우리잇템'
