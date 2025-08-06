@@ -1,28 +1,26 @@
 <?php
 /**
- * 저장된 정보 관리 페이지 - 분할 시스템 적용 버전
- * 버전: v3.0 (분할 시스템 적용)
+ * 큐 관리 시스템 - 새로운 2단계 시스템 (pending/completed)
+ * 버전: v4.0 (queue_manager_plan.md 기반 재구현)
  */
 require_once($_SERVER['DOCUMENT_ROOT'] . '/wp-config.php');
 require_once __DIR__ . '/queue_utils.php';
 
 if (!current_user_can('manage_options')) { wp_die('접근 권한이 없습니다.'); }
 
-define('QUEUE_FILE', '/var/www/novacents/tools/product_queue.json');
-
-// 레거시 호환용 함수들 (하위 호환성 유지)
-function load_queue() {
-    // 기존 시스템과의 호환성을 위해 유지
-    // 내부적으로는 분할 시스템 사용
-    return get_all_queues_split();
-}
-
-function save_queue($queue) {
-    // 기존 시스템과의 호환성을 위해 유지
-    // 단일 파일 시스템으로 저장 (레거시 지원)
-    if (!file_exists(QUEUE_FILE)) return false;
-    $json_data = json_encode($queue, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    return $json_data !== false && file_put_contents(QUEUE_FILE, $json_data, LOCK_EX) !== false;
+// 🗑️ 자동 정리 시스템 (queue_manager_plan.md 116-121줄, 165-174줄 요구사항)
+// queue_manager.php 접속 시 5% 확률로 completed 상태 큐 파일 자동 정리
+if (!isset($_POST['action']) && rand(1, 100) <= 5) {
+    if (function_exists('cleanup_completed_queues_split')) {
+        try {
+            $cleaned_count = cleanup_completed_queues_split(7); // 7일 후 자동 삭제
+            if ($cleaned_count > 0) {
+                error_log("Queue Manager Auto Cleanup: {$cleaned_count} completed queues older than 7 days were automatically cleaned up");
+            }
+        } catch (Exception $e) {
+            error_log("Queue Manager Auto Cleanup Error: " . $e->getMessage());
+        }
+    }
 }
 
 function get_category_name($category_id) {
@@ -35,173 +33,156 @@ function get_prompt_type_name($prompt_type) {
     return $prompt_types[$prompt_type] ?? '기본형';
 }
 
-function get_products_summary($keywords) {
-    $total_products = 0; $products_with_data = 0; $product_samples = [];
-    if (!is_array($keywords)) return ['total_products' => 0, 'products_with_data' => 0, 'product_samples' => []];
+function get_queue_summary($queues) {
+    $summary = [
+        'total' => count($queues),
+        'pending' => 0,
+        'completed' => 0
+    ];
     
-    foreach ($keywords as $keyword) {
-        if (isset($keyword['products_data']) && is_array($keyword['products_data'])) {
-            foreach ($keyword['products_data'] as $product_data) {
-                $total_products++;
-                if (!empty($product_data['analysis_data'])) {
-                    $products_with_data++;
-                    if (count($product_samples) < 3) {
-                        $analysis = $product_data['analysis_data'];
-                        $product_samples[] = [
-                            'title' => $analysis['title'] ?? '상품명 없음',
-                            'image_url' => $analysis['image_url'] ?? '',
-                            'price' => $analysis['price'] ?? '가격 정보 없음',
-                            'url' => $product_data['url'] ?? ''
-                        ];
-                    }
-                }
+    foreach ($queues as $queue) {
+        if (isset($queue['status'])) {
+            switch ($queue['status']) {
+                case 'pending':
+                    $summary['pending']++;
+                    break;
+                case 'completed':
+                    $summary['completed']++;
+                    break;
             }
         }
-        if (isset($keyword['aliexpress']) && is_array($keyword['aliexpress'])) $total_products += count($keyword['aliexpress']);
-        if (isset($keyword['coupang']) && is_array($keyword['coupang'])) $total_products += count($keyword['coupang']);
     }
-    return ['total_products' => $total_products, 'products_with_data' => $products_with_data, 'product_samples' => $product_samples];
+    
+    return $summary;
+}
+
+function get_keywords_count($keywords) {
+    return is_array($keywords) ? count($keywords) : 0;
+}
+
+function get_products_count($keywords) {
+    $count = 0;
+    if (is_array($keywords)) {
+        foreach ($keywords as $keyword) {
+            if (isset($keyword['products_data']) && is_array($keyword['products_data'])) {
+                $count += count($keyword['products_data']);
+            }
+            if (isset($keyword['aliexpress']) && is_array($keyword['aliexpress'])) {
+                $count += count($keyword['aliexpress']);
+            }
+            if (isset($keyword['coupang']) && is_array($keyword['coupang'])) {
+                $count += count($keyword['coupang']);
+            }
+        }
+    }
+    return $count;
 }
 
 // AJAX 요청 처리
 if (isset($_POST['action'])) {
-    header('Content-Type: application/json');
+    header('Content-Type: application/json; charset=utf-8');
     $action = $_POST['action'];
     
     try {
         switch ($action) {
-            case 'get_queue_list':
-                // 분할 시스템 사용
-                $queues = get_all_queues_split();
-                echo json_encode(['success' => true, 'queue' => $queues]);
-                exit;
+            case 'get_queues':
+                $status = $_POST['status'] ?? 'pending'; // 기본값: pending
+                $search = $_POST['search'] ?? '';
                 
-            case 'delete_queue_item':
-                $queue_id = $_POST['queue_id'] ?? '';
-                if (empty($queue_id)) {
-                    echo json_encode(['success' => false, 'message' => '큐 ID가 제공되지 않았습니다.']);
-                    exit;
-                }
-                
-                // 분할 시스템 사용
-                $result = remove_queue_split($queue_id);
-                
-                echo json_encode($result ? 
-                    ['success' => true, 'message' => '항목이 삭제되었습니다.'] : 
-                    ['success' => false, 'message' => '삭제에 실패했습니다.']
-                );
-                exit;
-                
-            case 'get_queue_item':
-                $queue_id = $_POST['queue_id'] ?? '';
-                if (empty($queue_id)) {
-                    echo json_encode(['success' => false, 'message' => '큐 ID가 제공되지 않았습니다.']);
-                    exit;
-                }
-                
-                // 분할 시스템 사용
-                error_log("큐 항목 검색 시작 (분할 시스템): " . $queue_id);
-                $item = load_queue_split($queue_id);
-                
-                if ($item) {
-                    error_log("큐 항목 찾음 (분할 시스템): " . $queue_id);
-                    if (isset($item['keywords']) && is_array($item['keywords'])) {
-                        error_log("키워드 수: " . count($item['keywords']));
-                        foreach ($item['keywords'] as $kIndex => $keyword) {
-                            $productsCount = isset($keyword['products_data']) ? count($keyword['products_data']) : 0;
-                            $aliexpressCount = isset($keyword['aliexpress']) ? count($keyword['aliexpress']) : 0;
-                            error_log("키워드 {$kIndex} '{$keyword['name']}': products_data={$productsCount}, aliexpress={$aliexpressCount}");
-                        }
-                    }
-                    
-                    echo json_encode(['success' => true, 'item' => $item], JSON_UNESCAPED_UNICODE);
+                // 해당 상태의 큐 목록 가져오기
+                if ($status === 'pending') {
+                    $queues = get_pending_queues_split();
+                } elseif ($status === 'completed') {
+                    $queues = get_completed_queues_split();
                 } else {
-                    error_log("큐 항목을 찾을 수 없음 (분할 시스템): " . $queue_id);
-                    echo json_encode(['success' => false, 'message' => '항목을 찾을 수 없습니다.']);
+                    $queues = [];
                 }
+                
+                // 검색 필터링
+                if (!empty($search)) {
+                    $queues = array_filter($queues, function($queue) use ($search) {
+                        $searchLower = mb_strtolower($search, 'UTF-8');
+                        
+                        // 제목 검색
+                        if (isset($queue['title']) && mb_strpos(mb_strtolower($queue['title'], 'UTF-8'), $searchLower) !== false) {
+                            return true;
+                        }
+                        
+                        // 키워드 검색
+                        if (isset($queue['keywords']) && is_array($queue['keywords'])) {
+                            foreach ($queue['keywords'] as $keyword) {
+                                if (isset($keyword['name']) && mb_strpos(mb_strtolower($keyword['name'], 'UTF-8'), $searchLower) !== false) {
+                                    return true;
+                                }
+                            }
+                        }
+                        
+                        return false;
+                    });
+                }
+                
+                // 최신순 정렬 (생성일/수정일 기준)
+                usort($queues, function($a, $b) {
+                    $timeA = $a['modified_at'] ?? $a['created_at'] ?? '0000-00-00 00:00:00';
+                    $timeB = $b['modified_at'] ?? $b['created_at'] ?? '0000-00-00 00:00:00';
+                    return strcmp($timeB, $timeA); // 최신순
+                });
+                
+                echo json_encode(['success' => true, 'queues' => array_values($queues)]);
                 exit;
                 
-            case 'update_queue_item':
-                $queue_id = $_POST['queue_id'] ?? '';
-                $updated_data = json_decode($_POST['data'] ?? '{}', true);
-                
-                if (empty($queue_id)) {
-                    echo json_encode(['success' => false, 'message' => '큐 ID가 제공되지 않았습니다.']);
-                    exit;
+            case 'delete_queue':
+                $queue_ids = $_POST['queue_ids'] ?? [];
+                if (!is_array($queue_ids)) {
+                    $queue_ids = [$queue_ids];
                 }
                 
-                if (!is_array($updated_data)) {
-                    echo json_encode(['success' => false, 'message' => '업데이트 데이터가 유효하지 않습니다.']);
-                    exit;
-                }
+                $success_count = 0;
+                $total_count = count($queue_ids);
                 
-                // 기존 큐 항목 로드
-                $existing_item = load_queue_split($queue_id);
-                if (!$existing_item) {
-                    echo json_encode(['success' => false, 'message' => '업데이트할 항목을 찾을 수 없습니다.']);
-                    exit;
-                }
-                
-                // 기본 정보 업데이트
-                $updated_item = $existing_item;
-                $updated_item['title'] = $updated_data['title'] ?? $existing_item['title'];
-                $updated_item['category_id'] = $updated_data['category_id'] ?? $existing_item['category_id'];
-                $updated_item['category_name'] = get_category_name($updated_data['category_id'] ?? $existing_item['category_id']);
-                $updated_item['prompt_type'] = $updated_data['prompt_type'] ?? $existing_item['prompt_type'];
-                $updated_item['prompt_type_name'] = get_prompt_type_name($updated_data['prompt_type'] ?? $existing_item['prompt_type']);
-                
-                // 썸네일 URL 업데이트
-                $updated_item['thumbnail_url'] = $updated_data['thumbnail_url'] ?? $existing_item['thumbnail_url'] ?? null;
-                $updated_item['has_thumbnail_url'] = !empty($updated_data['thumbnail_url']);
-                
-                // 키워드 데이터 완전 교체 (전체 구조 보존)
-                if (isset($updated_data['keywords']) && is_array($updated_data['keywords'])) {
-                    $updated_item['keywords'] = $updated_data['keywords'];
-                    error_log("키워드 데이터 업데이트 완료 (분할 시스템): " . count($updated_data['keywords']) . "개");
-                }
-                
-                // 사용자 세부사항 업데이트
-                $updated_item['user_details'] = $updated_data['user_details'] ?? $existing_item['user_details'] ?? [];
-                $updated_item['has_user_details'] = !empty($updated_data['user_details']);
-                
-                // 상품 데이터 존재 여부 확인
-                $has_product_data = false;
-                if (isset($updated_item['keywords']) && is_array($updated_item['keywords'])) {
-                    foreach ($updated_item['keywords'] as $keyword) {
-                        if (isset($keyword['products_data']) && is_array($keyword['products_data']) && count($keyword['products_data']) > 0) {
-                            $has_product_data = true;
-                            break;
-                        }
+                foreach ($queue_ids as $queue_id) {
+                    if (remove_queue_split($queue_id)) {
+                        $success_count++;
                     }
                 }
-                $updated_item['has_product_data'] = $has_product_data;
-                $updated_item['updated_at'] = date('Y-m-d H:i:s');
                 
-                // 분할 시스템으로 업데이트 (기존 함수 사용)
-                $result = update_queue_status_split($queue_id, $updated_item['status']);
-                
-                if ($result) {
-                    error_log("큐 항목 업데이트 완료 (분할 시스템): " . $queue_id);
-                    echo json_encode(['success' => true, 'message' => '항목이 업데이트되었습니다.']);
-                } else {
-                    echo json_encode(['success' => false, 'message' => '업데이트에 실패했습니다.']);
-                }
+                echo json_encode([
+                    'success' => $success_count > 0,
+                    'message' => "{$success_count}/{$total_count}개 항목이 삭제되었습니다.",
+                    'success_count' => $success_count,
+                    'total_count' => $total_count
+                ]);
                 exit;
                 
-            case 'reorder_queue':
-                $new_order = json_decode($_POST['order'] ?? '[]', true);
-                if (empty($new_order)) {
-                    echo json_encode(['success' => false, 'message' => '순서 데이터가 없습니다.']);
+            case 'change_status':
+                $queue_ids = $_POST['queue_ids'] ?? [];
+                $new_status = $_POST['new_status'] ?? '';
+                
+                if (!is_array($queue_ids)) {
+                    $queue_ids = [$queue_ids];
+                }
+                
+                if (!in_array($new_status, ['pending', 'completed'])) {
+                    echo json_encode(['success' => false, 'message' => '유효하지 않은 상태입니다.']);
                     exit;
                 }
                 
-                // 분할 시스템 사용
-                $result = reorder_queues_split($new_order);
+                $success_count = 0;
+                $total_count = count($queue_ids);
                 
-                echo json_encode($result ? 
-                    ['success' => true, 'message' => '순서가 변경되었습니다.'] : 
-                    ['success' => false, 'message' => '순서 변경에 실패했습니다.']
-                );
+                foreach ($queue_ids as $queue_id) {
+                    if (update_queue_status_split($queue_id, $new_status)) {
+                        $success_count++;
+                    }
+                }
+                
+                $status_name = $new_status === 'pending' ? '대기중' : '완료됨';
+                echo json_encode([
+                    'success' => $success_count > 0,
+                    'message' => "{$success_count}/{$total_count}개 항목이 {$status_name} 상태로 변경되었습니다.",
+                    'success_count' => $success_count,
+                    'total_count' => $total_count
+                ]);
                 exit;
                 
             case 'immediate_publish':
@@ -211,75 +192,51 @@ if (isset($_POST['action'])) {
                     exit;
                 }
                 
-                // 분할 시스템으로 큐 항목 로드
-                $selected_item = load_queue_split($queue_id);
-                
-                if (!$selected_item) {
-                    echo json_encode(['success' => false, 'message' => '선택된 항목을 찾을 수 없습니다.']);
+                // 큐 항목 로드
+                $queue_item = load_queue_split($queue_id);
+                if (!$queue_item) {
+                    echo json_encode(['success' => false, 'message' => '큐 항목을 찾을 수 없습니다.']);
                     exit;
                 }
                 
-                // 디버깅 로그 추가
-                error_log("즉시 발행 시작 (분할 시스템): " . $selected_item['title']);
-                error_log("카테고리: " . $selected_item['category_id']);
-                error_log("프롬프트 타입: " . $selected_item['prompt_type']);
-                error_log("키워드 수: " . count($selected_item['keywords']));
+                // pending 상태만 발행 가능
+                if (isset($queue_item['status']) && $queue_item['status'] !== 'pending') {
+                    echo json_encode(['success' => false, 'message' => '대기중 상태의 큐만 발행할 수 있습니다.']);
+                    exit;
+                }
                 
-                // 발행 데이터 준비
+                // auto_post_products.py 호출을 위한 데이터 준비
                 $publish_data = [
-                    'title' => $selected_item['title'],
-                    'category' => $selected_item['category_id'],
-                    'prompt_type' => $selected_item['prompt_type'],
-                    'keywords' => json_encode($selected_item['keywords']),
-                    'user_details' => json_encode($selected_item['user_details']),
-                    'thumbnail_url' => $selected_item['thumbnail_url'] ?? '',
+                    'title' => $queue_item['title'],
+                    'category' => $queue_item['category_id'],
+                    'prompt_type' => $queue_item['prompt_type'],
+                    'keywords' => json_encode($queue_item['keywords']),
+                    'user_details' => json_encode($queue_item['user_details'] ?? []),
+                    'thumbnail_url' => $queue_item['thumbnail_url'] ?? '',
                     'publish_mode' => 'immediate'
                 ];
                 
-                // 절대 경로로 수정 및 에러 처리 강화
-                $ch = curl_init();
-                
-                // 프로토콜과 호스트 정보 추출
+                // keyword_processor.php 호출
                 $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
                 $host = $_SERVER['HTTP_HOST'];
                 $script_dir = dirname($_SERVER['SCRIPT_NAME']);
-                
-                // keyword_processor.php의 전체 URL 구성
                 $processor_url = $protocol . $host . $script_dir . '/keyword_processor.php';
                 
-                error_log("keyword_processor.php URL: " . $processor_url);
-                
+                $ch = curl_init();
                 curl_setopt($ch, CURLOPT_URL, $processor_url);
                 curl_setopt($ch, CURLOPT_POST, true);
                 curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($publish_data));
                 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
                 curl_setopt($ch, CURLOPT_TIMEOUT, 300);
                 curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // SSL 인증서 검증 비활성화 (개발 환경용)
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
                 curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-                
-                // 디버깅을 위한 상세 정보 출력
-                curl_setopt($ch, CURLOPT_VERBOSE, true);
-                $verbose = fopen('php://temp', 'w+');
-                curl_setopt($ch, CURLOPT_STDERR, $verbose);
                 
                 $response = curl_exec($ch);
                 $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
                 $curl_error = curl_error($ch);
-                $curl_info = curl_getinfo($ch);
-                
-                // 디버깅 정보 로깅
-                rewind($verbose);
-                $verboseLog = stream_get_contents($verbose);
-                error_log("CURL Verbose Log: " . $verboseLog);
-                error_log("HTTP Code: " . $http_code);
-                error_log("CURL Error: " . $curl_error);
-                error_log("Response length: " . strlen($response));
-                error_log("Response (first 500 chars): " . substr($response, 0, 500));
-                
                 curl_close($ch);
                 
-                // 응답 처리 개선
                 if ($curl_error) {
                     echo json_encode(['success' => false, 'message' => 'cURL 오류: ' . $curl_error]);
                     exit;
@@ -290,108 +247,35 @@ if (isset($_POST['action'])) {
                     exit;
                 }
                 
-                if (!$response) {
-                    echo json_encode(['success' => false, 'message' => '응답이 비어있습니다.']);
-                    exit;
-                }
-                
-                // JSON 디코딩 시도
-                $result = json_decode($response, true);
-                
-                if (json_last_error() !== JSON_ERROR_NONE) {
-                    error_log("JSON 디코딩 오류: " . json_last_error_msg());
+                // 발행 성공 시 completed 상태로 변경
+                if (strpos($response, '워드프레스 발행 성공:') !== false) {
+                    update_queue_status_split($queue_id, 'completed');
                     
-                    // Python 스크립트 출력에서 성공 메시지 찾기
-                    if (strpos($response, '워드프레스 발행 성공:') !== false) {
-                        // URL 추출 시도
-                        preg_match('/워드프레스 발행 성공: (https?:\/\/[^\s]+)/', $response, $matches);
-                        $post_url = $matches[1] ?? '';
-                        
-                        echo json_encode([
-                            'success' => true, 
-                            'message' => '글이 성공적으로 발행되었습니다!',
-                            'post_url' => $post_url
-                        ]);
-                    } else {
-                        echo json_encode(['success' => false, 'message' => '발행 처리 중 오류가 발생했습니다. (응답 파싱 실패)']);
-                    }
-                    exit;
-                }
-                
-                // 정상적인 JSON 응답 처리
-                if ($result && isset($result['success'])) {
-                    echo json_encode($result);
+                    // URL 추출
+                    preg_match('/워드프레스 발행 성공: (https?:\/\/[^\s]+)/', $response, $matches);
+                    $post_url = $matches[1] ?? '';
+                    
+                    echo json_encode([
+                        'success' => true,
+                        'message' => '글이 성공적으로 발행되었습니다!',
+                        'post_url' => $post_url
+                    ]);
                 } else {
                     echo json_encode(['success' => false, 'message' => '발행 처리 중 오류가 발생했습니다.']);
                 }
                 exit;
                 
-            case 'move_queue_status':
-                $queue_id = $_POST['queue_id'] ?? '';
-                if (empty($queue_id)) {
-                    echo json_encode(['success' => false, 'message' => '큐 ID가 제공되지 않았습니다.']);
-                    exit;
-                }
+            case 'get_stats':
+                $pending_queues = get_pending_queues_split();
+                $completed_queues = get_completed_queues_split();
                 
-                // 큐 항목 로드하여 현재 상태 확인
-                $current_item = load_queue_split($queue_id);
-                if (!$current_item) {
-                    echo json_encode(['success' => false, 'message' => '큐 항목을 찾을 수 없습니다.']);
-                    exit;
-                }
+                $stats = [
+                    'total' => count($pending_queues) + count($completed_queues),
+                    'pending' => count($pending_queues), 
+                    'completed' => count($completed_queues)
+                ];
                 
-                // 상태 순환: pending → processing → completed → failed → pending
-                $current_status = $current_item['status'] ?? 'pending';
-                $status_cycle = ['pending' => 'processing', 'processing' => 'completed', 'completed' => 'failed', 'failed' => 'pending'];
-                $next_status = $status_cycle[$current_status] ?? 'pending';
-                
-                // 상태 업데이트
-                $result = update_queue_status_split($queue_id, $next_status);
-                
-                if ($result) {
-                    echo json_encode([
-                        'success' => true, 
-                        'message' => '큐 상태가 변경되었습니다.',
-                        'old_status' => $current_status,
-                        'new_status' => $next_status
-                    ]);
-                } else {
-                    echo json_encode(['success' => false, 'message' => '상태 변경에 실패했습니다.']);
-                }
-                exit;
-                
-            case 'analyze_product':
-                $url = $_POST['url'] ?? '';
-                if (empty($url)) {
-                    echo json_encode(['success' => false, 'message' => '상품 URL을 입력해주세요.']);
-                    exit;
-                }
-                
-                $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
-                $absolute_url = $protocol . $_SERVER['HTTP_HOST'] . dirname($_SERVER['REQUEST_URI']) . '/product_analyzer_v2.php';
-                
-                $ch = curl_init();
-                curl_setopt($ch, CURLOPT_URL, $absolute_url);
-                curl_setopt($ch, CURLOPT_POST, true);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['action' => 'analyze_product', 'url' => $url, 'platform' => 'aliexpress']));
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_setopt($ch, CURLOPT_TIMEOUT, 120);
-                curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-                curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-                curl_setopt($ch, CURLOPT_MAXREDIRS, 3);
-                
-                $response = curl_exec($ch);
-                $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                $curl_error = curl_error($ch);
-                curl_close($ch);
-                
-                if ($curl_error) {
-                    echo json_encode(['success' => false, 'message' => 'cURL 오류: ' . $curl_error]);
-                } elseif ($http_code === 200 && $response) {
-                    echo $response;
-                } else {
-                    echo json_encode(['success' => false, 'message' => '상품 분석 요청에 실패했습니다. HTTP 코드: ' . $http_code]);
-                }
+                echo json_encode(['success' => true, 'stats' => $stats]);
                 exit;
                 
             default:
@@ -399,7 +283,7 @@ if (isset($_POST['action'])) {
                 exit;
         }
     } catch (Exception $e) {
-        error_log("AJAX 요청 처리 중 오류 발생: " . $e->getMessage());
+        error_log("큐 관리 시스템 오류: " . $e->getMessage());
         echo json_encode(['success' => false, 'message' => '서버 오류가 발생했습니다: ' . $e->getMessage()]);
         exit;
     }
@@ -410,8 +294,8 @@ if (isset($_POST['action'])) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>저장된 정보 관리 - 노바센트</title>
-<link rel="stylesheet" href="assets/queue_manager.css">
+<title>큐 관리 시스템 - 노바센트</title>
+<link rel="stylesheet" href="assets/queue_manager.css?v=<?php echo time(); ?>">
 </head>
 <body>
 <div class="loading-overlay" id="loadingOverlay">
@@ -422,143 +306,77 @@ if (isset($_POST['action'])) {
     </div>
 </div>
 
-<div class="modal" id="editModal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h2 class="modal-title">큐 항목 편집</h2>
-            <button class="modal-close" onclick="closeEditModal()">×</button>
-        </div>
-        <div class="modal-body">
-            <div class="form-section">
-                <h3>기본 정보</h3>
-                <div class="form-row">
-                    <div class="form-field">
-                        <label for="editTitle">글 제목</label>
-                        <input type="text" id="editTitle" placeholder="글 제목을 입력하세요">
-                    </div>
-                </div>
-                <div class="form-row three-col">
-                    <div class="form-field">
-                        <label for="editCategory">카테고리</label>
-                        <select id="editCategory">
-                            <option value="356">스마트 리빙</option>
-                            <option value="355">기발한 잡화점</option>
-                            <option value="354">Today's Pick</option>
-                            <option value="12">우리잇템</option>
-                        </select>
-                    </div>
-                    <div class="form-field">
-                        <label for="editPromptType">프롬프트 스타일</label>
-                        <select id="editPromptType">
-                            <option value="essential_items">주제별 필수템형</option>
-                            <option value="friend_review">친구 추천형</option>
-                            <option value="professional_analysis">전문 분석형</option>
-                            <option value="amazing_discovery">놀라움 발견형</option>
-                        </select>
-                    </div>
-                    <div class="form-field">
-                        <label for="editThumbnailUrl">썸네일 이미지 URL</label>
-                        <input type="url" id="editThumbnailUrl" placeholder="썸네일 이미지 URL을 입력하세요">
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-section">
-                <h3>키워드 관리</h3>
-                <div class="keyword-manager">
-                    <div class="keyword-list" id="keywordList"></div>
-                    <div class="add-keyword-section">
-                        <div class="form-row">
-                            <div class="form-field">
-                                <label>새 키워드 추가</label>
-                                <div style="display: flex; gap: 10px;">
-                                    <input type="text" id="newKeywordName" placeholder="키워드 이름을 입력하세요">
-                                    <button type="button" class="btn btn-success" onclick="addKeyword()">추가</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-        </div>
-        <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" onclick="closeEditModal()">취소</button>
-            <button type="button" class="btn btn-primary" onclick="saveEditedQueue()">저장</button>
-        </div>
-    </div>
-</div>
-
 <div class="main-container">
     <div class="header-section">
-        <h1>📋 저장된 정보 관리</h1>
-        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v3.0 - 분할 시스템 적용)</p>
+        <h1>📋 큐 관리 시스템</h1>
+        <p class="subtitle">큐에 저장된 항목들을 관리하고 즉시 발행할 수 있습니다 (v4.0 - 2단계 시스템)</p>
         <div class="header-actions">
             <a href="affiliate_editor.php" class="btn btn-primary">📝 새 글 작성</a>
-            <button type="button" class="btn btn-secondary" onclick="refreshQueue()">🔄 새로고침</button>
+            <button type="button" class="btn btn-secondary" onclick="refreshQueues()">🔄 새로고침</button>
         </div>
     </div>
 
-    <div class="main-content">
-        <div class="queue-stats" id="queueStats">
-            <div class="stat-card">
-                <div class="stat-number" id="totalCount">0</div>
-                <div class="stat-label">전체 항목</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number" id="pendingCount">0</div>
-                <div class="stat-label">대기 중</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number" id="processingCount">0</div>
-                <div class="stat-label">처리 중</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number" id="completedCount">0</div>
-                <div class="stat-label">완료</div>
-            </div>
-        </div>
-
-        <div class="sort-controls">
-            <label for="sortBy">정렬 기준:</label>
-            <select id="sortBy" onchange="sortQueue()">
-                <option value="created_at">등록일시</option>
-                <option value="title">제목</option>
-                <option value="status">상태</option>
-                <option value="priority">우선순위</option>
-            </select>
-            <select id="sortOrder" onchange="sortQueue()">
-                <option value="desc">내림차순</option>
-                <option value="asc">오름차순</option>
-            </select>
-            <button type="button" class="btn btn-secondary btn-small" onclick="toggleDragSort()">
-                <span id="dragToggleText">드래그 정렬 활성화</span>
+    <!-- 상단 메뉴 -->
+    <div class="top-menu">
+        <div class="menu-buttons">
+            <button type="button" class="btn menu-btn active" data-status="pending" onclick="switchStatus('pending')">
+                📝 대기중 큐 보기
+            </button>
+            <button type="button" class="btn menu-btn" data-status="completed" onclick="switchStatus('completed')">
+                ✅ 완료됨 큐 보기
             </button>
         </div>
+        <div class="bulk-actions">
+            <button type="button" class="btn btn-danger" id="bulkDeleteBtn" onclick="bulkDelete()" disabled>
+                🗑️ 일괄삭제
+            </button>
+            <button type="button" class="btn btn-secondary" id="bulkStatusBtn" onclick="bulkChangeStatus()" disabled>
+                🔄 일괄상태변경
+            </button>
+        </div>
+        <div class="search-section">
+            <input type="text" id="searchInput" placeholder="🔍 제목/키워드 검색" onkeypress="if(event.key==='Enter') searchQueues()">
+            <button type="button" class="btn btn-small" onclick="searchQueues()">검색</button>
+            <button type="button" class="btn btn-small btn-secondary" onclick="clearSearch()">초기화</button>
+        </div>
+    </div>
 
-        <!-- 2행 테이블 레이아웃 -->
-        <div class="queue-table-container">
-            <table class="queue-table" id="queueTable">
-                <thead>
-                    <tr>
-                        <th width="80px">썸네일</th>
-                        <th width="100px">큐 상태</th>
-                        <th width="120px">카테고리</th>
-                        <th width="130px">프롬프트 스타일</th>
-                        <th width="80px">키워드 수</th>
-                        <th width="80px">상품 수</th>
-                        <th width="300px">액션</th>
-                    </tr>
-                </thead>
-                <tbody id="queueTableBody">
-                    <!-- JavaScript로 동적 생성 -->
-                </tbody>
-            </table>
-            
-            <div class="empty-state" id="emptyState" style="display: none;">
-                <h3>📦 저장된 정보가 없습니다</h3>
-                <p>아직 저장된 큐 항목이 없습니다.</p>
-                <a href="affiliate_editor.php" class="btn btn-primary">첫 번째 글 작성하기</a>
+    <!-- 통계 영역 -->
+    <div class="stats-section" id="statsSection">
+        <div class="stat-card">
+            <div class="stat-number" id="totalCount">0</div>
+            <div class="stat-label">전체 항목</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="pendingCount">0</div>
+            <div class="stat-label">대기중</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="completedCount">0</div>
+            <div class="stat-label">완료됨</div>
+        </div>
+    </div>
+
+    <!-- 큐 목록 영역 -->
+    <div class="queue-section">
+        <div class="queue-header">
+            <div class="select-all-section">
+                <label class="checkbox-container">
+                    <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()">
+                    <span class="checkmark"></span>
+                    전체 선택
+                </label>
+            </div>
+            <div class="queue-info" id="queueInfo">
+                대기중 큐 목록
+            </div>
+        </div>
+        
+        <div class="queue-list" id="queueList">
+            <div class="empty-state">
+                <h3>📦 큐 파일이 없습니다</h3>
+                <p>해당 상태의 큐 파일이 없습니다.</p>
+                <a href="affiliate_editor.php" class="btn btn-primary">새 글 작성하기</a>
             </div>
         </div>
     </div>
