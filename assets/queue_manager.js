@@ -39,9 +39,14 @@ function loadQueues() {
         success: function(response) {
             $('#loadingOverlay').hide();
             console.log('큐 데이터 로드 성공:', response);
+            console.log('response.success:', response.success);
+            console.log('response.queues:', response.queues);
+            console.log('response.queues 타입:', typeof response.queues);
+            console.log('response.queues 길이:', response.queues ? response.queues.length : 'null/undefined');
             
             if (response.success) {
                 allQueues = response.queues || [];
+                console.log('allQueues 할당 후:', allQueues);
                 displayQueues();
                 updateUI();
             } else {
@@ -90,15 +95,23 @@ function updateStats(stats) {
  * 큐 목록 표시 (계획서 66-78줄 레이아웃)
  */
 function displayQueues() {
+    console.log('displayQueues 함수 호출됨');
+    console.log('allQueues:', allQueues);
+    console.log('allQueues 길이:', allQueues ? allQueues.length : 'null/undefined');
+    
     const container = $('#queueList');
+    console.log('container 요소:', container.length);
     
     if (!allQueues || allQueues.length === 0) {
+        console.log('큐가 없어서 빈 상태 표시');
         showEmptyState();
         return;
     }
     
+    console.log(`${allQueues.length}개의 큐를 표시 시작`);
     let html = '';
-    allQueues.forEach(queue => {
+    allQueues.forEach((queue, index) => {
+        console.log(`큐 ${index + 1} 처리 중:`, queue);
         const queueId = queue.queue_id || queue.id;
         const title = queue.title || '제목 없음';
         const thumbnailUrl = queue.thumbnail_url || '';
@@ -171,21 +184,28 @@ function displayQueues() {
         `;
     });
     
+    console.log('생성된 HTML 길이:', html.length);
+    console.log('생성된 HTML 미리보기:', html.substring(0, 200));
+    
     container.html(html);
     console.log(`${allQueues.length}개의 큐 표시 완료`);
+    console.log('컨테이너 내용 확인:', container.children().length, '개 자식 요소');
 }
 
 /**
  * 빈 상태 표시
  */
 function showEmptyState() {
-    $('#queueList').html(`
+    console.log('showEmptyState 함수 호출됨');
+    const emptyHtml = `
         <div class="empty-state" style="text-align: center; padding: 50px;">
             <h3>📦 큐 파일이 없습니다</h3>
             <p>해당 상태의 큐 파일이 없습니다.</p>
             <a href="affiliate_editor.php" class="btn btn-primary">새 글 작성하기</a>
         </div>
-    `);
+    `;
+    $('#queueList').html(emptyHtml);
+    console.log('빈 상태 HTML 설정 완료');
 }
 
 /**
