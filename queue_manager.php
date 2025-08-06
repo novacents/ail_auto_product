@@ -1,21 +1,23 @@
 <?php
 /**
- * 큐 관리 시스템 - 새로운 2단계 시스템 (pending/completed)
- * 버전: v4.0 (queue_manager_plan.md 기반 재구현)
+ * 큐 관리 시스템 - queue_manager_plan.md v2.0 기반 완전 재구현
+ * 버전: v4.1 (계획서 완전 준수)
  */
 require_once($_SERVER['DOCUMENT_ROOT'].'/wp-config.php');
 require_once __DIR__ . '/queue_utils.php';
 
-if (!current_user_can('manage_options')) { wp_die('접근 권한이 없습니다.'); }
+// 권한 확인 (계획서 131줄)
+if (!current_user_can('manage_options')) { 
+    wp_die('접근 권한이 없습니다.'); 
+}
 
-// 🗑️ 자동 정리 시스템 (queue_manager_plan.md 116-121줄, 165-174줄 요구사항)
-// queue_manager.php 접속 시 5% 확률로 completed 상태 큐 파일 자동 정리
+// 🗑️ 자동 정리 시스템 (계획서 119줄, 169줄: 5% 확률로 실행)
 if (!isset($_POST['action']) && rand(1, 100) <= 5) {
     if (function_exists('cleanup_completed_queues_split')) {
         try {
-            $cleaned_count = cleanup_completed_queues_split(7); // 7일 후 자동 삭제
+            $cleaned_count = cleanup_completed_queues_split(7);
             if ($cleaned_count > 0) {
-                error_log("Queue Manager Auto Cleanup: {$cleaned_count} completed queues older than 7 days were automatically cleaned up");
+                error_log("Queue Manager Auto Cleanup: {$cleaned_count} completed queues cleaned up");
             }
         } catch (Exception $e) {
             error_log("Queue Manager Auto Cleanup Error: " . $e->getMessage());
@@ -296,6 +298,7 @@ if (isset($_POST['action'])) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>큐 관리 시스템 - 노바센트</title>
 <link rel="stylesheet" href="assets/queue_manager.css?v=<?php echo time(); ?>">
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 </head>
 <body>
 <div class="loading-overlay" id="loadingOverlay">
