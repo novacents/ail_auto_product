@@ -171,7 +171,7 @@ if (isset($_POST['action'])) {
                 $total_count = count($queue_ids);
                 
                 foreach ($queue_ids as $queue_id) {
-                    if (update_queue_status_split($queue_id, $new_status)) {
+                    if (update_queue_status_split_v2($queue_id, $new_status)) {
                         $success_count++;
                     }
                 }
@@ -249,7 +249,7 @@ if (isset($_POST['action'])) {
                 
                 // 발행 성공 시 completed 상태로 변경
                 if (strpos($response, '워드프레스 발행 성공:') !== false) {
-                    update_queue_status_split($queue_id, 'completed');
+                    update_queue_status_split_v2($queue_id, 'completed');
                     
                     // URL 추출
                     preg_match('/워드프레스 발행 성공: (https?:\/\/[^\s]+)/', $response, $matches);
