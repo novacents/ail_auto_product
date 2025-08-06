@@ -59,7 +59,7 @@ function loadQueues() {
         url: '',
         method: 'POST',
         data: {
-            action: 'get_queue_list'
+            action: 'get_queues'
         },
         dataType: 'json',
         success: function(response) {
@@ -145,7 +145,7 @@ function displayFilteredQueues() {
     let html = '';
     filteredQueues.forEach(item => {
         const thumbnailHtml = item.thumbnail_url ? 
-            `<img src="${item.thumbnail_url}" class="thumbnail-preview" alt="썸네일" onerror="this.parentElement.innerHTML='<div class=\\"no-thumbnail\\">📷</div>'">` : 
+            `<img src="${item.thumbnail_url}" class="thumbnail-preview" alt="썸네일" onerror="this.parentElement.innerHTML='<div class=\\\\\"no-thumbnail\\\\\">📷</div>'">` : 
             '<div class="no-thumbnail">📷</div>';
             
         const statusClass = `status-${item.status || 'pending'}`;
