@@ -157,7 +157,7 @@ function displayQueues() {
                         ${thumbnailHtml.replace('width:150px;height:150px', 'width:120px;height:120px')}
                     </div>
                     
-                    <!-- 큐 정보 (썸네일 옆에 배치) -->
+                    <!-- 큐 정보 (썸네일 옵에 배치) -->
                     <div class="info-area" style="flex: 1; min-width: 0; padding-top: 5px;">
                         <div class="queue-title" style="font-size: 18px; font-weight: bold; margin-bottom: 8px; color: #333;">
                             ${title}
@@ -183,7 +183,7 @@ function displayQueues() {
     
     container.html(html);
     console.log(`${allQueues.length}개의 큐 표시 완료`);
-    console.log('컨테이너 내용 확인:', container.children().length, '개 자식 요소');
+    console.log('컴테이너 내용 확인:', container.children().length, '개 자식 요소');
 }
 
 /**
@@ -211,7 +211,7 @@ function updateUI() {
     $(`.menu-btn[data-status="${currentStatus}"]`).addClass('active');
     
     // 큐 정보 텍스트
-    const queueInfo = currentStatus === 'pending' ? '대기중 큐 목록' : '완료됨 큐 목록';
+    const queueInfo = currentStatus === 'pending' ? '대기중 큐 목록' : '완룼됨 큐 목록';
     $('#queueInfo').text(queueInfo);
     
     // 일괄 작업 버튼 상태
@@ -226,6 +226,7 @@ function updateSelectedQueues() {
     $('.queue-checkbox:checked').each(function() {
         selectedQueues.push($(this).val());
     });
+    console.log('updateSelectedQueues 호출됨, selectedQueues:', selectedQueues);
     updateBulkButtons();
 }
 
@@ -341,10 +342,17 @@ function bulkDelete() {
  * 일괄 상태 변경
  */
 function bulkChangeStatus() {
-    if (selectedQueues.length === 0) return;
+    console.log('bulkChangeStatus 호출됨');
+    console.log('selectedQueues:', selectedQueues);
+    console.log('selectedQueues.length:', selectedQueues.length);
+    
+    if (selectedQueues.length === 0) {
+        alert('선택된 큐가 없습니다.');
+        return;
+    }
     
     const newStatus = currentStatus === 'pending' ? 'completed' : 'pending';
-    const statusText = newStatus === 'pending' ? '대기중' : '완료됨';
+    const statusText = newStatus === 'pending' ? '대기중' : '완룜됨';
     
     if (!confirm(`선택된 ${selectedQueues.length}개 항목을 ${statusText} 상태로 변경하시겠습니까?`)) {
         return;
@@ -423,6 +431,10 @@ function deleteQueue(queueId) {
  * 개별 상태 변경
  */
 function changeQueueStatus(queueId, newStatus) {
+    console.log('changeQueueStatus 호출됨');
+    console.log('queueId:', queueId);
+    console.log('newStatus:', newStatus);
+    
     $('#loadingOverlay').show();
     
     $.ajax({
@@ -457,7 +469,7 @@ function changeQueueStatus(queueId, newStatus) {
  * 즉시 발행 (계획서 110-114줄, auto_post_products.py 연동)
  */
 function immediatePublish(queueId) {
-    if (!confirm('이 큐를 즉시 발행하시겠습니까?\\n\\n발행이 완료되면 completed 상태로 변경됩니다.')) {
+    if (!confirm('이 큐를 즉시 발행하시겠습니까?\n\n발행이 완료되면 completed 상태로 변경됩니다.')) {
         return;
     }
     
@@ -478,8 +490,8 @@ function immediatePublish(queueId) {
             if (response.success) {
                 let message = '글이 성공적으로 발행되었습니다!';
                 if (response.post_url) {
-                    message += '\\n\\n발행된 글: ' + response.post_url;
-                    if (confirm(message + '\\n\\n발행된 글을 확인하시겠습니까?')) {
+                    message += '\n\n발행된 글: ' + response.post_url;
+                    if (confirm(message + '\n\n발행된 글을 확인하시겠습니까?')) {
                         window.open(response.post_url, '_blank');
                     }
                 } else {
@@ -498,7 +510,7 @@ function immediatePublish(queueId) {
             
             let errorMessage = '발행 중 오류가 발생했습니다.';
             if (status === 'timeout') {
-                errorMessage = '발행 처리 시간이 초과되었습니다.\\n잠시 후 큐 목록을 확인해주세요.';
+                errorMessage = '발행 처리 시간이 초과되었습니다.\n잠시 후 큐 목록을 확인해주세요.';
             }
             
             alert(errorMessage);
