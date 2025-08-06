@@ -363,19 +363,19 @@ if (isset($_POST['action'])) {
         </div>
     </div>
 
-    <!-- 세련된 통계 박스들 (한 줄 배치) -->
-    <div class="stats-container" style="display: flex; justify-content: center; gap: 20px; margin: 20px 0; padding: 0 20px;">
-        <div class="stat-box total" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 25px; border-radius: 12px; text-align: center; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3); min-width: 120px;">
-            <div style="font-size: 24px; font-weight: bold; margin-bottom: 5px;" id="totalCount">0</div>
-            <div style="font-size: 14px; opacity: 0.9;">전체 항목</div>
+    <!-- 깔끔한 테두리 통계 박스들 (한 줄 꽉 차게) -->
+    <div class="stats-container" style="display: flex; gap: 10px; margin: 20px 0; padding: 0;">
+        <div class="stat-box total" style="flex: 1; background: white; border: 2px solid #6c5ce7; color: #6c5ce7; padding: 20px 15px; border-radius: 8px; text-align: center;">
+            <div style="font-size: 28px; font-weight: bold; margin-bottom: 5px;" id="totalCount">0</div>
+            <div style="font-size: 16px; font-weight: 500;">전체 항목</div>
         </div>
-        <div class="stat-box pending" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 15px 25px; border-radius: 12px; text-align: center; box-shadow: 0 4px 15px rgba(245, 87, 108, 0.3); min-width: 120px;">
-            <div style="font-size: 24px; font-weight: bold; margin-bottom: 5px;" id="pendingCount">0</div>
-            <div style="font-size: 14px; opacity: 0.9;">대기중</div>
+        <div class="stat-box pending" style="flex: 1; background: white; border: 2px solid #fd79a8; color: #fd79a8; padding: 20px 15px; border-radius: 8px; text-align: center;">
+            <div style="font-size: 28px; font-weight: bold; margin-bottom: 5px;" id="pendingCount">0</div>
+            <div style="font-size: 16px; font-weight: 500;">대기중</div>
         </div>
-        <div class="stat-box completed" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 15px 25px; border-radius: 12px; text-align: center; box-shadow: 0 4px 15px rgba(79, 172, 254, 0.3); min-width: 120px;">
-            <div style="font-size: 24px; font-weight: bold; margin-bottom: 5px;" id="completedCount">0</div>
-            <div style="font-size: 14px; opacity: 0.9;">완료됨</div>
+        <div class="stat-box completed" style="flex: 1; background: white; border: 2px solid #74b9ff; color: #74b9ff; padding: 20px 15px; border-radius: 8px; text-align: center;">
+            <div style="font-size: 28px; font-weight: bold; margin-bottom: 5px;" id="completedCount">0</div>
+            <div style="font-size: 16px; font-weight: 500;">완료됨</div>
         </div>
     </div>
 
