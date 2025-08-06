@@ -3,7 +3,7 @@
  * 큐 관리 시스템 - 새로운 2단계 시스템 (pending/completed)
  * 버전: v4.0 (queue_manager_plan.md 기반 재구현)
  */
-require_once('/var/www/novacents/wp-config.php');
+require_once($_SERVER['DOCUMENT_ROOT'].'/wp-config.php');
 require_once __DIR__ . '/queue_utils.php';
 
 if (!current_user_can('manage_options')) { wp_die('접근 권한이 없습니다.'); }
