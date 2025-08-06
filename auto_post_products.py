@@ -56,7 +56,7 @@ def load_configuration():
 
 def get_queue_files():
     """큐 파일 목록을 가져옵니다"""
-    queue_dir = '/var/www/novacents/tools/queue_split/pending'
+    queue_dir = '/var/www/novacents/tools/queues/pending'
     if not os.path.exists(queue_dir):
         return []
     
