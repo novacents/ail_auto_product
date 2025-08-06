@@ -24,9 +24,16 @@ define('QUEUE_BASE_DIR', '/var/www/novacents/tools');
 define('QUEUE_SPLIT_DIR', QUEUE_BASE_DIR . '/queues');
 define('QUEUE_PENDING_DIR', QUEUE_SPLIT_DIR . '/pending');
 define('QUEUE_COMPLETED_DIR', QUEUE_SPLIT_DIR . '/completed');
+// 4단계 시스템 상수 (호환성용)
+define('QUEUE_PROCESSING_DIR', QUEUE_SPLIT_DIR . '/processing');
+define('QUEUE_FAILED_DIR', QUEUE_SPLIT_DIR . '/failed');
+// 시스템 디렉토리
+define('QUEUE_LOCKS_DIR', QUEUE_BASE_DIR . '/locks');
+define('QUEUE_TRANSACTIONS_DIR', QUEUE_BASE_DIR . '/transactions');
 // 🚫 QUEUE_LEGACY_FILE 제거됨 - product_queue.json 더이상 사용하지 않음
 
 define('QUEUE_INDEX_FILE', QUEUE_BASE_DIR . '/queue_index.json');
+define('PYTHON_PID_FILE', QUEUE_BASE_DIR . '/python_process.pid');
 
 
 /**
