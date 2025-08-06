@@ -16,10 +16,10 @@ ini_set('error_log', __DIR__ . '/php_error_log.txt'); // PHP 에러를 특정 �
 
 // 2. 파일 경로 상수 정의 (한곳에서 관리)
 define('BASE_PATH', __DIR__); // 현재 파일이 있는 디렉토리
-define('ENV_FILE', '/home/novacents/.env'); // .env 파일은 홈 디렉토리에 고정
+define('ENV_FILE', '/var/www/novacents/tools/.env'); // .env 파일을 온라인서버 경로로 변경
 define('DEBUG_LOG_FILE', BASE_PATH . '/debug_processor.txt');
 define('MAIN_LOG_FILE', BASE_PATH . '/processor_log.txt');
-define('QUEUE_FILE', '/var/www/novacents/tools/product_queue.json');
+// 🚫 QUEUE_FILE 제거됨 - product_queue.json 더이상 사용하지 않음
 define('TEMP_DIR', BASE_PATH . '/temp'); // 즉시 발행용 임시 파일 디렉토리
 
 // queue_utils.php 유틸리티 함수 포함
@@ -465,6 +465,22 @@ function process_immediate_publish($queue_data) {
         // 성공/실패에 따른 처리
         if ($result['success']) {
             debug_log("process_immediate_publish: Immediate publish successful");
+            
+            // 🆕 즉시 발행 성공 시 completed 상태로 큐에 저장 (queue_manager_plan.md 요구사항)
+            try {
+                $queue_data['status'] = 'completed';
+                $queue_data['completed_at'] = date('Y-m-d H:i:s');
+                $queue_data['published_url'] = $result['post_url'] ?? null;
+                
+                $queue_id = add_queue_split($queue_data);
+                if ($queue_id) {
+                    debug_log("process_immediate_publish: Successfully saved to completed queue with ID: {$queue_id}");
+                } else {
+                    debug_log("process_immediate_publish: Warning - Failed to save to completed queue");
+                }
+            } catch (Exception $e) {
+                debug_log("process_immediate_publish: Warning - Exception while saving to completed queue: " . $e->getMessage());
+            }
             
             $success_msg = "✅ 즉시 발행이 완료되었습니다!\n\n";
             $success_msg .= "📋 작업 정보\n";
