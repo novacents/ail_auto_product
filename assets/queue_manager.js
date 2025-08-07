@@ -211,7 +211,7 @@ function updateUI() {
     $(`.menu-btn[data-status="${currentStatus}"]`).addClass('active');
     
     // 큐 정보 텍스트
-    const queueInfo = currentStatus === 'pending' ? '대기중 큐 목록' : '완룼됨 큐 목록';
+    const queueInfo = currentStatus === 'pending' ? '대기중 큐 목록' : '완룜됨 큐 목록';
     $('#queueInfo').text(queueInfo);
     
     // 일괄 작업 버튼 상태
@@ -352,7 +352,7 @@ function bulkChangeStatus() {
     }
     
     const newStatus = currentStatus === 'pending' ? 'completed' : 'pending';
-    const statusText = newStatus === 'pending' ? '대기중' : '완룜됨';
+    const statusText = newStatus === 'pending' ? '대기중' : '완료됨';
     
     if (!confirm(`선택된 ${selectedQueues.length}개 항목을 ${statusText} 상태로 변경하시겠습니까?`)) {
         return;
@@ -577,3 +577,16 @@ function getKeywordsList(keywords) {
 }
 
 console.log('큐 관리 시스템 JavaScript 로드 완료 (계획서 v2.0 완전 준수)');
+
+// 전역 스코프에 함수 노출 (HTML onclick 호환성)
+window.bulkChangeStatus = bulkChangeStatus;
+window.bulkDelete = bulkDelete;
+window.changeQueueStatus = changeQueueStatus;
+window.deleteQueue = deleteQueue;
+window.immediatePublish = immediatePublish;
+window.switchStatus = switchStatus;
+window.toggleSelectAll = toggleSelectAll;
+window.updateSelectedQueues = updateSelectedQueues;
+window.searchQueues = searchQueues;
+window.clearSearch = clearSearch;
+window.refreshQueues = refreshQueues;
