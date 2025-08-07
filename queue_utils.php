@@ -1,7 +1,7 @@
 <?php
 /**
  * 큐 관리 유틸리티 함수 모음
- * 버전: v3.2 (2025-08-06)
+ * 버전: v3.3 (2025-08-07) - 디버깅 로그 추가
  */
 
 // 디렉토리 경로 상수
@@ -156,39 +156,80 @@ function load_queue_split($queue_id) {
 }
 
 function update_queue_status_split_v2($queue_id, $new_status) {
+    error_log("update_queue_status_split_v2 호출: queue_id=$queue_id, new_status=$new_status");
+    
     if (!in_array($new_status, ['pending', 'completed'])) {
+        error_log("유효하지 않은 상태: $new_status");
         return false;
     }
     
     $current_data = load_queue_split($queue_id);
     if (!$current_data) {
+        error_log("큐 데이터를 찾을 수 없음: $queue_id");
         return false;
     }
     
     $current_status = $current_data['status'];
+    error_log("현재 상태: $current_status, 새 상태: $new_status");
     
     if ($current_status === $new_status) {
+        error_log("이미 같은 상태임");
         return true; // 이미 같은 상태
     }
     
     $old_file = ($current_status === 'pending') ? QUEUE_PENDING_DIR . $queue_id . '.json' : QUEUE_COMPLETED_DIR . $queue_id . '.json';
     $new_file = ($new_status === 'pending') ? QUEUE_PENDING_DIR . $queue_id . '.json' : QUEUE_COMPLETED_DIR . $queue_id . '.json';
     
+    error_log("이동: $old_file -> $new_file");
+    
+    // 파일 존재 확인
+    if (!file_exists($old_file)) {
+        error_log("기존 파일이 없음: $old_file");
+        // 파일이 없으면 다른 위치 확인
+        $alt_file = ($current_status === 'completed') ? QUEUE_PENDING_DIR . $queue_id . '.json' : QUEUE_COMPLETED_DIR . $queue_id . '.json';
+        if (file_exists($alt_file)) {
+            error_log("대체 위치에서 파일 발견: $alt_file");
+            $old_file = $alt_file;
+        }
+    }
+    
     // 데이터 업데이트
     $current_data['status'] = $new_status;
     $current_data['modified_at'] = date('Y-m-d H:i:s');
     
+    // 디렉토리 확인
+    $new_dir = dirname($new_file);
+    if (!is_dir($new_dir)) {
+        error_log("디렉토리가 없음: $new_dir");
+        if (!mkdir($new_dir, 0755, true)) {
+            error_log("디렉토리 생성 실패: $new_dir");
+            return false;
+        }
+    }
+    
     // 새 위치에 파일 저장
-    if (file_put_contents($new_file, json_encode($current_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE))) {
-        // 기존 파일 삭제
-        if (file_exists($old_file)) {
-            unlink($old_file);
+    $json_data = json_encode($current_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    $write_result = file_put_contents($new_file, $json_data);
+    
+    if ($write_result !== false) {
+        error_log("새 파일 저장 성공: $new_file");
+        
+        // 기존 파일 삭제 (다른 위치인 경우만)
+        if (file_exists($old_file) && $old_file !== $new_file) {
+            if (unlink($old_file)) {
+                error_log("기존 파일 삭제 성공: $old_file");
+            } else {
+                error_log("기존 파일 삭제 실패: $old_file");
+            }
         }
         
         // 인덱스 업데이트
         update_queue_index($queue_id, $current_data);
         
         return true;
+    } else {
+        error_log("파일 저장 실패: $new_file");
+        error_log("JSON 데이터 길이: " . strlen($json_data));
     }
     
     return false;
@@ -365,5 +406,5 @@ function remove_queue($queue_id) {
     return remove_queue_split($queue_id);
 }
 
-error_log("Queue Utils v3.2 로드 완료 - Function exists checks added");
+error_log("Queue Utils v3.3 로드 완료 - 디버깅 로그 추가됨");
 ?>
