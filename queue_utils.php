@@ -1,7 +1,7 @@
 <?php
 /**
  * 큐 관리 유틸리티 함수 모음
- * 버전: v3.3 (2025-08-07) - 디버깅 로그 추가
+ * 버전: v3.2 (2025-08-06)
  */
 
 // 디렉토리 경로 상수
@@ -127,8 +127,8 @@ function get_queues_from_directory($directory, $status) {
 }
 
 function load_queue_split($queue_id) {
-    $pending_file = QUEUE_PENDING_DIR . $queue_id . '.json';
-    $completed_file = QUEUE_COMPLETED_DIR . $queue_id . '.json';
+    $pending_file = QUEUE_PENDING_DIR . 'queue_' . $queue_id . '.json';
+    $completed_file = QUEUE_COMPLETED_DIR . 'queue_' . $queue_id . '.json';
     
     if (file_exists($pending_file)) {
         $content = file_get_contents($pending_file);
@@ -177,8 +177,8 @@ function update_queue_status_split_v2($queue_id, $new_status) {
         return true; // 이미 같은 상태
     }
     
-    $old_file = ($current_status === 'pending') ? QUEUE_PENDING_DIR . $queue_id . '.json' : QUEUE_COMPLETED_DIR . $queue_id . '.json';
-    $new_file = ($new_status === 'pending') ? QUEUE_PENDING_DIR . $queue_id . '.json' : QUEUE_COMPLETED_DIR . $queue_id . '.json';
+    $old_file = ($current_status === 'pending') ? QUEUE_PENDING_DIR . 'queue_' . $queue_id . '.json' : QUEUE_COMPLETED_DIR . 'queue_' . $queue_id . '.json';
+    $new_file = ($new_status === 'pending') ? QUEUE_PENDING_DIR . 'queue_' . $queue_id . '.json' : QUEUE_COMPLETED_DIR . 'queue_' . $queue_id . '.json';
     
     error_log("이동: $old_file -> $new_file");
     
@@ -186,7 +186,7 @@ function update_queue_status_split_v2($queue_id, $new_status) {
     if (!file_exists($old_file)) {
         error_log("기존 파일이 없음: $old_file");
         // 파일이 없으면 다른 위치 확인
-        $alt_file = ($current_status === 'completed') ? QUEUE_PENDING_DIR . $queue_id . '.json' : QUEUE_COMPLETED_DIR . $queue_id . '.json';
+        $alt_file = ($current_status === 'completed') ? QUEUE_PENDING_DIR . 'queue_' . $queue_id . '.json' : QUEUE_COMPLETED_DIR . 'queue_' . $queue_id . '.json';
         if (file_exists($alt_file)) {
             error_log("대체 위치에서 파일 발견: $alt_file");
             $old_file = $alt_file;
@@ -236,8 +236,8 @@ function update_queue_status_split_v2($queue_id, $new_status) {
 }
 
 function remove_queue_split($queue_id) {
-    $pending_file = QUEUE_PENDING_DIR . $queue_id . '.json';
-    $completed_file = QUEUE_COMPLETED_DIR . $queue_id . '.json';
+    $pending_file = QUEUE_PENDING_DIR . 'queue_' . $queue_id . '.json';
+    $completed_file = QUEUE_COMPLETED_DIR . 'queue_' . $queue_id . '.json';
     
     $removed = false;
     
@@ -406,5 +406,5 @@ function remove_queue($queue_id) {
     return remove_queue_split($queue_id);
 }
 
-error_log("Queue Utils v3.3 로드 완료 - 디버깅 로그 추가됨");
+error_log("Queue Utils v3.2 로드 완료 - Function exists checks added");
 ?>
