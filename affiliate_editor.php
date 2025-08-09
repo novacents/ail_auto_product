@@ -102,7 +102,7 @@ if(isset($_GET['error']))$error_message='오류: '.urldecode($_GET['error']);
 </div>
 </div>
 </div>
-<!-- 두 번째 줄: 카테고리 + 프롬프트 + 저장된 정보 관리 -->
+<!-- 두 번째 줄: 카테고리 + 프롬프트 스타일 -->
 <div class="input-row">
 <div class="form-group">
 <label for="category">카테고리</label>
@@ -113,6 +113,7 @@ if(isset($_GET['error']))$error_message='오류: '.urldecode($_GET['error']);
 <option value="354">Today's Pick</option>
 <option value="12">우리잇템</option>
 </select>
+<button type="button" class="btn btn-success btn-small" onclick="saveUserSettings()" style="background:#28a745;color:white;">저장된 정보 관리</button>
 </div>
 </div>
 <div class="form-group">
@@ -124,7 +125,6 @@ if(isset($_GET['error']))$error_message='오류: '.urldecode($_GET['error']);
 <option value="professional_analysis">전문 분석형</option>
 <option value="amazing_discovery">놀라움 발견형</option>
 </select>
-<a href="queue_manager.php" class="nav-link" style="margin-left:10px;" target="_blank">📋 저장된 정보 관리</a>
 </div>
 </div>
 </div>
@@ -182,6 +182,7 @@ if(isset($_GET['error']))$error_message='오류: '.urldecode($_GET['error']);
 <div class="empty-state">
 <h3>📦 상품이 없습니다</h3>
 <p>위의 "키워드 추가" 버튼을 클릭하여<br>첫 번째 키워드를 추가해보세요!</p>
+</div>
 </div>
 </div>
 </div>
@@ -247,87 +248,48 @@ if(isset($_GET['error']))$error_message='오류: '.urldecode($_GET['error']);
 </div>
 <div class="form-row two-col">
 <div class="form-field">
-<label>재질/소재</label>
-<input type="text" id="material" placeholder="예: 스테인리스 스틸, 실리콘 등">
+<label>재질</label>
+<input type="text" id="material" placeholder="예: 실리콘, 스테인리스, ABS 등">
 </div>
 <div class="form-field">
-<label>전원/배터리</label>
-<input type="text" id="power_battery" placeholder="예: USB 충전, 건전지 등">
+<label>전력/배터리</label>
+<input type="text" id="power" placeholder="예: USB 충전, AA 건전지, 220V 등">
 </div>
 </div>
 </div>
 <div class="input-group">
-<h3>📊 효율성 분석 <small style="color:#666;">(선택사항 - 빈 칸은 자동 제외)</small></h3>
+<h3>🎯 타겟 및 용도 <small style="color:#666;">(선택사항 - 빈 칸은 자동 제외)</small></h3>
 <div class="form-row">
 <div class="form-field">
-<label>해결하는 문제</label>
-<input type="text" id="problem_solving" placeholder="예: 설거지 시간 오래 걸림">
+<label>주 사용 대상</label>
+<input type="text" id="target_user" placeholder="예: 주부, 직장인, 학생, 반려동물 등">
 </div>
 </div>
 <div class="form-row two-col">
 <div class="form-field">
-<label>시간 절약 효과</label>
-<input type="text" id="time_saving" placeholder="예: 기존 10분 → 3분으로 단축">
+<label>사용 장소</label>
+<input type="text" id="usage_location" placeholder="예: 부엌, 욕실, 사무실, 야외 등">
 </div>
 <div class="form-field">
-<label>공간 활용</label>
-<input type="text" id="space_efficiency" placeholder="예: 50% 공간 절약">
-</div>
-</div>
-<div class="form-row">
-<div class="form-field">
-<label>비용 절감</label>
-<input type="text" id="cost_saving" placeholder="예: 월 전기료 30% 절약">
+<label>계절/시기</label>
+<input type="text" id="season" placeholder="예: 여름용, 겨울용, 연중무휴 등">
 </div>
 </div>
 </div>
 <div class="input-group">
-<h3>🏠 사용 시나리오 <small style="color:#666;">(선택사항 - 빈 칸은 자동 제외)</small></h3>
-<div class="form-row two-col">
-<div class="form-field">
-<label>주요 사용 장소</label>
-<input type="text" id="usage_location" placeholder="예: 주방, 욕실, 거실 등">
-</div>
-<div class="form-field">
-<label>사용 빈도</label>
-<input type="text" id="usage_frequency" placeholder="예: 매일, 주 2-3회 등">
-</div>
-</div>
-<div class="form-row two-col">
-<div class="form-field">
-<label>적합한 사용자</label>
-<input type="text" id="target_users" placeholder="예: 1인 가구, 맞벌이 부부 등">
-</div>
-<div class="form-field">
-<label>사용법 요약</label>
-<input type="text" id="usage_method" placeholder="간단한 사용 단계">
-</div>
-</div>
-</div>
-<div class="input-group">
-<h3>✅ 장점 및 주의사항 <small style="color:#666;">(선택사항 - 빈 칸은 자동 제외)</small></h3>
-<div class="form-row">
-<div class="form-field">
-<label>핵심 장점 3가지</label>
-<ol class="advantages-list">
-<li><input type="text" id="advantage1" placeholder="예: 설치 간편함"></li>
-<li><input type="text" id="advantage2" placeholder="예: 유지비 저렴함"></li>
-<li><input type="text" id="advantage3" placeholder="예: 내구성 뛰어남"></li>
-</ol>
-</div>
-</div>
-<div class="form-row">
-<div class="form-field">
-<label>주의사항</label>
-<textarea id="precautions" placeholder="예: 물기 주의, 정기 청소 필요 등"></textarea>
+<h3>✨ 장점 및 특징 <small style="color:#666;">(최대 5개까지 - 빈 칸은 자동 제외)</small></h3>
+<ul class="advantages-list">
+<li><input type="text" id="advantage_1" placeholder="장점 1: 예) 간편한 원터치 조작"></li>
+<li><input type="text" id="advantage_2" placeholder="장점 2: 예) 공간 절약형 컴팩트 디자인"></li>
+<li><input type="text" id="advantage_3" placeholder="장점 3: 예) 세척이 쉬운 분리형 구조"></li>
+<li><input type="text" id="advantage_4" placeholder="장점 4: 예) 친환경 소재 사용"></li>
+<li><input type="text" id="advantage_5" placeholder="장점 5: 예) 뛰어난 내구성과 품질"></li>
+</ul>
 </div>
 </div>
 </div>
 </div>
 </div>
-</div>
-</div>
-</div>
-<script defer src="affiliate_editor.js"></script>
+<script src="affiliate_editor.js"></script>
 </body>
 </html>
