@@ -16,3 +16,11 @@
 [2025-08-07 13:41:37] [KEYWORD_PROCESSOR] main_process: Processing get_queue_stats request
 [2025-08-07 13:41:37] [KEYWORD_PROCESSOR] get_queue_stats: Retrieving queue statistics from split system
 [2025-08-07 13:41:37] [KEYWORD_PROCESSOR] get_queue_stats: Retrieved stats - Total: 2
+[2025-08-09 16:31:19] [KEYWORD_PROCESSOR] main_process: Processing save_to_queue request
+[2025-08-09 16:31:19] [KEYWORD_PROCESSOR] main_process: Exception caught: Invalid queue data
+[2025-08-09 16:31:28] [KEYWORD_PROCESSOR] main_process: Processing save_to_queue request
+[2025-08-09 16:31:28] [KEYWORD_PROCESSOR] main_process: Exception caught: Invalid queue data
+[2025-08-09 16:31:36] [KEYWORD_PROCESSOR] main_process: Processing save_to_queue request
+[2025-08-09 16:31:36] [KEYWORD_PROCESSOR] main_process: Exception caught: Invalid queue data
+[2025-08-09 16:31:45] [KEYWORD_PROCESSOR] main_process: Processing save_to_queue request
+[2025-08-09 16:31:45] [KEYWORD_PROCESSOR] main_process: Exception caught: Invalid queue data
