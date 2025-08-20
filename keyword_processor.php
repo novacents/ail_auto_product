@@ -856,6 +856,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 echo json_encode($result);
                 break;
                 
+            case 'python_immediate_publish':
+                debug_log("main_process: Processing python_immediate_publish request");
+                
+                $queue_data = json_decode($_POST['queue_data'] ?? '{}', true);
+                
+                if (!$queue_data) {
+                    throw new Exception('Invalid queue data');
+                }
+                
+                // 임시 파일 생성
+                $temp_file = tempnam('/tmp', 'immediate_publish_');
+                file_put_contents($temp_file, json_encode($queue_data));
+                
+                // Python 스크립트 실행
+                $python_path = '/usr/bin/python3';
+                $script_path = '/var/www/novacents/tools/auto_post_products.py';
+                $command = escapeshellcmd("$python_path $script_path --mode immediate --immediate-file $temp_file");
+                
+                $output = shell_exec($command . ' 2>&1');
+                
+                // 결과 처리
+                if (strpos($output, '✅') !== false) {
+                    echo json_encode([
+                        'success' => true,
+                        'message' => '글이 성공적으로 발행되었습니다.',
+                        'output' => $output
+                    ]);
+                } else {
+                    echo json_encode([
+                        'success' => false,
+                        'message' => 'Python 스크립트 실행 실패',
+                        'output' => $output
+                    ]);
+                }
+                break;
+                
             case 'get_queue_stats':
                 debug_log("main_process: Processing get_queue_stats request");
                 
@@ -864,6 +900,88 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'success' => true,
                     'stats' => $stats
                 ]);
+                break;
+                
+            case 'get_latest_queue_file':
+                debug_log("main_process: Processing get_latest_queue_file request");
+                
+                $queue_dir = '/var/www/novacents/tools/queues/pending/';
+                if (!is_dir($queue_dir)) {
+                    throw new Exception('큐 디렉토리가 존재하지 않습니다.');
+                }
+                
+                // 가장 최근 큐 파일 찾기
+                $files = glob($queue_dir . '*.json');
+                if (empty($files)) {
+                    echo json_encode([
+                        'success' => false,
+                        'message' => '대기 중인 큐 파일이 없습니다.'
+                    ]);
+                } else {
+                    // 파일을 수정 시간 기준으로 정렬 (최신 것이 마지막)
+                    usort($files, function($a, $b) {
+                        return filemtime($a) - filemtime($b);
+                    });
+                    
+                    $latest_file = end($files);
+                    $filename = basename($latest_file);
+                    
+                    debug_log("main_process: Found latest queue file: $filename");
+                    echo json_encode([
+                        'success' => true,
+                        'queue_file' => $filename,
+                        'file_path' => $latest_file
+                    ]);
+                }
+                break;
+                
+            case 'publish_from_queue':
+                debug_log("main_process: Processing publish_from_queue request");
+                
+                $queue_file = $_POST['queue_file'] ?? '';
+                if (empty($queue_file)) {
+                    throw new Exception('큐 파일명이 제공되지 않았습니다.');
+                }
+                
+                $queue_path = '/var/www/novacents/tools/queues/pending/' . $queue_file;
+                if (!file_exists($queue_path)) {
+                    throw new Exception('큐 파일을 찾을 수 없습니다: ' . $queue_file);
+                }
+                
+                // Python 스크립트로 큐 파일 처리
+                $python_path = '/usr/bin/python3';
+                $script_path = '/var/www/novacents/tools/auto_post_products.py';
+                $command = escapeshellcmd("$python_path $script_path --mode queue --queue-file $queue_path");
+                
+                $output = shell_exec($command . ' 2>&1');
+                
+                debug_log("main_process: Python script output: $output");
+                
+                // 결과 처리
+                if (strpos($output, '✅') !== false || strpos($output, 'success') !== false) {
+                    // 성공적으로 처리되면 큐 파일을 completed로 이동
+                    $completed_dir = '/var/www/novacents/tools/queues/completed/';
+                    if (!is_dir($completed_dir)) {
+                        mkdir($completed_dir, 0755, true);
+                    }
+                    
+                    $completed_path = $completed_dir . $queue_file;
+                    rename($queue_path, $completed_path);
+                    
+                    debug_log("main_process: Queue file moved to completed: $queue_file");
+                    
+                    echo json_encode([
+                        'success' => true,
+                        'message' => '글이 성공적으로 발행되었습니다.',
+                        'output' => $output
+                    ]);
+                } else {
+                    echo json_encode([
+                        'success' => false,
+                        'message' => 'Python 스크립트 실행 실패',
+                        'output' => $output
+                    ]);
+                }
                 break;
                 
             default:
