@@ -70,6 +70,36 @@ function updateProgress(){const tp=kw.reduce((s,k)=>s+k.products.length,0),cp=kw
 function collectUserInputDetails(){const d={},sp={},ef={},us={},be={},av=[];addIfNotEmpty(sp,'main_function','main_function');addIfNotEmpty(sp,'size_capacity','size_capacity');addIfNotEmpty(sp,'color','color');addIfNotEmpty(sp,'material','material');addIfNotEmpty(sp,'power_battery','power_battery');if(Object.keys(sp).length>0)d.specs=sp;addIfNotEmpty(ef,'problem_solving','problem_solving');addIfNotEmpty(ef,'time_saving','time_saving');addIfNotEmpty(ef,'space_efficiency','space_efficiency');addIfNotEmpty(ef,'cost_saving','cost_saving');if(Object.keys(ef).length>0)d.efficiency=ef;addIfNotEmpty(us,'usage_location','usage_location');addIfNotEmpty(us,'usage_frequency','usage_frequency');addIfNotEmpty(us,'target_users','target_users');addIfNotEmpty(us,'usage_method','usage_method');if(Object.keys(us).length>0)d.usage=us;['advantage1','advantage2','advantage3'].forEach(id=>{const v=document.getElementById(id)?.value.trim();if(v)av.push(v);});if(av.length>0)be.advantages=av;addIfNotEmpty(be,'precautions','precautions');if(Object.keys(be).length>0)d.benefits=be;return d;}
 function addIfNotEmpty(o,k,e){const v=document.getElementById(e)?.value.trim();if(v)o[k]=v;}
 
+// 문자열 정제 함수 - JSON 직렬화 안전하게 처리
+function sanitizeForJson(str) {
+    if (typeof str !== 'string') return str;
+    
+    return str
+        .replace(/\\/g, '\\\\')     // 백슬래시 이스케이프
+        .replace(/"/g, '\\"')       // 따옴표 이스케이프
+        .replace(/\n/g, '\\n')      // 개행문자 이스케이프
+        .replace(/\r/g, '\\r')      // 캐리지 리턴 이스케이프
+        .replace(/\t/g, '\\t')      // 탭 이스케이프
+        .replace(/[\x00-\x1F\x7F]/g, ''); // 제어문자 제거
+}
+
+// 객체 데이터 정제 함수
+function sanitizeObjectForJson(obj) {
+    if (obj === null || obj === undefined) return obj;
+    if (typeof obj === 'string') return sanitizeForJson(obj);
+    if (typeof obj !== 'object') return obj;
+    
+    if (Array.isArray(obj)) {
+        return obj.map(item => sanitizeObjectForJson(item));
+    }
+    
+    const sanitized = {};
+    for (const [key, value] of Object.entries(obj)) {
+        sanitized[key] = sanitizeObjectForJson(value);
+    }
+    return sanitized;
+}
+
 // 큐 데이터 구조 검증 함수
 function validateQueueDataStructure(fd) {
     // 필수 필드 존재 확인
@@ -103,7 +133,36 @@ function validateQueueDataStructure(fd) {
 
     return true;
 }
-function collectKeywordsData(){const kd=[];kw.forEach((k,ki)=>{const kdt={name:k.name,coupang:[],aliexpress:[],products_data:[]};k.products.forEach((p,pi)=>{if(p.url&&typeof p.url==='string'&&p.url.trim()!==''&&p.url.trim()!=='undefined'&&p.url.trim()!=='null'){const tu=p.url.trim();kdt.aliexpress.push(tu);const pd={url:tu,analysis_data:p.analysisData||null,generated_html:p.generatedHtml||null,user_data:p.userData||{}};kdt.products_data.push(pd);}});if(kdt.aliexpress.length>0)kd.push(kdt);});return kd;}
+function collectKeywordsData(){
+    const kd=[];
+    kw.forEach((k,ki)=>{
+        const kdt={
+            name:k.name,
+            coupang:[],
+            aliexpress:[],
+            products_data:[]
+        };
+        
+        k.products.forEach((p,pi)=>{
+            if(p.url&&typeof p.url==='string'&&p.url.trim()!==''&&p.url.trim()!=='undefined'&&p.url.trim()!=='null'){
+                const tu=p.url.trim();
+                kdt.aliexpress.push(tu);
+                
+                // 데이터 정제 적용
+                const pd={
+                    url:tu,
+                    analysis_data:sanitizeObjectForJson(p.analysisData)||null,
+                    generated_html:sanitizeForJson(p.generatedHtml)||null,
+                    user_data:sanitizeObjectForJson(p.userData)||{}
+                };
+                kdt.products_data.push(pd);
+            }
+        });
+        
+        if(kdt.aliexpress.length>0)kd.push(kdt);
+    });
+    return kd;
+}
 function validateAndSubmitData(fd,ip=false){if(!fd.title||fd.title.length<5){showDetailedError('입력 오류','제목은 5자 이상이어야 합니다.');return false;}if(!fd.keywords||fd.keywords.length===0){showDetailedError('입력 오류','최소 하나의 키워드와 상품 링크가 필요합니다.');return false;}let hv=false,tv=0,tpd=0;fd.keywords.forEach(k=>{if(k.aliexpress&&k.aliexpress.length>0){const vu=k.aliexpress.filter(u=>u&&typeof u==='string'&&u.trim()!=='');if(vu.length>0){hv=true;tv+=vu.length;tpd+=k.products_data?k.products_data.length:0;}}});if(!hv||tv===0){showDetailedError('입력 오류','각 키워드에 최소 하나의 유효한 알리익스프레스 상품 링크가 있어야 합니다.\\n\\n현재 상태:\\n- URL을 입력했는지 확인하세요\\n- 분석 버튼을 클릭했는지 확인하세요\\n- 알리익스프레스 URL인지 확인하세요');return false;}if(ip)return true;else{const f=document.getElementById('affiliateForm'),ei=f.querySelectorAll('input[type="hidden"]');ei.forEach(i=>i.remove());const hi=[{name:'title',value:fd.title},{name:'category',value:fd.category},{name:'prompt_type',value:fd.prompt_type},{name:'keywords',value:JSON.stringify(fd.keywords)},{name:'user_details',value:JSON.stringify(fd.user_details)},{name:'thumbnail_url',value:document.getElementById('thumbnail_url').value.trim()}];hi.forEach(({name,value})=>{const i=document.createElement('input');i.type='hidden';i.name=name;i.value=value;f.appendChild(i);});f.submit();return true;}}
 async function publishNow(){const lo=document.getElementById('loadingOverlay'),pb=document.getElementById('publishNowBtn');lo.style.display='flex';pb.disabled=true;pb.textContent='발행 중...';try{// 1. 큐 파일 존재 확인
 const r=await fetch('keyword_processor.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({action:'get_latest_queue_file'})});const rs=await r.json();if(rs.success && rs.queue_file){// 2. 큐 파일 기반 즉시 발행
@@ -113,12 +172,12 @@ async function completeProduct(){
     const kd=collectKeywordsData(),
           ud=collectUserInputDetails(),
           fd={
-              title:document.getElementById('title').value.trim(),
+              title:sanitizeForJson(document.getElementById('title').value.trim()),
               category:document.getElementById('category').value,
               prompt_type:document.getElementById('prompt_type').value,
               keywords:kd,
-              user_details:ud,
-              thumbnail_url:document.getElementById('thumbnail_url').value.trim()
+              user_details:sanitizeObjectForJson(ud),
+              thumbnail_url:sanitizeForJson(document.getElementById('thumbnail_url').value.trim())
           };
 
     // 기본 검증
@@ -130,12 +189,15 @@ async function completeProduct(){
         return;
     }
 
+    // 전체 데이터 정제
+    const sanitizedFd = sanitizeObjectForJson(fd);
+
     // JSON 직렬화 테스트
     let jsonData;
     try{
-        jsonData=JSON.stringify(fd);
+        jsonData=JSON.stringify(sanitizedFd);
         console.log('Queue data JSON length:',jsonData.length);
-        console.log('Queue data structure:',fd);
+        console.log('Queue data structure:',sanitizedFd);
     }catch(e){
         showDetailedError('데이터 직렬화 오류','JSON 변환 중 오류가 발생했습니다: '+e.message);
         return;
