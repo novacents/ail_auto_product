@@ -821,11 +821,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'save_to_queue':
                 debug_log("main_process: Processing save_to_queue request");
                 
-                $queue_data = json_decode($_POST['queue_data'] ?? '{}', true);
-                
-                if (!$queue_data) {
-                    throw new Exception('Invalid queue data');
+                // 받은 데이터 로깅
+                $raw_data = $_POST['queue_data'] ?? '';
+                debug_log("main_process: Raw POST data received: " . substr($raw_data, 0, 500) . "...");
+                debug_log("main_process: Raw data length: " . strlen($raw_data));
+
+                // JSON 디코딩 시도
+                $queue_data = json_decode($raw_data, true);
+                $json_error = json_last_error();
+
+                // JSON 오류 상세 분석
+                if ($json_error !== JSON_ERROR_NONE) {
+                    $error_messages = [
+                        JSON_ERROR_DEPTH => 'Maximum stack depth exceeded',
+                        JSON_ERROR_STATE_MISMATCH => 'Invalid or malformed JSON',
+                        JSON_ERROR_CTRL_CHAR => 'Control character error',
+                        JSON_ERROR_SYNTAX => 'Syntax error, malformed JSON',
+                        JSON_ERROR_UTF8 => 'Malformed UTF-8 characters'
+                    ];
+                    
+                    $error_msg = $error_messages[$json_error] ?? 'Unknown JSON error';
+                    debug_log("main_process: JSON decode error: {$error_msg} (Code: {$json_error})");
+                    
+                    throw new Exception("JSON 디코딩 실패: {$error_msg}");
                 }
+
+                // 빈 데이터 또는 잘못된 구조 체크
+                if (empty($queue_data) || !is_array($queue_data)) {
+                    debug_log("main_process: Empty or invalid queue data structure");
+                    throw new Exception('큐 데이터가 비어있거나 잘못된 형식입니다');
+                }
+
+                // 필수 필드 검증
+                $required_fields = ['title', 'category', 'prompt_type', 'keywords'];
+                foreach ($required_fields as $field) {
+                    if (!isset($queue_data[$field])) {
+                        debug_log("main_process: Missing required field: {$field}");
+                        throw new Exception("필수 필드 누락: {$field}");
+                    }
+                }
+
+                debug_log("main_process: Queue data validation passed successfully");
                 
                 $queue_id = save_queue_split($queue_data);
                 
