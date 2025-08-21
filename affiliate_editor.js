@@ -69,13 +69,103 @@ function getStatusIcon(s,is=false){switch(s){case'completed':return is?'✅':'�
 function updateProgress(){const tp=kw.reduce((s,k)=>s+k.products.length,0),cp=kw.reduce((s,k)=>s+k.products.filter(p=>p.isSaved).length,0),pe=tp>0?(cp/tp)*100:0;document.getElementById('progressFill').style.width=pe+'%';document.getElementById('progressText').textContent=`${cp}/${tp} 완성`;}
 function collectUserInputDetails(){const d={},sp={},ef={},us={},be={},av=[];addIfNotEmpty(sp,'main_function','main_function');addIfNotEmpty(sp,'size_capacity','size_capacity');addIfNotEmpty(sp,'color','color');addIfNotEmpty(sp,'material','material');addIfNotEmpty(sp,'power_battery','power_battery');if(Object.keys(sp).length>0)d.specs=sp;addIfNotEmpty(ef,'problem_solving','problem_solving');addIfNotEmpty(ef,'time_saving','time_saving');addIfNotEmpty(ef,'space_efficiency','space_efficiency');addIfNotEmpty(ef,'cost_saving','cost_saving');if(Object.keys(ef).length>0)d.efficiency=ef;addIfNotEmpty(us,'usage_location','usage_location');addIfNotEmpty(us,'usage_frequency','usage_frequency');addIfNotEmpty(us,'target_users','target_users');addIfNotEmpty(us,'usage_method','usage_method');if(Object.keys(us).length>0)d.usage=us;['advantage1','advantage2','advantage3'].forEach(id=>{const v=document.getElementById(id)?.value.trim();if(v)av.push(v);});if(av.length>0)be.advantages=av;addIfNotEmpty(be,'precautions','precautions');if(Object.keys(be).length>0)d.benefits=be;return d;}
 function addIfNotEmpty(o,k,e){const v=document.getElementById(e)?.value.trim();if(v)o[k]=v;}
+
+// 큐 데이터 구조 검증 함수
+function validateQueueDataStructure(fd) {
+    // 필수 필드 존재 확인
+    const requiredFields = ['title', 'category', 'prompt_type', 'keywords', 'user_details'];
+    for (const field of requiredFields) {
+        if (!fd[field]) {
+            console.error('Missing required field:', field);
+            return false;
+        }
+    }
+
+    // keywords 배열 구조 검증
+    if (!Array.isArray(fd.keywords) || fd.keywords.length === 0) {
+        console.error('Keywords must be non-empty array');
+        return false;
+    }
+
+    // 각 키워드 구조 검증
+    for (const keyword of fd.keywords) {
+        if (!keyword.name || !Array.isArray(keyword.aliexpress) || !Array.isArray(keyword.products_data)) {
+            console.error('Invalid keyword structure:', keyword);
+            return false;
+        }
+    }
+
+    // user_details 객체 구조 검증
+    if (typeof fd.user_details !== 'object' || fd.user_details === null) {
+        console.error('user_details must be an object');
+        return false;
+    }
+
+    return true;
+}
 function collectKeywordsData(){const kd=[];kw.forEach((k,ki)=>{const kdt={name:k.name,coupang:[],aliexpress:[],products_data:[]};k.products.forEach((p,pi)=>{if(p.url&&typeof p.url==='string'&&p.url.trim()!==''&&p.url.trim()!=='undefined'&&p.url.trim()!=='null'){const tu=p.url.trim();kdt.aliexpress.push(tu);const pd={url:tu,analysis_data:p.analysisData||null,generated_html:p.generatedHtml||null,user_data:p.userData||{}};kdt.products_data.push(pd);}});if(kdt.aliexpress.length>0)kd.push(kdt);});return kd;}
 function validateAndSubmitData(fd,ip=false){if(!fd.title||fd.title.length<5){showDetailedError('입력 오류','제목은 5자 이상이어야 합니다.');return false;}if(!fd.keywords||fd.keywords.length===0){showDetailedError('입력 오류','최소 하나의 키워드와 상품 링크가 필요합니다.');return false;}let hv=false,tv=0,tpd=0;fd.keywords.forEach(k=>{if(k.aliexpress&&k.aliexpress.length>0){const vu=k.aliexpress.filter(u=>u&&typeof u==='string'&&u.trim()!=='');if(vu.length>0){hv=true;tv+=vu.length;tpd+=k.products_data?k.products_data.length:0;}}});if(!hv||tv===0){showDetailedError('입력 오류','각 키워드에 최소 하나의 유효한 알리익스프레스 상품 링크가 있어야 합니다.\\n\\n현재 상태:\\n- URL을 입력했는지 확인하세요\\n- 분석 버튼을 클릭했는지 확인하세요\\n- 알리익스프레스 URL인지 확인하세요');return false;}if(ip)return true;else{const f=document.getElementById('affiliateForm'),ei=f.querySelectorAll('input[type="hidden"]');ei.forEach(i=>i.remove());const hi=[{name:'title',value:fd.title},{name:'category',value:fd.category},{name:'prompt_type',value:fd.prompt_type},{name:'keywords',value:JSON.stringify(fd.keywords)},{name:'user_details',value:JSON.stringify(fd.user_details)},{name:'thumbnail_url',value:document.getElementById('thumbnail_url').value.trim()}];hi.forEach(({name,value})=>{const i=document.createElement('input');i.type='hidden';i.name=name;i.value=value;f.appendChild(i);});f.submit();return true;}}
 async function publishNow(){const lo=document.getElementById('loadingOverlay'),pb=document.getElementById('publishNowBtn');lo.style.display='flex';pb.disabled=true;pb.textContent='발행 중...';try{// 1. 큐 파일 존재 확인
 const r=await fetch('keyword_processor.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({action:'get_latest_queue_file'})});const rs=await r.json();if(rs.success && rs.queue_file){// 2. 큐 파일 기반 즉시 발행
 const publishResult=await fetch('keyword_processor.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({action:'publish_from_queue',queue_file:rs.queue_file})});const publishResponse=await publishResult.json();if(publishResponse.success){showSuccessModal('발행 완료!','글이 성공적으로 발행되었습니다!','🚀');if(publishResponse.post_url)window.open(publishResponse.post_url,'_blank');}else showDetailedError('발행 실패',publishResponse.message);}else{showDetailedError('발행 실패','먼저 완료 버튼을 눌러 큐 파일을 생성해주세요.');}}catch(e){showDetailedError('발행 오류','즉시 발행 중 오류가 발생했습니다.',{'error':e.message});}finally{lo.style.display='none';pb.disabled=false;pb.textContent='🚀 즉시 발행';}}
 function saveCurrentProduct(){if(cKI===-1||cPI===-1){showDetailedError('선택 오류','저장할 상품을 먼저 선택해주세요.');return;}const p=kw[cKI].products[cPI],u=document.getElementById('productUrl').value.trim();if(u)p.url=u;const ud=collectUserInputDetails();p.userData=ud;p.isSaved=true;updateUI();showSuccessModal('저장 완료!','현재 상품 정보가 성공적으로 저장되었습니다.','💾');}
-async function completeProduct(){const kd=collectKeywordsData(),ud=collectUserInputDetails(),fd={title:document.getElementById('title').value.trim(),category:document.getElementById('category').value,prompt_type:document.getElementById('prompt_type').value,keywords:kd,user_details:ud,thumbnail_url:document.getElementById('thumbnail_url').value.trim()};if(!validateAndSubmitData(fd,true))return;try{const r=await fetch('keyword_processor.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({action:'save_to_queue',queue_data:JSON.stringify(fd)})});const rs=await r.json();if(rs.success){showSuccessModal('완료!','큐에 성공적으로 저장되었습니다.','✅');}else{showDetailedError('완료 실패',rs.message);}}catch(e){showDetailedError('완료 오류','완료 처리 중 오류가 발생했습니다.',{'error':e.message});}}
+async function completeProduct(){
+    const kd=collectKeywordsData(),
+          ud=collectUserInputDetails(),
+          fd={
+              title:document.getElementById('title').value.trim(),
+              category:document.getElementById('category').value,
+              prompt_type:document.getElementById('prompt_type').value,
+              keywords:kd,
+              user_details:ud,
+              thumbnail_url:document.getElementById('thumbnail_url').value.trim()
+          };
+
+    // 기본 검증
+    if(!validateAndSubmitData(fd,true))return;
+
+    // 추가 데이터 구조 검증
+    if(!validateQueueDataStructure(fd)){
+        showDetailedError('데이터 구조 오류','큐 데이터 구조가 올바르지 않습니다. 모든 필드를 확인해주세요.');
+        return;
+    }
+
+    // JSON 직렬화 테스트
+    let jsonData;
+    try{
+        jsonData=JSON.stringify(fd);
+        console.log('Queue data JSON length:',jsonData.length);
+        console.log('Queue data structure:',fd);
+    }catch(e){
+        showDetailedError('데이터 직렬화 오류','JSON 변환 중 오류가 발생했습니다: '+e.message);
+        return;
+    }
+
+    try{
+        const r=await fetch('keyword_processor.php',{
+            method:'POST',
+            headers:{'Content-Type':'application/x-www-form-urlencoded'},
+            body:new URLSearchParams({
+                action:'save_to_queue',
+                queue_data:jsonData
+            })
+        });
+
+        if(!r.ok){
+            throw new Error(`HTTP error! status: ${r.status}`);
+        }
+
+        const rs=await r.json();
+        if(rs.success){
+            showSuccessModal('완료!','큐에 성공적으로 저장되었습니다.','✅');
+        }else{
+            showDetailedError('완료 실패',rs.message||'알 수 없는 오류가 발생했습니다.');
+        }
+    }catch(e){
+        console.error('Complete product error:',e);
+        showDetailedError('완료 오류','완료 처리 중 오류가 발생했습니다: '+e.message);
+    }
+}
 function previousProduct(){if(cKI===-1||cPI===-1)return;const ck=kw[cKI];if(cPI>0)selectProduct(cKI,cPI-1);else if(cKI>0){const pk=kw[cKI-1];selectProduct(cKI-1,pk.products.length-1);}}
 function nextProduct(){if(cKI===-1||cPI===-1)return;const ck=kw[cKI];if(cPI<ck.products.length-1)selectProduct(cKI,cPI+1);else if(cKI<kw.length-1)selectProduct(cKI+1,0);}
 function setupDragAndDrop(){const keywordGroups=document.querySelectorAll('.keyword-group');const productItems=document.querySelectorAll('.product-item');keywordGroups.forEach((group,index)=>{group.addEventListener('dragstart',handleKeywordDragStart);group.addEventListener('dragend',handleDragEnd);group.addEventListener('dragover',handleDragOver);group.addEventListener('drop',handleKeywordDrop);});productItems.forEach((item,index)=>{item.addEventListener('dragstart',handleProductDragStart);item.addEventListener('dragend',handleDragEnd);item.addEventListener('dragover',handleDragOver);item.addEventListener('drop',handleProductDrop);});}
