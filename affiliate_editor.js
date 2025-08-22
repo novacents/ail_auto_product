@@ -11,8 +11,8 @@ window.addEventListener('focus',function(){checkForNewImageUrl();});
 function checkForNewImageUrl(){const newUrl=localStorage.getItem('selected_image_url');if(newUrl){document.getElementById('thumbnail_url').value=newUrl;localStorage.removeItem('selected_image_url');}}
 function formatPrice(p){return p?p.replace(/₩(\d)/,'₩ $1'):p;}
 function formatRatingDisplay(rating){if(!rating)return {stars:'',percent:'정보 없음'};const cleanRating=rating.trim();if(cleanRating.includes('⭐')){const starsMatch=cleanRating.match(/(⭐+)/);const percentMatch=cleanRating.match(/(\d+(?:\.\d+)?%)/);return {stars:starsMatch?starsMatch[1]:'⭐⭐⭐⭐⭐',percent:percentMatch?percentMatch[1]:'정보 없음'};}return {stars:'⭐⭐⭐⭐⭐',percent:cleanRating};}
-function showDetailedError(t,m,d=null){const em=document.getElementById('errorModal');if(em)em.remove();let fm=m;if(d)fm+='\n\n=== 디버그 정보 ===\n'+JSON.stringify(d,null,2);const md=document.createElement('div');md.id='errorModal';md.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;';md.innerHTML=`<div style="background:white;border-radius:10px;padding:30px;max-width:800px;max-height:80vh;overflow-y:auto;box-shadow:0 10px 30px rgba(0,0,0,0.3);"><h2 style="color:#dc3545;margin-bottom:20px;font-size:24px;">🚨 ${t}</h2><div style="margin-bottom:20px;"><textarea id="errorContent" readonly style="width:100%;height:300px;padding:15px;border:1px solid #ddd;border-radius:6px;font-family:'Courier New',monospace;font-size:12px;line-height:1.4;background:#f8f9fa;resize:vertical;">${fm}</textarea></div><div style="display:flex;gap:10px;justify-content:flex-end;"><button onclick="copyErrorToClipboard()" style="padding:10px 20px;background:#007bff;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px;">📋 복사하기</button><button onclick="closeErrorModal()" style="padding:10px 20px;background:#6c757d;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px;">닫기</button></div></div>`;document.body.appendChild(md);md.addEventListener('click',function(e){if(e.target===md)closeErrorModal();});}
-function copyErrorToClipboard(){const ec=document.getElementById('errorContent');ec.select();document.execCommand('copy');const cb=event.target;const ot=cb.textContent;cb.textContent='✅ 복사됨!';cb.style.background='#28a745';setTimeout(()=>{cb.textContent=ot;cb.style.background='#007bff';},2000);}
+function showDetailedError(t,m,d=null){const em=document.getElementById('errorModal');if(em)em.remove();let fm=m;if(d)fm+='\n\n=== 디버그 정보 ===\n'+JSON.stringify(d,null,2);const md=document.createElement('div');md.id='errorModal';md.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;';md.innerHTML=`<div style="background:white;border-radius:10px;padding:30px;max-width:600px;min-width:500px;max-height:80vh;overflow-y:auto;box-shadow:0 10px 30px rgba(0,0,0,0.3);"><h2 style="color:#dc3545;margin-bottom:20px;font-size:24px;">🚨 ${t}</h2><div style="margin-bottom:20px;"><div id="errorContent" style="width:100%;padding:15px;border:1px solid #ddd;border-radius:6px;font-family:Arial,sans-serif;font-size:14px;line-height:1.6;background:#f8f9fa;white-space:pre-line;">${fm}</div></div><div style="display:flex;gap:10px;justify-content:flex-end;"><button onclick="copyErrorToClipboard()" style="padding:10px 20px;background:#007bff;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px;">📋 복사하기</button><button onclick="closeErrorModal()" style="padding:10px 20px;background:#6c757d;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px;">닫기</button></div></div>`;document.body.appendChild(md);md.addEventListener('click',function(e){if(e.target===md)closeErrorModal();});}
+function copyErrorToClipboard(){const ec=document.getElementById('errorContent');const range=document.createRange();range.selectNodeContents(ec);const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);document.execCommand('copy');selection.removeAllRanges();const cb=event.target;const ot=cb.textContent;cb.textContent='✅ 복사됨!';cb.style.background='#28a745';setTimeout(()=>{cb.textContent=ot;cb.style.background='#007bff';},2000);}
 function closeErrorModal(){const m=document.getElementById('errorModal');if(m)m.remove();}
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closeErrorModal();});
 function toggleTitleGenerator(){const g=document.getElementById('titleGenerator');g.style.display=g.style.display==='none'?'block':'none';}
@@ -313,17 +313,13 @@ async function batchAnalyzeAll(){
             if(failedProducts.length > 0) {
                 const successCount = completed - failedProducts.length;
                 const failureDetails = failedProducts.map(f => 
-                    `• ${f.keyword}: ${f.productName}\n  ↳ 실패 이유: ${f.reason}`
-                ).join('\n\n');
+                    `• ${f.keyword}: ${f.productName}`
+                ).join('\n');
                 
                 showDetailedError(
                     '일부 상품 분석 실패', 
-                    `📊 분석 결과:\n✅ 성공: ${successCount}개\n❌ 실패: ${failedProducts.length}개\n\n🚨 실패한 상품 상세 정보:\n\n${failureDetails}`, 
-                    {
-                        failed_products: failedProducts, 
-                        success_count: successCount, 
-                        total_count: completed
-                    }
+                    `📊 분석 결과:\n✅ 성공: ${successCount}개\n❌ 실패: ${failedProducts.length}개\n\n🚨 실패한 상품:\n\n${failureDetails}`, 
+                    null
                 );
             } else {
                 showSuccessModal('일괄 분석 완료!',`총 ${completed}개 상품의 분석이 완료되었습니다.`,'🔍');
