@@ -167,6 +167,7 @@ if(isset($_GET['error']))$error_message='오류: '.urldecode($_GET['error']);
 <div class="keyword-input-row-inline">
 <button type="button" class="btn-primary" onclick="batchAnalyzeAll()" id="batchAnalyzeBtn">🔍 전체 분석</button>
 <button type="button" class="btn-success" onclick="batchSaveAll()" id="batchSaveBtn">💾 전체 저장</button>
+<button type="button" class="btn-danger" onclick="completeProduct()" id="completeBtn">✅ 완료</button>
 </div>
 <div class="batch-progress" id="batchProgress" style="display:none;margin-top:10px;">
 <div style="background:#fff;border:1px solid #c3e6cb;border-radius:4px;padding:10px;font-size:13px;">
