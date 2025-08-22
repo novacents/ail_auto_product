@@ -204,13 +204,13 @@ async function completeProduct(){
     }
 
     try{
-        const formData = new FormData();
-        formData.append('action', 'save_to_queue');
-        formData.append('queue_data', jsonData);
-        
         const r=await fetch('keyword_processor.php',{
             method:'POST',
-            body: formData
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({
+                action: 'save_to_queue',
+                queue_data: JSON.parse(jsonData)
+            })
         });
 
         if(!r.ok){
