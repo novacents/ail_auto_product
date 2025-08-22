@@ -238,7 +238,105 @@ function handleDragOver(e){e.preventDefault();e.dataTransfer.dropEffect='move';}
 function handleKeywordDrop(e){e.preventDefault();e.stopPropagation();if(draggedType!=='keyword'||!e.target.closest('.keyword-group'))return;const targetGroup=e.target.closest('.keyword-group');if(!targetGroup||targetGroup===draggedElement)return;const targetIndex=parseInt(targetGroup.dataset.keywordIndex);if(draggedIndex!==targetIndex){const draggedKeyword=kw.splice(draggedIndex,1)[0];kw.splice(targetIndex,0,draggedKeyword);if(cKI===draggedIndex)cKI=targetIndex;else if(cKI===targetIndex)cKI=draggedIndex<targetIndex?cKI+1:cKI-1;else if(cKI>Math.min(draggedIndex,targetIndex)&&cKI<=Math.max(draggedIndex,targetIndex))cKI+=draggedIndex<targetIndex?-1:1;updateUI();showSuccessModal('키워드 순서 변경','키워드 순서가 성공적으로 변경되었습니다.','🔄');}}
 function handleProductDrop(e){e.preventDefault();e.stopPropagation();if(draggedType!=='product'||!e.target.closest('.product-item'))return;const targetItem=e.target.closest('.product-item');if(!targetItem||targetItem===draggedElement)return;const targetKeywordIndex=parseInt(targetItem.dataset.keyword);const targetProductIndex=parseInt(targetItem.dataset.product);if(draggedKeywordIndex===targetKeywordIndex&&draggedIndex===targetProductIndex)return;const draggedProduct=kw[draggedKeywordIndex].products.splice(draggedIndex,1)[0];kw[targetKeywordIndex].products.splice(targetProductIndex,0,draggedProduct);if(cKI===draggedKeywordIndex&&cPI===draggedIndex){cKI=targetKeywordIndex;cPI=targetProductIndex;}else if(cKI===targetKeywordIndex){if(cPI>=targetProductIndex)cPI++;}updateUI();showSuccessModal('상품 순서 변경','상품 순서가 성공적으로 변경되었습니다.','🔄');}
 // 일괄 처리 함수들
-async function batchAnalyzeAll(){const totalProducts=getAllProducts();if(totalProducts.length===0){showDetailedError('분석 오류','분석할 상품이 없습니다.');return;}const batchAnalyzeBtn=document.getElementById('batchAnalyzeBtn'),batchProgress=document.getElementById('batchProgress'),batchProgressText=document.getElementById('batchProgressText'),batchProgressBar=document.getElementById('batchProgressBar');batchAnalyzeBtn.disabled=true;batchAnalyzeBtn.textContent='분석 중...';batchProgress.style.display='block';let completed=0;for(let i=0;i<totalProducts.length;i++){const {keywordIndex,productIndex,product}=totalProducts[i];batchProgressText.textContent=`분석 중... (${completed+1}/${totalProducts.length}) - ${product.name}`;batchProgressBar.style.width=`${(completed/totalProducts.length)*100}%`;if(product.url&&product.url.trim()!==''&&product.status==='empty'){product.status='analyzing';updateUI();let retryCount=0;const maxRetries=2;let analysisSuccess=false;while(retryCount<=maxRetries&&!analysisSuccess){try{const response=await fetch('product_analyzer_v2.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'analyze_product',url:product.url,platform:'aliexpress'})});if(!response.ok)throw new Error(`HTTP 오류: ${response.status}`);const result=await response.json();if(result.success){product.analysisData=result.data;product.status='completed';product.name=result.data.title||`상품 ${productIndex+1}`;const generatedHtml=generateOptimizedMobileHtml(result.data,false);product.generatedHtml=generatedHtml;analysisSuccess=true;}else{throw new Error(result.message||'분석 실패');}}catch(error){retryCount++;if(retryCount>maxRetries){product.status='error';console.error(`최종 실패 [${product.name}]: ${error.message}`);}else{console.log(`재시도 ${retryCount}/${maxRetries} [${product.name}]: ${error.message}`);await new Promise(resolve=>setTimeout(resolve,3000));}}}}completed++;updateUI();await new Promise(resolve=>setTimeout(resolve,2500));}batchProgressText.textContent=`분석 완료! (${completed}/${totalProducts.length})`;batchProgressBar.style.width='100%';showSuccessModal('일괄 분석 완료!',`총 ${completed}개 상품의 분석이 완료되었습니다.`,'🔍');setTimeout(()=>{batchProgress.style.display='none';batchAnalyzeBtn.disabled=false;batchAnalyzeBtn.textContent='🔍 전체 분석';},3000);}
+async function batchAnalyzeAll(){
+    // 실패 상품 정보 수집을 위한 안전한 배열 초기화
+    let failedProducts = [];
+    
+    const totalProducts=getAllProducts();
+    if(totalProducts.length===0){showDetailedError('분석 오류','분석할 상품이 없습니다.');return;}
+    
+    const batchAnalyzeBtn=document.getElementById('batchAnalyzeBtn'),batchProgress=document.getElementById('batchProgress'),batchProgressText=document.getElementById('batchProgressText'),batchProgressBar=document.getElementById('batchProgressBar');
+    batchAnalyzeBtn.disabled=true;batchAnalyzeBtn.textContent='분석 중...';batchProgress.style.display='block';
+    
+    let completed=0;
+    for(let i=0;i<totalProducts.length;i++){
+        const {keywordIndex,productIndex,product}=totalProducts[i];
+        batchProgressText.textContent=`분석 중... (${completed+1}/${totalProducts.length}) - ${product.name || '상품'}`;
+        batchProgressBar.style.width=`${(completed/totalProducts.length)*100}%`;
+        
+        if(product.url&&product.url.trim()!==''&&product.status==='empty'){
+            product.status='analyzing';updateUI();
+            let retryCount=0;const maxRetries=2;let analysisSuccess=false;
+            
+            while(retryCount<=maxRetries&&!analysisSuccess){
+                try{
+                    const response=await fetch('product_analyzer_v2.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'analyze_product',url:product.url,platform:'aliexpress'})});
+                    if(!response.ok)throw new Error(`HTTP 오류: ${response.status}`);
+                    const result=await response.json();
+                    if(result.success){
+                        product.analysisData=result.data;product.status='completed';
+                        product.name=result.data.title||`상품 ${productIndex+1}`;
+                        const generatedHtml=generateOptimizedMobileHtml(result.data,false);
+                        product.generatedHtml=generatedHtml;analysisSuccess=true;
+                    }else{
+                        throw new Error(result.message||'분석 실패');
+                    }
+                }catch(error){
+                    retryCount++;
+                    if(retryCount>maxRetries){
+                        product.status='error';
+                        // 안전한 실패 정보 수집
+                        try {
+                            const keywordName = kw[keywordIndex] && kw[keywordIndex].name ? kw[keywordIndex].name : '키워드 없음';
+                            const productName = product && product.name ? product.name : `상품 ${productIndex+1}`;
+                            const errorMessage = error && error.message ? error.message : '알 수 없는 오류';
+                            const productUrl = product && product.url ? product.url : 'URL 없음';
+                            
+                            failedProducts.push({
+                                keyword: keywordName,
+                                productName: productName,
+                                reason: errorMessage,
+                                url: productUrl
+                            });
+                        } catch(pushError) {
+                            console.error('실패 정보 수집 오류:', pushError);
+                        }
+                        console.error(`최종 실패 [${product.name || '상품'}]: ${error.message || '알 수 없는 오류'}`);
+                    }else{
+                        console.log(`재시도 ${retryCount}/${maxRetries} [${product.name || '상품'}]: ${error.message || '알 수 없는 오류'}`);
+                        await new Promise(resolve=>setTimeout(resolve,3000));
+                    }
+                }
+            }
+        }
+        completed++;updateUI();await new Promise(resolve=>setTimeout(resolve,2500));
+    }
+    
+    batchProgressText.textContent=`분석 완료! (${completed}/${totalProducts.length})`;
+    batchProgressBar.style.width='100%';
+    
+    // 모달 충돌 방지를 위한 안전한 팝업 표시
+    setTimeout(() => {
+        // 기존 모달이 표시되지 않은 상태에서만 새 팝업 표시
+        const existingModal = document.getElementById('successModal');
+        if (!existingModal || existingModal.style.display === 'none') {
+            if(failedProducts.length > 0) {
+                const successCount = completed - failedProducts.length;
+                const failureDetails = failedProducts.map(f => 
+                    `• ${f.keyword}: ${f.productName}\n  ↳ 실패 이유: ${f.reason}`
+                ).join('\n\n');
+                
+                showDetailedError(
+                    '일부 상품 분석 실패', 
+                    `📊 분석 결과:\n✅ 성공: ${successCount}개\n❌ 실패: ${failedProducts.length}개\n\n🚨 실패한 상품 상세 정보:\n\n${failureDetails}`, 
+                    {
+                        failed_products: failedProducts, 
+                        success_count: successCount, 
+                        total_count: completed
+                    }
+                );
+            } else {
+                showSuccessModal('일괄 분석 완료!',`총 ${completed}개 상품의 분석이 완료되었습니다.`,'🔍');
+            }
+        }
+    }, 500); // 0.5초 대기로 기존 프로세스 완료 보장
+    
+    setTimeout(()=>{
+        batchProgress.style.display='none';
+        batchAnalyzeBtn.disabled=false;
+        batchAnalyzeBtn.textContent='🔍 전체 분석';
+    },3000);
+}
 async function batchSaveAll(){const totalProducts=getAllProducts();if(totalProducts.length===0){showDetailedError('저장 오류','저장할 상품이 없습니다.');return;}const batchSaveBtn=document.getElementById('batchSaveBtn'),batchProgress=document.getElementById('batchProgress'),batchProgressText=document.getElementById('batchProgressText'),batchProgressBar=document.getElementById('batchProgressBar');batchSaveBtn.disabled=true;batchSaveBtn.textContent='저장 중...';batchProgress.style.display='block';try{let completed=0;for(let i=0;i<totalProducts.length;i++){const {keywordIndex,productIndex,product}=totalProducts[i];if(product.url&&product.url.trim()!==''&&product.status==='completed'&&!product.isSaved){product.isSaved=true;completed++;}}updateUI();batchProgressText.textContent='저장 완료!';batchProgressBar.style.width='100%';showSuccessModal('일괄 저장 완료!',`총 ${completed}개 상품이 저장되었습니다.`,'💾');}catch(error){console.error('일괄 저장 중 오류:',error);}finally{setTimeout(()=>{batchProgress.style.display='none';batchSaveBtn.disabled=false;batchSaveBtn.textContent='💾 전체 저장';},3000);}}
 function getAllProducts(){const products=[];kw.forEach((keyword,keywordIndex)=>{keyword.products.forEach((product,productIndex)=>{products.push({keywordIndex,productIndex,product});});});return products;}
 document.getElementById('titleKeyword').addEventListener('keypress',function(e){if(e.key==='Enter'){e.preventDefault();generateTitles();}});
