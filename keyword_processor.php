@@ -814,7 +814,9 @@ function generate_post_content($queue_data) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Content-Type: application/json; charset=utf-8');
     
-    $action = $_POST['action'] ?? '';
+    // JSON 입력 처리
+    $input = json_decode(file_get_contents('php://input'), true);
+    $action = $input['action'] ?? '';
     
     try {
         switch ($action) {
@@ -822,31 +824,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 debug_log("main_process: Processing save_to_queue request");
                 
                 // 받은 데이터 로깅
-                $raw_data = $_POST['queue_data'] ?? '';
-                debug_log("main_process: Raw POST data received: " . substr($raw_data, 0, 500) . "...");
-                debug_log("main_process: Raw data length: " . strlen($raw_data));
+                $queue_data = $input['queue_data'] ?? [];
+                $raw_data = json_encode($queue_data);
+                debug_log("main_process: JSON input data received successfully");
+                debug_log("main_process: Data length: " . strlen($raw_data));
 
-                // JSON 디코딩 시도
-                $queue_data = json_decode($raw_data, true);
-                $json_error = json_last_error();
-
-                // JSON 오류 상세 분석
-                if ($json_error !== JSON_ERROR_NONE) {
-                    $error_messages = [
-                        JSON_ERROR_DEPTH => 'Maximum stack depth exceeded',
-                        JSON_ERROR_STATE_MISMATCH => 'Invalid or malformed JSON',
-                        JSON_ERROR_CTRL_CHAR => 'Control character error',
-                        JSON_ERROR_SYNTAX => 'Syntax error, malformed JSON',
-                        JSON_ERROR_UTF8 => 'Malformed UTF-8 characters'
-                    ];
-                    
-                    $error_msg = $error_messages[$json_error] ?? 'Unknown JSON error';
-                    debug_log("main_process: JSON decode error: {$error_msg} (Code: {$json_error})");
-                    
-                    throw new Exception("JSON 디코딩 실패: {$error_msg}");
-                }
-
-                // 빈 데이터 또는 잘못된 구조 체크
+                // 데이터 유효성 검사
                 if (empty($queue_data) || !is_array($queue_data)) {
                     debug_log("main_process: Empty or invalid queue data structure");
                     throw new Exception('큐 데이터가 비어있거나 잘못된 형식입니다');
