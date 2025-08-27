@@ -846,19 +846,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 debug_log("main_process: Queue data validation passed successfully");
                 
-                // 큐 데이터 보강 - 추가 필드 생성
-                require_once('/var/www/novacents/tools/queue_manager.php');
-
-                debug_log("main_process: Enhancing queue data with additional fields");
-
-                // category_id와 category_name 추가
-                $queue_data['category_id'] = (int)$queue_data['category'];
+                // 메타데이터 변환 및 추가
                 $queue_data['category_name'] = get_category_name($queue_data['category']);
-
-                // prompt_type_name 추가
                 $queue_data['prompt_type_name'] = get_prompt_type_name($queue_data['prompt_type']);
-
-                debug_log("main_process: Enhanced queue data - category_id: {$queue_data['category_id']}, category_name: {$queue_data['category_name']}, prompt_type_name: {$queue_data['prompt_type_name']}");
+                $queue_data['processing_mode'] = 'batch';
+                $queue_data['conversion_status'] = 'pending';
                 
                 $queue_id = save_queue_split($queue_data);
                 
