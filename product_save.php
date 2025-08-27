@@ -129,7 +129,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 </div>
 </div>
 <div class="nav-links">
-<a href="product_save_list.php" class="nav-link">📋 저장된 상품 보기</a>
+<a href="product_save_list.php" target="_blank" class="nav-link">📋 저장된 상품 보기</a>
 <a href="affiliate_editor.php" class="nav-link">✍️ 상품 글 작성</a>
 </div>
 </div>
@@ -257,7 +257,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
 <div class="action-buttons">
 <button type="button" class="btn btn-success btn-large" onclick="saveProduct()">💾 저장하기</button>
 <button type="button" class="btn btn-secondary btn-large" onclick="resetForm()">🔄 초기화</button>
-<a href="product_save_list.php" class="btn btn-primary btn-large">📋 저장된 상품 보기</a>
+<a href="product_save_list.php" target="_blank" class="btn btn-primary btn-large">📋 저장된 상품 보기</a>
 </div>
 </div>
 </div>
