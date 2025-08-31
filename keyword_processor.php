@@ -814,8 +814,12 @@ function generate_post_content($queue_data) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Content-Type: application/json; charset=utf-8');
     
-    // JSON 입력 처리
+    // JSON 및 폼 데이터 입력 처리 (역호환성)
     $input = json_decode(file_get_contents('php://input'), true);
+    if (!$input || !isset($input['action'])) {
+        // JSON 파싱 실패 시 폼 데이터 확인
+        $input = $_POST;
+    }
     $action = $input['action'] ?? '';
     
     try {
