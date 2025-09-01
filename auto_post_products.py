@@ -41,9 +41,9 @@ def load_configuration():
     
     # 필수 설정값 확인
     required_keys = [
-        'WORDPRESS_URL', 'WORDPRESS_USERNAME', 'WORDPRESS_PASSWORD',
-        'OPENAI_API_KEY', 'ALIEXPRESS_APP_KEY', 'ALIEXPRESS_SECRET',
-        'ALIEXPRESS_SESSION', 'ALIEXPRESS_TRACKING_ID'
+        'NOVACENTS_WP_URL', 'NOVACENTS_WP_USER', 'NOVACENTS_WP_APP_PASS',
+        'OPENAI_API_KEY', 'ALIEXPRESS_APP_KEY', 'ALIEXPRESS_APP_SECRET',
+        'ALIEXPRESS_TRACKING_ID'
     ]
     
     missing_keys = [key for key in required_keys if not config.get(key)]
@@ -69,16 +69,16 @@ class AliExpressPostingSystem:
         if not self.config:
             raise Exception("설정 파일을 로드할 수 없습니다.")
         
-        # 기본 설정
-        self.wordpress_url = self.config['WORDPRESS_URL']
-        self.wordpress_username = self.config['WORDPRESS_USERNAME']
-        self.wordpress_password = self.config['WORDPRESS_PASSWORD']
+        # 기본 설정 (환경변수명 수정)
+        self.wordpress_url = self.config['NOVACENTS_WP_URL']
+        self.wordpress_username = self.config['NOVACENTS_WP_USER']
+        self.wordpress_password = self.config['NOVACENTS_WP_APP_PASS']
         self.openai_api_key = self.config['OPENAI_API_KEY']
         
         # AliExpress API 설정
         self.aliexpress_app_key = self.config['ALIEXPRESS_APP_KEY']
-        self.aliexpress_secret = self.config['ALIEXPRESS_SECRET']
-        self.aliexpress_session = self.config['ALIEXPRESS_SESSION']
+        self.aliexpress_secret = self.config['ALIEXPRESS_APP_SECRET']
+        self.aliexpress_session = self.config.get('ALIEXPRESS_SESSION', '')
         self.aliexpress_tracking_id = self.config['ALIEXPRESS_TRACKING_ID']
         
         # 시스템 설정
