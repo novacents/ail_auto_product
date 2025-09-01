@@ -24,7 +24,7 @@ def load_configuration():
     config = {}
     
     # .env 파일에서 설정 로드
-    env_file_path = '/var/www/novacents/tools/.env'
+    env_file_path = '/home/novacents/.env'
     if os.path.exists(env_file_path):
         print(f"✅ .env 파일에서 설정을 로드합니다: {env_file_path}")
         with open(env_file_path, 'r', encoding='utf-8') as f:
