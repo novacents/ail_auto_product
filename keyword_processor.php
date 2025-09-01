@@ -980,7 +980,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Python 스크립트로 큐 파일 처리
                 $python_path = '/usr/bin/python3';
                 $script_path = '/var/www/novacents/tools/auto_post_products.py';
-                $command = escapeshellcmd("$python_path $script_path --mode queue --queue-file $queue_path");
+                
+                // 큐 파일명에서 큐 ID 추출 (queue_20250822134930_a017f4.json → queue_20250822134930_a017f4)
+                $queue_filename = basename($queue_path, '.json');
+                $command = escapeshellcmd("$python_path $script_path --mode queue --queue-id $queue_filename");
                 
                 $output = shell_exec($command . ' 2>&1');
                 
@@ -1029,4 +1032,3 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 debug_log("keyword_processor.php: Script loaded successfully");
 ?>
- 
