@@ -967,7 +967,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'publish_from_queue':
                 debug_log("main_process: Processing publish_from_queue request");
                 
-                $queue_file = $_POST['queue_file'] ?? '';
+                $queue_file = $input['queue_file'] ?? '';
                 if (empty($queue_file)) {
                     throw new Exception('큐 파일명이 제공되지 않았습니다.');
                 }
