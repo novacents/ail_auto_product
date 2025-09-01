@@ -127,8 +127,10 @@ function get_queues_from_directory($directory, $status) {
 }
 
 function load_queue_split($queue_id) {
-    $pending_file = QUEUE_PENDING_DIR . 'queue_' . $queue_id . '.json';
-    $completed_file = QUEUE_COMPLETED_DIR . 'queue_' . $queue_id . '.json';
+    // queue_id가 이미 'queue_'로 시작하는지 확인하여 중복 방지
+    $clean_queue_id = (strpos($queue_id, 'queue_') === 0) ? substr($queue_id, 6) : $queue_id;
+    $pending_file = QUEUE_PENDING_DIR . 'queue_' . $clean_queue_id . '.json';
+    $completed_file = QUEUE_COMPLETED_DIR . 'queue_' . $clean_queue_id . '.json';
     
     if (file_exists($pending_file)) {
         $content = file_get_contents($pending_file);
@@ -158,6 +160,9 @@ function load_queue_split($queue_id) {
 function update_queue_status_split_v2($queue_id, $new_status) {
     error_log("update_queue_status_split_v2 호출: queue_id=$queue_id, new_status=$new_status");
     
+    // queue_id가 이미 'queue_'로 시작하는지 확인하여 중복 방지
+    $clean_queue_id = (strpos($queue_id, 'queue_') === 0) ? substr($queue_id, 6) : $queue_id;
+    
     if (!in_array($new_status, ['pending', 'completed'])) {
         error_log("유효하지 않은 상태: $new_status");
         return false;
@@ -177,8 +182,8 @@ function update_queue_status_split_v2($queue_id, $new_status) {
         return true; // 이미 같은 상태
     }
     
-    $old_file = ($current_status === 'pending') ? QUEUE_PENDING_DIR . 'queue_' . $queue_id . '.json' : QUEUE_COMPLETED_DIR . 'queue_' . $queue_id . '.json';
-    $new_file = ($new_status === 'pending') ? QUEUE_PENDING_DIR . 'queue_' . $queue_id . '.json' : QUEUE_COMPLETED_DIR . 'queue_' . $queue_id . '.json';
+    $old_file = ($current_status === 'pending') ? QUEUE_PENDING_DIR . 'queue_' . $clean_queue_id . '.json' : QUEUE_COMPLETED_DIR . 'queue_' . $clean_queue_id . '.json';
+    $new_file = ($new_status === 'pending') ? QUEUE_PENDING_DIR . 'queue_' . $clean_queue_id . '.json' : QUEUE_COMPLETED_DIR . 'queue_' . $clean_queue_id . '.json';
     
     error_log("이동: $old_file -> $new_file");
     
@@ -186,7 +191,7 @@ function update_queue_status_split_v2($queue_id, $new_status) {
     if (!file_exists($old_file)) {
         error_log("기존 파일이 없음: $old_file");
         // 파일이 없으면 다른 위치 확인
-        $alt_file = ($current_status === 'completed') ? QUEUE_PENDING_DIR . 'queue_' . $queue_id . '.json' : QUEUE_COMPLETED_DIR . 'queue_' . $queue_id . '.json';
+        $alt_file = ($current_status === 'completed') ? QUEUE_PENDING_DIR . 'queue_' . $clean_queue_id . '.json' : QUEUE_COMPLETED_DIR . 'queue_' . $clean_queue_id . '.json';
         if (file_exists($alt_file)) {
             error_log("대체 위치에서 파일 발견: $alt_file");
             $old_file = $alt_file;
@@ -236,8 +241,10 @@ function update_queue_status_split_v2($queue_id, $new_status) {
 }
 
 function remove_queue_split($queue_id) {
-    $pending_file = QUEUE_PENDING_DIR . 'queue_' . $queue_id . '.json';
-    $completed_file = QUEUE_COMPLETED_DIR . 'queue_' . $queue_id . '.json';
+    // queue_id가 이미 'queue_'로 시작하는지 확인하여 중복 방지
+    $clean_queue_id = (strpos($queue_id, 'queue_') === 0) ? substr($queue_id, 6) : $queue_id;
+    $pending_file = QUEUE_PENDING_DIR . 'queue_' . $clean_queue_id . '.json';
+    $completed_file = QUEUE_COMPLETED_DIR . 'queue_' . $clean_queue_id . '.json';
     
     $removed = false;
     
