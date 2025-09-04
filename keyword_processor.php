@@ -983,14 +983,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 // 큐 파일명에서 큐 ID 추출 (queue_20250822134930_a017f4.json → queue_20250822134930_a017f4)
                 $queue_filename = basename($queue_path, '.json');
-                $command = escapeshellcmd("$python_path $script_path --mode queue --queue-id $queue_filename");
+                $command = escapeshellcmd("$python_path $script_path --mode immediate --queue-id $queue_filename");
                 
                 $output = shell_exec($command . ' 2>&1');
                 
                 debug_log("main_process: Python script output: $output");
                 
-                // 결과 처리
-                if (strpos($output, '✅') !== false || strpos($output, 'success') !== false) {
+                // 결과 처리 - 명확한 성공/실패 판단
+                $is_success = false;
+                $error_message = '';
+
+                // 에러 패턴 우선 검사
+                if (strpos($output, '❌') !== false || 
+                    strpos($output, 'ERROR') !== false || 
+                    strpos($output, 'FAIL') !== false ||
+                    strpos($output, 'Exception') !== false) {
+                    $is_success = false;
+                    // 에러 메시지 추출
+                    preg_match('/❌\\s*(.+)/', $output, $matches);
+                    $error_message = $matches[1] ?? '알 수 없는 오류가 발생했습니다.';
+                } elseif (strpos($output, '✅ 워드프레스 발행 성공: 게시물 ID') !== false) {
+                    $is_success = true;
+                } else {
+                    $is_success = false;
+                    $error_message = 'Python 스크립트에서 예상되지 않은 응답: ' . substr($output, 0, 200);
+                }
+
+                if ($is_success) {
                     // 성공적으로 처리되면 큐 파일을 completed로 이동
                     $completed_dir = '/var/www/novacents/tools/queues/completed/';
                     if (!is_dir($completed_dir)) {
@@ -1008,9 +1027,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'output' => $output
                     ]);
                 } else {
+                    // 실패 처리
+                    debug_log("main_process: Python script failed: $error_message");
                     echo json_encode([
                         'success' => false,
-                        'message' => 'Python 스크립트 실행 실패',
+                        'message' => $error_message,
                         'output' => $output
                     ]);
                 }
