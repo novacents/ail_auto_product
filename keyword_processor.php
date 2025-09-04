@@ -1002,7 +1002,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // 에러 메시지 추출
                     preg_match('/❌\\s*(.+)/', $output, $matches);
                     $error_message = $matches[1] ?? '알 수 없는 오류가 발생했습니다.';
-                } elseif (strpos($output, '✅ 워드프레스 발행 성공: 게시물 ID') !== false) {
+                } elseif (strpos($output, '✅ 워드프레스 발행 성공:') !== false) {
                     $is_success = true;
                 } else {
                     $is_success = false;
