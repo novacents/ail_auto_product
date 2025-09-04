@@ -99,8 +99,23 @@ class AliExpressPostingSystem:
             ?>
             """
             
-            result = subprocess.run(['php', '-r', php_script[5:-2]], 
+            # <?php와 ?> 태그를 완전히 제거한 순수 PHP 코드 전달
+            php_code_only = php_script.strip()
+            if php_code_only.startswith('<?php'):
+                php_code_only = php_code_only[5:]
+            if php_code_only.endswith('?>'):
+                php_code_only = php_code_only[:-2]
+            php_code_only = php_code_only.strip()
+            
+            # 디버깅 로그: PHP 스크립트 실제 내용
+            print(f"🔍 [DEBUG] PHP 함수 호출: {function_name} - Args: {args}")
+            print(f"🔍 [DEBUG] 실행할 PHP 코드 길이: {len(php_code_only)} chars")
+            
+            result = subprocess.run(['php', '-r', php_code_only], 
                                   capture_output=True, text=True, check=True)
+            
+            # 디버깅 로그: subprocess 실행 후 상태
+            print(f"🔍 [DEBUG] PHP 실행 결과 - ReturnCode: {result.returncode}")
             
             if result.stdout:
                 return json.loads(result.stdout)
@@ -116,7 +131,7 @@ class AliExpressPostingSystem:
     
     def update_queue_status_split(self, queue_id, status, message=''):
         """분할 큐의 상태를 업데이트합니다"""
-        return self.call_php_function('update_queue_status_split', queue_id, status, message)
+        return self.call_php_function('update_queue_status', queue_id, status, message)
     
     def remove_job_from_queue(self, job_id):
         """즉시 발행 모드에서 큐에서 작업을 제거합니다"""
