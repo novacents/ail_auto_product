@@ -71,9 +71,20 @@ function collectUserInputDetails(){const d={},sp={},ef={},us={},be={},av=[];addI
 function addIfNotEmpty(o,k,e){const v=document.getElementById(e)?.value.trim();if(v)o[k]=v;}
 
 // 문자열 정제 함수 - JSON 직렬화 안전하게 처리
-function sanitizeForJson(str) {
+function sanitizeForJson(str, isHtmlContent = false) {
     if (typeof str !== 'string') return str;
     
+    // HTML 콘텐츠인 경우 따옴표 이스케이프 제외
+    if (isHtmlContent) {
+        return str
+            .replace(/\\/g, '\\\\')     // 백슬래시 이스케이프
+            .replace(/\n/g, '\\n')      // 개행문자 이스케이프
+            .replace(/\r/g, '\\r')      // 캐리지 리턴 이스케이프
+            .replace(/\t/g, '\\t')      // 탭 이스케이프
+            .replace(/[\x00-\x1F\x7F]/g, ''); // 제어문자 제거
+    }
+    
+    // 일반 문자열은 기존 방식 유지
     return str
         .replace(/\\/g, '\\\\')     // 백슬래시 이스케이프
         .replace(/"/g, '\\"')       // 따옴표 이스케이프
@@ -152,7 +163,7 @@ function collectKeywordsData(){
                 const pd={
                     url:tu,
                     analysis_data:sanitizeObjectForJson(p.analysisData)||null,
-                    generated_html:sanitizeForJson(p.generatedHtml)||null,
+                    generated_html:sanitizeForJson(p.generatedHtml, true)||null,
                     user_data:sanitizeObjectForJson(p.userData)||{}
                 };
                 kdt.products_data.push(pd);
