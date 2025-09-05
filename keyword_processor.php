@@ -896,7 +896,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 // 임시 파일 생성
                 $temp_file = tempnam('/tmp', 'immediate_publish_');
-                file_put_contents($temp_file, json_encode($queue_data));
+                file_put_contents($temp_file, json_encode($queue_data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
                 
                 // Python 스크립트 실행
                 $python_path = '/usr/bin/python3';
