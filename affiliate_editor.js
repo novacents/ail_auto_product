@@ -220,7 +220,7 @@ async function completeProduct(){
             headers:{'Content-Type':'application/json'},
             body: JSON.stringify({
                 action: 'save_to_queue',
-                queue_data: JSON.parse(jsonData)
+                queue_data: sanitizedFd
             })
         });
 
