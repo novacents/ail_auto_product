@@ -5,7 +5,7 @@
  */
 require_once($_SERVER['DOCUMENT_ROOT'].'/wp-config.php');
 if(!current_user_can('manage_options'))wp_die('접근 권한이 없습니다.');
-$env_file='/var/www/novacents/tools/.env';$env_vars=[];
+$env_file='/home/novacents/.env';$env_vars=[];
 if(file_exists($env_file)){$lines=file($env_file,FILE_IGNORE_NEW_LINES|FILE_SKIP_EMPTY_LINES);foreach($lines as $line){if(strpos($line,'=')!==false&&strpos($line,'#')!==0){list($key,$value)=explode('=',$line,2);$env_vars[trim($key)]=trim($value);}}}
 if(isset($_POST['action'])&&$_POST['action']==='generate_titles'){
 header('Content-Type: application/json');
