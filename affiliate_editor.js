@@ -43,7 +43,241 @@ function selectProduct(ki,pi){cKI=ki;cPI=pi;const p=kw[ki].products[pi];document
 function updateDetailPanel(p){document.getElementById('currentProductTitle').textContent=p.name;document.getElementById('currentProductSubtitle').textContent=`키워드: ${kw[cKI].name}`;document.getElementById('productUrl').value=p.url||'';if(p.userData&&Object.keys(p.userData).length>0)loadUserInputFields(p.userData);else clearUserInputFields();if(p.analysisData){showAnalysisResult(p.analysisData);if(p.generatedHtml){document.getElementById('htmlCode').textContent=p.generatedHtml;document.getElementById('htmlSourceSection').style.display='block';}}else hideAnalysisResult();document.getElementById('productDetailContent').style.display='block';}
 async function analyzeProduct(){const u=document.getElementById('productUrl').value.trim();if(!u){showDetailedError('입력 오류','상품 URL을 입력해주세요.');return;}if(cKI===-1||cPI===-1){showDetailedError('선택 오류','상품을 먼저 선택해주세요.');return;}const p=kw[cKI].products[cPI];p.url=u;p.status='analyzing';updateUI();try{const r=await fetch('product_analyzer_v2.php',{method:'POST',headers:{'Content-Type':'application/json',},body:JSON.stringify({action:'analyze_product',url:u,platform:'aliexpress'})});if(!r.ok)throw new Error(`HTTP 오류: ${r.status} ${r.statusText}`);const rt=await r.text();let rs;try{rs=JSON.parse(rt);}catch(e){showDetailedError('JSON 파싱 오류','서버 응답을 파싱할 수 없습니다.',{'parseError':e.message,'responseText':rt,'responseLength':rt.length,'url':u,'timestamp':new Date().toISOString()});p.status='error';updateUI();return;}if(rs.success){p.analysisData=rs.data;p.status='completed';p.name=rs.data.title||`상품 ${cPI+1}`;cPD=rs.data;showAnalysisResult(rs.data);const gh=generateOptimizedMobileHtml(rs.data);p.generatedHtml=gh;}else{p.status='error';showDetailedError('상품 분석 실패',rs.message||'알 수 없는 오류가 발생했습니다.',{'success':rs.success,'message':rs.message,'debug_info':rs.debug_info||null,'raw_output':rs.raw_output||null,'url':u,'platform':'aliexpress','timestamp':new Date().toISOString(),'mobile_optimized':true});}}catch(e){p.status='error';showDetailedError('네트워크 오류','상품 분석 중 네트워크 오류가 발생했습니다.',{'error':e.message,'stack':e.stack,'url':u,'timestamp':new Date().toISOString()});}updateUI();}
 function showAnalysisResult(d){const r=document.getElementById('analysisResult'),c=document.getElementById('productCard');const ratingInfo=formatRatingDisplay(d.rating_display);const fp=formatPrice(d.price);c.innerHTML=`<div class="product-content-split"><div class="product-image-large"><img src="${d.image_url}" alt="${d.title}" onerror="this.style.display='none'"></div><div class="product-info-all"><div class="aliexpress-logo-right"><img src="https://novacents.com/tools/images/Ali_black_logo.webp" alt="AliExpress"/></div><h3 class="product-title-right">${d.title}</h3><div class="product-price-right">${fp}</div><div class="product-rating-right"><span class="rating-stars">${ratingInfo.stars}</span><span>(고객만족도: ${ratingInfo.percent})</span></div><div class="product-sales-right"><strong>📦 판매량:</strong> ${d.lastest_volume||'판매량 정보 없음'}</div><div class="product-extra-info-right"><div class="info-row"><span class="info-label">상품 ID</span><span class="info-value">${d.product_id}</span></div><div class="info-row"><span class="info-label">플랫폼</span><span class="info-value">${d.platform}</span></div></div></div></div><div class="purchase-button-full"><a href="${d.affiliate_link}" target="_blank" rel="nofollow"><img src="https://novacents.com/tools/images/aliexpress-button-pc.png" alt="알리익스프레스에서 구매하기"></a></div>`;r.classList.add('show');const ph=`<div class="preview-product-card"><div class="preview-card-content"><div class="product-content-split"><div class="product-image-large"><img src="${d.image_url}" alt="${d.title}" onerror="this.style.display='none'"></div><div class="product-info-all"><div class="aliexpress-logo-right"><img src="https://novacents.com/tools/images/Ali_black_logo.webp" alt="AliExpress"/></div><h3 class="product-title-right">${d.title}</h3><div class="product-price-right">${fp}</div><div class="product-rating-right"><span class="rating-stars">${ratingInfo.stars}</span><span>(고객만족도: ${ratingInfo.percent})</span></div><div class="product-sales-right"><strong>📦 판매량:</strong> ${d.lastest_volume||'판매량 정보 없음'}</div></div></div><div class="purchase-button-full"><a href="${d.affiliate_link}" target="_blank" rel="nofollow"><img src="https://novacents.com/tools/images/aliexpress-button-pc.png" alt="알리익스프레스에서 구매하기"></a></div></div></div>`;document.getElementById('htmlPreview').innerHTML=ph;}
-function generateOptimizedMobileHtml(d,updateDOM=true){if(!d)return null;const rd=formatRatingDisplay(d.rating_display);const fp=formatPrice(d.price);const hc=`<div style="display:flex;justify-content:center;margin:25px 0;"><div style="border:2px solid #eee;padding:30px;border-radius:15px;background:#f9f9f9;box-shadow:0 4px 8px rgba(0,0,0,0.1);max-width:1000px;width:100%;"><div style="display:grid;grid-template-columns:400px 1fr;gap:30px;align-items:start;margin-bottom:25px;"><div style="text-align:center;"><img src="${d.image_url}" alt="${d.title}" style="width:100%;max-width:400px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,0.15);"></div><div style="display:flex;flex-direction:column;gap:20px;"><div style="margin-bottom:15px;text-align:center;"><img src="https://novacents.com/tools/images/Ali_black_logo.webp" alt="AliExpress" style="width:250px;height:60px;object-fit:contain;"/></div><h3 style="color:#1c1c1c;margin:0 0 20px 0;font-size:21px;font-weight:600;line-height:1.4;word-break:keep-all;overflow-wrap:break-word;text-align:center;">${d.title}</h3><div style="background:linear-gradient(135deg,#e62e04 0%,#ff9900 100%);color:white;padding:14px 30px;border-radius:10px;font-size:40px;font-weight:700;text-align:center;margin-bottom:20px;box-shadow:0 4px 15px rgba(230,46,4,0.3);"><strong>${fp}</strong></div><div style="color:#1c1c1c;font-size:20px;display:flex;align-items:center;gap:10px;margin-bottom:15px;justify-content:center;flex-wrap:nowrap;"><span style="color:#ff9900;">${rd.stars}</span><span>(고객만족도: ${rd.percent})</span></div><p style="color:#1c1c1c;font-size:18px;margin:0 0 15px 0;text-align:center;"><strong>📦 판매량:</strong> ${d.lastest_volume||'판매량 정보 없음'}</p></div></div><div style="text-align:center;margin-top:30px;width:100%;"><a href="${d.affiliate_link}" target="_blank" rel="nofollow" style="text-decoration:none;"><img src="https://novacents.com/tools/images/aliexpress-button-pc.png" alt="알리익스프레스에서 구매하기" style="max-width:100%;height:auto;cursor:pointer;"></a></div></div></div>`;if(updateDOM){const ph=`<div class="preview-product-card"><div class="preview-card-content"><div class="product-content-split"><div class="product-image-large"><img src="${d.image_url}" alt="${d.title}" onerror="this.style.display='none'"></div><div class="product-info-all"><div class="aliexpress-logo-right"><img src="https://novacents.com/tools/images/Ali_black_logo.webp" alt="AliExpress"/></div><h3 class="product-title-right">${d.title}</h3><div class="product-price-right">${fp}</div><div class="product-rating-right"><span class="rating-stars">${rd.stars}</span><span>(고객만족도: ${rd.percent})</span></div><div class="product-sales-right"><strong>📦 판매량:</strong> ${d.lastest_volume||'판매량 정보 없음'}</div></div></div><div class="purchase-button-full"><a href="${d.affiliate_link}" target="_blank" rel="nofollow"><img src="https://novacents.com/tools/images/aliexpress-button-pc.png" alt="알리익스프레스에서 구매하기"></a></div></div></div>`;document.getElementById('htmlPreview').innerHTML=ph;document.getElementById('htmlCode').textContent=hc;document.getElementById('htmlSourceSection').style.display='block';}return hc;}
+function generateOptimizedMobileHtml(d,updateDOM=true){
+    if(!d) return null;
+    const rd=formatRatingDisplay(d.rating_display);
+    const fp=formatPrice(d.price);
+    
+    // 반응형 HTML 및 CSS 생성
+    const hc=`
+<style>
+/* 반응형 상품 카드 스타일 */
+.product-responsive-container {
+    display: flex;
+    justify-content: center;
+    margin: 25px 0;
+}
+
+.product-responsive-card {
+    border: 2px solid #eee;
+    padding: 30px;
+    border-radius: 15px;
+    background: #f9f9f9;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    max-width: 1000px;
+    width: 100%;
+}
+
+/* PC 레이아웃 (1601px 이상) */
+@media (min-width: 1601px) {
+    .product-responsive-content {
+        display: grid;
+        grid-template-columns: 400px 1fr;
+        gap: 30px;
+        align-items: start;
+        margin-bottom: 25px;
+    }
+    
+    .product-responsive-image {
+        text-align: center;
+    }
+    
+    .product-responsive-info {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+    
+    .product-responsive-logo {
+        margin-bottom: 15px;
+        text-align: center;
+    }
+    
+    .product-responsive-title {
+        text-align: center;
+    }
+    
+    .product-responsive-price {
+        text-align: center;
+    }
+    
+    .product-responsive-rating {
+        justify-content: center;
+        flex-wrap: nowrap;
+    }
+    
+    .product-responsive-sales {
+        text-align: center;
+    }
+    
+    .product-responsive-button {
+        text-align: center;
+        margin-top: 30px;
+    }
+    
+    .product-responsive-button img {
+        content: url('https://novacents.com/tools/images/aliexpress-button-pc.png');
+    }
+}
+
+/* 모바일 레이아웃 (1600px 이하) */
+@media (max-width: 1600px) {
+    .product-responsive-content {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+    
+    .product-responsive-image {
+        text-align: center;
+        order: 2;
+    }
+    
+    .product-responsive-info {
+        display: contents;
+    }
+    
+    .product-responsive-logo {
+        text-align: left;
+        order: 1;
+        margin-bottom: 0;
+    }
+    
+    .product-responsive-title {
+        text-align: left;
+        order: 3;
+    }
+    
+    .product-responsive-price {
+        text-align: center;
+        order: 4;
+    }
+    
+    .product-responsive-rating {
+        justify-content: flex-start;
+        order: 5;
+    }
+    
+    .product-responsive-sales {
+        text-align: left;
+        order: 6;
+    }
+    
+    .product-responsive-button {
+        text-align: center;
+        order: 7;
+        margin-top: 20px;
+    }
+    
+    .product-responsive-button img {
+        content: url('https://novacents.com/tools/images/aliexpress-button-mobile.png');
+    }
+}
+
+/* 공통 스타일 */
+.product-responsive-image img {
+    width: 100%;
+    max-width: 400px;
+    border-radius: 12px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+}
+
+.product-responsive-logo img {
+    width: 250px;
+    height: 60px;
+    object-fit: contain;
+}
+
+.product-responsive-title {
+    color: #1c1c1c;
+    margin: 0 0 20px 0;
+    font-size: 21px;
+    font-weight: 600;
+    line-height: 1.4;
+    word-break: keep-all;
+    overflow-wrap: break-word;
+}
+
+.product-responsive-price {
+    background: linear-gradient(135deg,#e62e04 0%,#ff9900 100%);
+    color: white;
+    padding: 14px 30px;
+    border-radius: 10px;
+    font-size: 40px;
+    font-weight: 700;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 15px rgba(230,46,4,0.3);
+}
+
+.product-responsive-rating {
+    color: #1c1c1c;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.product-responsive-rating .stars {
+    color: #ff9900;
+}
+
+.product-responsive-sales {
+    color: #1c1c1c;
+    font-size: 18px;
+    margin: 0 0 15px 0;
+}
+
+.product-responsive-button a {
+    text-decoration: none;
+}
+
+.product-responsive-button img {
+    max-width: 100%;
+    height: auto;
+    cursor: pointer;
+}
+</style>
+
+<div class="product-responsive-container">
+    <div class="product-responsive-card">
+        <div class="product-responsive-content">
+            <div class="product-responsive-image">
+                <img src="${d.image_url}" alt="${d.title}">
+            </div>
+            <div class="product-responsive-info">
+                <div class="product-responsive-logo">
+                    <img src="https://novacents.com/tools/images/Ali_black_logo.webp" alt="AliExpress">
+                </div>
+                <h3 class="product-responsive-title">${d.title}</h3>
+                <div class="product-responsive-price">
+                    <strong>${fp}</strong>
+                </div>
+                <div class="product-responsive-rating">
+                    <span class="stars">${rd.stars}</span>
+                    <span>(고객만족도: ${rd.percent})</span>
+                </div>
+                <p class="product-responsive-sales">
+                    <strong>📦 판매량:</strong> ${d.lastest_volume||'판매량 정보 없음'}
+                </p>
+            </div>
+        </div>
+        <div class="product-responsive-button">
+            <a href="${d.affiliate_link}" target="_blank" rel="nofollow">
+                <img src="https://novacents.com/tools/images/aliexpress-button-pc.png" alt="알리익스프레스에서 구매하기">
+            </a>
+        </div>
+    </div>
+</div>`;
+
+    if(updateDOM){
+        const ph=`<div class="preview-product-card"><div class="preview-card-content"><div class="product-content-split"><div class="product-image-large"><img src="${d.image_url}" alt="${d.title}" onerror="this.style.display='none'"></div><div class="product-info-all"><div class="aliexpress-logo-right"><img src="https://novacents.com/tools/images/Ali_black_logo.webp" alt="AliExpress"/></div><h3 class="product-title-right">${d.title}</h3><div class="product-price-right">${fp}</div><div class="product-rating-right"><span class="rating-stars">${rd.stars}</span><span>(고객만족도: ${rd.percent})</span></div><div class="product-sales-right"><strong>📦 판매량:</strong> ${d.lastest_volume||'판매량 정보 없음'}</div></div></div><div class="purchase-button-full"><a href="${d.affiliate_link}" target="_blank" rel="nofollow"><img src="https://novacents.com/tools/images/aliexpress-button-pc.png" alt="알리익스프레스에서 구매하기"></a></div></div></div>`;
+        document.getElementById('htmlPreview').innerHTML=ph;
+        document.getElementById('htmlCode').textContent=hc;
+        document.getElementById('htmlSourceSection').style.display='block';
+    }
+    return hc;
+}
 async function copyHtmlSource(){const hc=document.getElementById('htmlCode').textContent,cb=document.querySelector('.copy-btn');try{await navigator.clipboard.writeText(hc);const ot=cb.textContent;cb.textContent='✅ 복사됨!';cb.classList.add('copied');setTimeout(()=>{cb.textContent=ot;cb.classList.remove('copied');},2000);}catch(e){const ce=document.getElementById('htmlCode'),r=document.createRange();r.selectNodeContents(ce);const s=window.getSelection();s.removeAllRanges();s.addRange(r);showDetailedError('복사 알림','HTML 소스가 선택되었습니다. Ctrl+C로 복사하세요.');}}
 function hideAnalysisResult(){document.getElementById('analysisResult').classList.remove('show');document.getElementById('htmlSourceSection').style.display='none';}
 function updateUI(){updateProductsList();updateProgress();}
