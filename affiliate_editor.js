@@ -95,18 +95,23 @@ function sanitizeForJson(str, isHtmlContent = false) {
 }
 
 // 객체 데이터 정제 함수
-function sanitizeObjectForJson(obj) {
+function sanitizeObjectForJson(obj, htmlFields = ['generated_html']) {
     if (obj === null || obj === undefined) return obj;
     if (typeof obj === 'string') return sanitizeForJson(obj);
     if (typeof obj !== 'object') return obj;
     
     if (Array.isArray(obj)) {
-        return obj.map(item => sanitizeObjectForJson(item));
+        return obj.map(item => sanitizeObjectForJson(item, htmlFields));
     }
     
     const sanitized = {};
     for (const [key, value] of Object.entries(obj)) {
-        sanitized[key] = sanitizeObjectForJson(value);
+        if (htmlFields.includes(key) && typeof value === 'string') {
+            // HTML 콘텐츠 필드는 이스케이프 처리 안 함
+            sanitized[key] = value;
+        } else {
+            sanitized[key] = sanitizeObjectForJson(value, htmlFields);
+        }
     }
     return sanitized;
 }
@@ -200,8 +205,8 @@ async function completeProduct(){
         return;
     }
 
-    // 전체 데이터 정제
-    const sanitizedFd = sanitizeObjectForJson(fd);
+    // 전체 데이터 정제 (HTML 필드는 이스케이프 제외)
+    const sanitizedFd = sanitizeObjectForJson(fd, ['generated_html']);
 
     // JSON 직렬화 테스트
     let jsonData;
