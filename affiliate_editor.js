@@ -308,14 +308,9 @@ function addIfNotEmpty(o,k,e){const v=document.getElementById(e)?.value.trim();i
 function sanitizeForJson(str, isHtmlContent = false) {
     if (typeof str !== 'string') return str;
     
-    // HTML 콘텐츠인 경우 따옴표 이스케이프 제외
+    // HTML 콘텐츠인 경우 이스케이프 처리하지 않고 그대로 반환
     if (isHtmlContent) {
-        return str
-            .replace(/\\/g, '\\\\')     // 백슬래시 이스케이프
-            .replace(/\n/g, '\\n')      // 개행문자 이스케이프
-            .replace(/\r/g, '\\r')      // 캐리지 리턴 이스케이프
-            .replace(/\t/g, '\\t')      // 탭 이스케이프
-            .replace(/[\x00-\x1F\x7F]/g, ''); // 제어문자 제거
+        return str;
     }
     
     // 일반 문자열은 기존 방식 유지
