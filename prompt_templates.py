@@ -100,7 +100,16 @@ class PromptTemplates:
         """필수템형 프롬프트 🎯 - 특정 상황의 필수 아이템들"""
         
         user_details_formatted = PromptTemplates._format_user_details_for_prompt(user_details)
-        keywords_list = ', '.join(keywords) if isinstance(keywords, list) else str(keywords)
+        # keywords 데이터 타입에 따른 적절한 처리
+        if isinstance(keywords, list) and keywords:
+            # 딕셔너리 배열인 경우 (실제 큐 데이터 형태)
+            if isinstance(keywords[0], dict) and 'name' in keywords[0]:
+                keywords_list = ', '.join([kw.get('name', '') for kw in keywords if kw.get('name')])
+            else:
+                # 문자열 배열인 경우 (기존 방식 호환)
+                keywords_list = ', '.join(keywords)
+        else:
+            keywords_list = str(keywords) if keywords else ''
         
         return f"""당신은 특정 상황/활동의 필수 아이템을 추천하는 전문 가이드입니다.
 15년 이상의 온라인 쇼핑 경험과 5,000건 이상의 상품 리뷰 경험을 보유하고 있습니다.
@@ -165,7 +174,16 @@ class PromptTemplates:
         """친구 추천형 프롬프트 👫 - 개인 경험 기반 솔직한 후기"""
         
         user_details_formatted = PromptTemplates._format_user_details_for_prompt(user_details)
-        keywords_list = ', '.join(keywords) if isinstance(keywords, list) else str(keywords)
+        # keywords 데이터 타입에 따른 적절한 처리
+        if isinstance(keywords, list) and keywords:
+            # 딕셔너리 배열인 경우 (실제 큐 데이터 형태)
+            if isinstance(keywords[0], dict) and 'name' in keywords[0]:
+                keywords_list = ', '.join([kw.get('name', '') for kw in keywords if kw.get('name')])
+            else:
+                # 문자열 배열인 경우 (기존 방식 호환)
+                keywords_list = ', '.join(keywords)
+        else:
+            keywords_list = str(keywords) if keywords else ''
         
         return f"""당신은 실제 상품을 사용해본 친구처럼 솔직하고 진실된 후기를 전하는 리뷰어입니다.
 3년 이상 알리익스프레스를 활용해온 경험이 있으며, 100개 이상의 상품을 직접 구매하여 사용해본 경험이 있습니다.
@@ -230,7 +248,16 @@ class PromptTemplates:
         """전문 분석형 프롬프트 📊 - 기술적 분석 + 객관적 평가"""
         
         user_details_formatted = PromptTemplates._format_user_details_for_prompt(user_details)
-        keywords_list = ', '.join(keywords) if isinstance(keywords, list) else str(keywords)
+        # keywords 데이터 타입에 따른 적절한 처리
+        if isinstance(keywords, list) and keywords:
+            # 딕셔너리 배열인 경우 (실제 큐 데이터 형태)
+            if isinstance(keywords[0], dict) and 'name' in keywords[0]:
+                keywords_list = ', '.join([kw.get('name', '') for kw in keywords if kw.get('name')])
+            else:
+                # 문자열 배열인 경우 (기존 방식 호환)
+                keywords_list = ', '.join(keywords)
+        else:
+            keywords_list = str(keywords) if keywords else ''
         
         return f"""당신은 상품의 기술적 특징을 분석하고 객관적 평가를 제공하는 전문 분석가입니다.
 10년 이상의 제품 분석 경험과 500개 이상의 제품 테스트 경험을 보유하고 있습니다.
@@ -296,7 +323,16 @@ class PromptTemplates:
         """놀라움 발견형 프롬프트 ✨ - 혁신적 상품의 호기심 자극"""
         
         user_details_formatted = PromptTemplates._format_user_details_for_prompt(user_details)
-        keywords_list = ', '.join(keywords) if isinstance(keywords, list) else str(keywords)
+        # keywords 데이터 타입에 따른 적절한 처리
+        if isinstance(keywords, list) and keywords:
+            # 딕셔너리 배열인 경우 (실제 큐 데이터 형태)
+            if isinstance(keywords[0], dict) and 'name' in keywords[0]:
+                keywords_list = ', '.join([kw.get('name', '') for kw in keywords if kw.get('name')])
+            else:
+                # 문자열 배열인 경우 (기존 방식 호환)
+                keywords_list = ', '.join(keywords)
+        else:
+            keywords_list = str(keywords) if keywords else ''
         
         return f"""당신은 혁신적이고 독특한 상품의 놀라운 가치를 발견하고 전달하는 트렌드 큐레이터입니다.
 5년 이상 최신 트렌드를 분석하고 1,000개 이상의 혁신 제품을 발굴한 경험이 있습니다.
