@@ -18,6 +18,8 @@ from datetime import datetime
 import argparse
 import subprocess
 from urllib.parse import quote, unquote
+import google.generativeai as genai
+from prompt_templates import PromptTemplates
 
 def load_configuration():
     """환경 설정을 로드합니다 (.env 파일 우선)"""
@@ -42,7 +44,7 @@ def load_configuration():
     # 필수 설정값 확인
     required_keys = [
         'NOVACENTS_WP_URL', 'NOVACENTS_WP_USER', 'NOVACENTS_WP_APP_PASS',
-        'OPENAI_API_KEY', 'ALIEXPRESS_APP_KEY', 'ALIEXPRESS_APP_SECRET',
+        'GEMINI_API_KEY', 'ALIEXPRESS_APP_KEY', 'ALIEXPRESS_APP_SECRET',
         'ALIEXPRESS_TRACKING_ID'
     ]
     
@@ -73,7 +75,7 @@ class AliExpressPostingSystem:
         self.wordpress_url = self.config['NOVACENTS_WP_URL']
         self.wordpress_username = self.config['NOVACENTS_WP_USER']
         self.wordpress_password = self.config['NOVACENTS_WP_APP_PASS']
-        self.openai_api_key = self.config['OPENAI_API_KEY']
+        self.gemini_api_key = self.config['GEMINI_API_KEY']
         
         # AliExpress API 설정
         self.aliexpress_app_key = self.config['ALIEXPRESS_APP_KEY']
@@ -84,6 +86,10 @@ class AliExpressPostingSystem:
         # 시스템 설정
         self.immediate_mode = False
         self.current_job_id = None
+        
+        # Gemini API 초기화
+        genai.configure(api_key=self.gemini_api_key)
+        self.gemini_model = genai.GenerativeModel('gemini-1.5-pro-latest')
         
         print("🚀 AliExpress 자동 등록 시스템이 초기화되었습니다.")
 
@@ -139,12 +145,6 @@ class AliExpressPostingSystem:
             return self.call_php_function('remove_queue_split', job_id)
         return True
 
-    def get_openai_headers(self):
-        """OpenAI API 헤더를 반환합니다"""
-        return {
-            'Authorization': f'Bearer {self.openai_api_key}',
-            'Content-Type': 'application/json'
-        }
 
     def generate_affiliate_link(self, original_url):
         """AliExpress 어필리에이트 링크를 생성합니다"""
@@ -166,65 +166,6 @@ class AliExpressPostingSystem:
             print(f"❌ 어필리에이트 링크 생성 실패: {e}")
             return original_url
 
-    def analyze_product_with_openai(self, product_data):
-        """OpenAI를 사용하여 상품을 분석합니다"""
-        try:
-            headers = self.get_openai_headers()
-            
-            prompt = f"""
-            다음 AliExpress 상품 정보를 분석해주세요:
-            
-            제목: {product_data.get('title', '제목 없음')}
-            가격: {product_data.get('price', '가격 정보 없음')}
-            평점: {product_data.get('rating', '평점 정보 없음')}
-            
-            다음 형식으로 분석 결과를 JSON으로 제공해주세요:
-            {{
-                "summary": "상품 요약 (50자 이내)",
-                "features": ["주요 특징1", "주요 특징2", "주요 특징3"],
-                "pros": ["장점1", "장점2", "장점3"],
-                "cons": ["단점1", "단점2"],
-                "recommendation": "추천 대상 (30자 이내)"
-            }}
-            """
-            
-            data = {
-                "model": "gpt-3.5-turbo",
-                "messages": [
-                    {"role": "system", "content": "당신은 상품 분석 전문가입니다. 정확하고 유용한 정보를 제공해주세요."},
-                    {"role": "user", "content": prompt}
-                ],
-                "max_tokens": 1000,
-                "temperature": 0.7
-            }
-            
-            response = requests.post('https://api.openai.com/v1/chat/completions', 
-                                   headers=headers, json=data, timeout=30)
-            
-            if response.status_code == 200:
-                result = response.json()
-                analysis_text = result['choices'][0]['message']['content']
-                
-                # JSON 파싱 시도
-                try:
-                    analysis_json = json.loads(analysis_text)
-                    return analysis_json
-                except json.JSONDecodeError:
-                    # JSON 파싱 실패 시 기본 구조 반환
-                    return {
-                        "summary": "OpenAI 분석 결과",
-                        "features": ["분석된 특징"],
-                        "pros": ["분석된 장점"],
-                        "cons": ["분석된 단점"],
-                        "recommendation": "일반 사용자"
-                    }
-            else:
-                print(f"❌ OpenAI API 호출 실패: {response.status_code}")
-                return None
-                
-        except Exception as e:
-            print(f"❌ OpenAI 상품 분석 실패: {e}")
-            return None
 
     def generate_wordpress_content(self, job_data):
         """워드프레스 콘텐츠를 생성합니다"""
@@ -253,7 +194,37 @@ class AliExpressPostingSystem:
             return None
 
     def generate_essential_items_content(self, title, keywords, user_details):
-        """필수템형 콘텐츠를 생성합니다"""
+        """필수템형 콘텐츠를 생성합니다 (AI 기반)"""
+        try:
+            # PromptTemplates로 AI 프롬프트 생성
+            prompt = PromptTemplates.get_prompt_by_type(
+                'essential_items', title, keywords, user_details
+            )
+            
+            # Gemini API로 콘텐츠 생성
+            response = self.gemini_model.generate_content(prompt)
+            ai_content = response.text
+            
+            # 기존 HTML 구조에 AI 생성 콘텐츠 결합
+            content = f"<h2>{title}</h2>\n\n"
+            content += ai_content + "\n\n"
+            
+            # 상품 정보 추가 (기존 로직 유지)
+            for i, keyword in enumerate(keywords, 1):
+                if 'products_data' in keyword:
+                    for product in keyword['products_data']:
+                        if product.get('generated_html'):
+                            content += product['generated_html'] + "\n\n"
+            
+            return content
+            
+        except Exception as e:
+            print(f"⚠️ AI 생성 실패, 기본 템플릿 사용: {e}")
+            # 에러 시 기존 방식으로 폴백
+            return self.generate_essential_items_content_fallback(title, keywords, user_details)
+    
+    def generate_essential_items_content_fallback(self, title, keywords, user_details):
+        """필수템형 콘텐츠 기본 생성 (폴백)"""
         content = f"<h2>{title}</h2>\n\n"
         content += "<p>일상생활을 더욱 편리하게 만들어줄 필수 아이템들을 소개해드립니다.</p>\n\n"
         
@@ -272,7 +243,37 @@ class AliExpressPostingSystem:
         return content
 
     def generate_friend_review_content(self, title, keywords, user_details):
-        """친구 추천형 콘텐츠를 생성합니다"""
+        """친구 추천형 콘텐츠를 생성합니다 (AI 기반)"""
+        try:
+            # PromptTemplates로 AI 프롬프트 생성
+            prompt = PromptTemplates.get_prompt_by_type(
+                'friend_review', title, keywords, user_details
+            )
+            
+            # Gemini API로 콘텐츠 생성
+            response = self.gemini_model.generate_content(prompt)
+            ai_content = response.text
+            
+            # 기존 HTML 구조에 AI 생성 콘텐츠 결합
+            content = f"<h2>{title}</h2>\n\n"
+            content += ai_content + "\n\n"
+            
+            # 상품 정보 추가 (기존 로직 유지)
+            for i, keyword in enumerate(keywords, 1):
+                if 'products_data' in keyword:
+                    for product in keyword['products_data']:
+                        if product.get('generated_html'):
+                            content += product['generated_html'] + "\n\n"
+            
+            return content
+            
+        except Exception as e:
+            print(f"⚠️ AI 생성 실패, 기본 템플릿 사용: {e}")
+            # 에러 시 기존 방식으로 폴백
+            return self.generate_friend_review_content_fallback(title, keywords, user_details)
+    
+    def generate_friend_review_content_fallback(self, title, keywords, user_details):
+        """친구 추천형 콘텐츠 기본 생성 (폴백)"""
         content = f"<h2>{title}</h2>\n\n"
         content += "<p>친구가 직접 사용해보고 강력 추천하는 상품들을 소개합니다!</p>\n\n"
         
@@ -291,7 +292,61 @@ class AliExpressPostingSystem:
         return content
 
     def generate_professional_analysis_content(self, title, keywords, user_details):
-        """전문 분석형 콘텐츠를 생성합니다"""
+        """전문 분석형 콘텐츠를 생성합니다 (AI 기반)"""
+        try:
+            # PromptTemplates로 AI 프롬프트 생성
+            prompt = PromptTemplates.get_prompt_by_type(
+                'professional_analysis', title, keywords, user_details
+            )
+            
+            # Gemini API로 콘텐츠 생성
+            response = self.gemini_model.generate_content(prompt)
+            ai_content = response.text
+            
+            # 기존 HTML 구조에 AI 생성 콘텐츠 결합
+            content = f"<h2>{title}</h2>\n\n"
+            content += ai_content + "\n\n"
+            
+            # 상품 정보 및 전문 분석 추가 (기존 로직 유지)
+            for i, keyword in enumerate(keywords, 1):
+                if 'products_data' in keyword:
+                    for product in keyword['products_data']:
+                        if product.get('generated_html'):
+                            content += product['generated_html'] + "\n\n"
+                        
+                        # 전문 분석 정보 추가
+                        if product.get('user_data'):
+                            user_data = product['user_data']
+                            content += "<div style='background:#f8f9fa; padding:15px; border-radius:8px; margin:15px 0;'>\n"
+                            content += "<h4>🔍 전문 분석 결과</h4>\n"
+                            
+                            if user_data.get('specs'):
+                                specs = user_data['specs']
+                                content += "<p><strong>주요 사양:</strong><br>\n"
+                                for key, value in specs.items():
+                                    if value:
+                                        content += f"• {key}: {value}<br>\n"
+                                content += "</p>\n"
+                            
+                            if user_data.get('efficiency'):
+                                efficiency = user_data['efficiency']
+                                content += "<p><strong>효율성 분석:</strong><br>\n"
+                                for key, value in efficiency.items():
+                                    if value:
+                                        content += f"• {key}: {value}<br>\n"
+                                content += "</p>\n"
+                            
+                            content += "</div>\n\n"
+            
+            return content
+            
+        except Exception as e:
+            print(f"⚠️ AI 생성 실패, 기본 템플릿 사용: {e}")
+            # 에러 시 기존 방식으로 폴백
+            return self.generate_professional_analysis_content_fallback(title, keywords, user_details)
+    
+    def generate_professional_analysis_content_fallback(self, title, keywords, user_details):
+        """전문 분석형 콘텐츠 기본 생성 (폴백)"""
         content = f"<h2>{title}</h2>\n\n"
         content += "<p>전문적인 관점에서 꼼꼼히 분석한 상품들을 소개해드립니다.</p>\n\n"
         
@@ -334,7 +389,37 @@ class AliExpressPostingSystem:
         return content
 
     def generate_amazing_discovery_content(self, title, keywords, user_details):
-        """놀라움 발견형 콘텐츠를 생성합니다"""
+        """놀라움 발견형 콘텐츠를 생성합니다 (AI 기반)"""
+        try:
+            # PromptTemplates로 AI 프롬프트 생성
+            prompt = PromptTemplates.get_prompt_by_type(
+                'amazing_discovery', title, keywords, user_details
+            )
+            
+            # Gemini API로 콘텐츠 생성
+            response = self.gemini_model.generate_content(prompt)
+            ai_content = response.text
+            
+            # 기존 HTML 구조에 AI 생성 콘텐츠 결합
+            content = f"<h2>{title}</h2>\n\n"
+            content += ai_content + "\n\n"
+            
+            # 상품 정보 추가 (기존 로직 유지)
+            for i, keyword in enumerate(keywords, 1):
+                if 'products_data' in keyword:
+                    for product in keyword['products_data']:
+                        if product.get('generated_html'):
+                            content += product['generated_html'] + "\n\n"
+            
+            return content
+            
+        except Exception as e:
+            print(f"⚠️ AI 생성 실패, 기본 템플릿 사용: {e}")
+            # 에러 시 기존 방식으로 폴백
+            return self.generate_amazing_discovery_content_fallback(title, keywords, user_details)
+    
+    def generate_amazing_discovery_content_fallback(self, title, keywords, user_details):
+        """놀라움 발견형 콘텐츠 기본 생성 (폴백)"""
         content = f"<h2>{title}</h2>\n\n"
         content += "<p>정말 놀라운 발견! 이런 제품이 있다니 믿을 수 없을 정도로 신기한 아이템들을 소개합니다.</p>\n\n"
         
