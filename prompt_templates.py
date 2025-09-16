@@ -14,167 +14,12 @@
 """
 
 class PromptTemplates:
-    def _load_aliexpress_links(self):
-        """AliExpress 키워드 링크 JSON 파일을 로드합니다."""
-        try:
-            json_path = "/var/www/novacents/tools/aliexpress_keyword_links.json"
-            with open(json_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except FileNotFoundError:
-            logging.warning(f"AliExpress links file not found: {json_path}")
-            return {}
-        except json.JSONDecodeError:
-            logging.error(f"Invalid JSON in AliExpress links file: {json_path}")
-            return {}
-
-    def _generate_keyword_sections(self, keywords, aliexpress_links):
-        """키워드별 상세 섹션을 생성합니다."""
-        sections = []
-
-        # keywords 처리
-        if isinstance(keywords, list):
-            # 딕셔너리 배열인 경우 (실제 큐 데이터 형태)
-            if keywords and isinstance(keywords[0], dict) and 'name' in keywords[0]:
-                keyword_names = [kw.get('name', '') for kw in keywords if kw.get('name')]
-            else:
-                # 문자열 배열인 경우
-                keyword_names = [kw for kw in keywords if kw]
-        else:
-            keyword_names = [str(keywords)] if keywords else []
-
-        for keyword in keyword_names:
-            # 해당 키워드의 AliExpress 링크 찾기
-            keyword_link = aliexpress_links.get(keyword, '')
-
-            section = f"""
-<h2>{keyword} - 왜 필수일까요?</h2>
-<p><strong>선택 이유:</strong> {keyword}는 이런 상황에서 꼭 필요한 아이템입니다.</p>
-<p><strong>핵심 기능:</strong> 실제 사용해보니 이런 점들이 가장 만족스러웠습니다.</p>
-<p><strong>구매 포인트:</strong> 선택할 때 이런 기준으로 고르시면 실패하지 않습니다.</p>
-<p><strong>주의사항:</strong> 다만 이런 점들은 미리 확인하고 구매하시길 추천합니다.</p>"""
-
-            if keyword_link:
-                section += f"""
-<p><strong>추천 상품:</strong> <a href="{keyword_link}" target="_blank" rel="noopener">{keyword} 바로 확인하기</a></p>"""
-
-            sections.append(section)
-
-        return '\n'.join(sections)
-
-    def _create_more_products_button(self, keywords):
-        """관련 상품 더보기 버튼을 생성합니다."""
-        # keywords 처리
-        if isinstance(keywords, list):
-            # 딕셔너리 배열인 경우 (실제 큐 데이터 형태)
-            if keywords and isinstance(keywords[0], dict) and 'name' in keywords[0]:
-                first_keyword = keywords[0].get('name', '') if keywords else ''
-            else:
-                # 문자열 배열인 경우
-                first_keyword = keywords[0] if keywords else ''
-        else:
-            first_keyword = str(keywords) if keywords else ''
-
-        if first_keyword:
-            return f"""
-<div style="text-align: center; margin: 30px 0; padding: 20px; background: #f8f9fa; border-radius: 10px;">
-    <h3>🛒 더 많은 {first_keyword} 상품이 궁금하다면?</h3>
-    <p>품질 좋은 다양한 상품들을 더 확인해보세요!</p>
-    <a href="https://s.click.aliexpress.com/e/_DlgOQmR" target="_blank" rel="noopener"
-       style="display: inline-block; background: #ff6b35; color: white; padding: 12px 24px;
-              text-decoration: none; border-radius: 5px; font-weight: bold;">
-        👉 관련 상품 더 보기
-    </a>
-</div>"""
-        else:
-            return """
-<div style="text-align: center; margin: 30px 0; padding: 20px; background: #f8f9fa; border-radius: 10px;">
-    <h3>🛒 더 많은 상품이 궁금하다면?</h3>
-    <p>품질 좋은 다양한 상품들을 더 확인해보세요!</p>
-    <a href="https://s.click.aliexpress.com/e/_DlgOQmR" target="_blank" rel="noopener"
-       style="display: inline-block; background: #ff6b35; color: white; padding: 12px 24px;
-              text-decoration: none; border-radius: 5px; font-weight: bold;">
-        👉 관련 상품 더 보기
-    </a>
-</div>"""
-
-    def _create_structured_prompt(self, title, keywords, user_details, keyword_sections, more_products_button):
-        """최종 구조화된 프롬프트를 생성합니다."""
-        user_details_formatted = PromptTemplates._format_user_details_for_prompt(user_details)
-
-        # keywords 리스트 문자열 생성
-        if isinstance(keywords, list):
-            if keywords and isinstance(keywords[0], dict) and 'name' in keywords[0]:
-                keywords_list = ', '.join([kw.get('name', '') for kw in keywords if kw.get('name')])
-            else:
-                keywords_list = ', '.join([kw for kw in keywords if kw])
-        else:
-            keywords_list = str(keywords) if keywords else ''
-
-        return f"""당신은 특정 상황/활동의 필수 아이템을 추천하는 전문 가이드입니다.
-15년 이상의 온라인 쇼핑 경험과 5,000건 이상의 상품 리뷰 경험을 보유하고 있습니다.
-
-아래 제공되는 정보를 바탕으로, https://novacents.com/전기자전거-추천아이템정리/ 와 유사한 구조화된 상품 가이드를 작성해주세요.
-
-### 📋 제공된 정보 ###
-**글 제목:** {title}
-**핵심 키워드:** {keywords_list}
-
-**사용자 상세 정보:**
-{user_details_formatted}
-
-### ✅ 구조화된 가이드 작성 요구사항 ###
-
-**1. 🎯 도입부 (200-250자):**
-   - 상황 공감: "{keywords_list.split(', ')[0] if keywords_list else '상품'} 선택할 때 이런 고민 있으시죠?"
-   - 문제 해결 약속: "이 가이드로 완벽하게 해결해드리겠습니다"
-   - 키워드 자연스럽게 2회 언급
-
-**2. 📋 키워드별 필수 아이템 분석:**
-{keyword_sections}
-
-**3. 💡 구매 가이드 (300-400자):**
-   <h2>💡 스마트한 구매 방법</h2>
-   <p><strong>브랜드 선택 기준:</strong> 이런 브랜드들이 품질과 A/S에서 좋은 평가를 받고 있습니다.</p>
-   <p><strong>가격대별 추천:</strong></p>
-   <ul>
-   <li>입문용 (5-10만원): 기본 기능 충실한 제품</li>
-   <li>실속형 (10-20만원): 가성비 최고의 선택</li>
-   <li>프리미엄 (20만원 이상): 모든 기능이 완벽한 제품</li>
-   </ul>
-   <p><strong>구매 시 주의사항:</strong> 이런 점들을 반드시 확인하고 구매하세요.</p>
-
-**4. 🛒 관련 상품 더보기:**
-{more_products_button}
-
-**5. ✅ 최종 정리 (200-250자):**
-   <h2>✅ 마무리하며</h2>
-   <p>이 가이드로 {keywords_list.split(', ')[0] if keywords_list else '상품'} 선택 고민이 해결되셨길 바랍니다.</p>
-   <p><strong>핵심 포인트 다시 한 번:</strong></p>
-   <ul>
-   <li>용도에 맞는 제품 선택이 가장 중요</li>
-   <li>브랜드보다는 실제 기능과 품질 우선</li>
-   <li>구매 후기와 평점을 꼼꼼히 확인</li>
-   </ul>
-   <p>좋은 제품으로 만족스러운 경험 하시길 바랍니다! 🎉</p>
-
-### ⚠️ 작성 원칙 ###
-- **톤앤매너**: 친근하면서도 전문적, "완벽한 선택", "추천드려요"
-- **HTML 구조**: H2, H3, p, ul, li 태그 적극 활용
-- **키워드 최적화**: 자연스럽게 5-7회 배치
-- **E-E-A-T 강화**: 개인 경험담 + 객관적 근거 제시
-- **구매 전환율 최적화**: 구체적 행동 유도 문구 포함
-
-참고 사이트(https://novacents.com/전기자전거-추천아이템정리/)와 같은 체계적이고 실용적인 가이드를 작성해주세요."""
-
     @staticmethod
     def get_prompt_by_type(prompt_type, title, keywords, user_details):
         """프롬프트 타입에 따라 적절한 프롬프트 반환"""
-
-        # PromptTemplates 인스턴스 생성 (essential_items_prompt에서 필요)
-        instance = PromptTemplates()
-
+        
         if prompt_type == "essential_items":
-            return instance._essential_items_prompt(title, keywords, user_details)
+            return PromptTemplates._essential_items_prompt(title, keywords, user_details)
         elif prompt_type == "friend_review":
             return PromptTemplates._friend_review_prompt(title, keywords, user_details)
         elif prompt_type == "professional_analysis":
@@ -183,7 +28,7 @@ class PromptTemplates:
             return PromptTemplates._amazing_discovery_prompt(title, keywords, user_details)
         else:
             # 기본값: 필수템형
-            return instance._essential_items_prompt(title, keywords, user_details)
+            return PromptTemplates._essential_items_prompt(title, keywords, user_details)
     
     @staticmethod
     def _format_user_details_for_prompt(user_details):
@@ -250,20 +95,79 @@ class PromptTemplates:
         
         return "\n".join(formatted_sections) if formatted_sections else "사용자 상세 정보: 제공되지 않음"
     
-    def _essential_items_prompt(self, title, keywords, user_details):
-        """필수템형 프롬프트 🎯 - 구조화된 상품 가이드 생성"""
+    @staticmethod
+    def _essential_items_prompt(title, keywords, user_details):
+        """필수템형 프롬프트 🎯 - 특정 상황의 필수 아이템들"""
+        
+        user_details_formatted = PromptTemplates._format_user_details_for_prompt(user_details)
+        # keywords 데이터 타입에 따른 적절한 처리
+        if isinstance(keywords, list) and keywords:
+            # 딕셔너리 배열인 경우 (실제 큐 데이터 형태)
+            if isinstance(keywords[0], dict) and 'name' in keywords[0]:
+                keywords_list = ', '.join([kw.get('name', '') for kw in keywords if kw.get('name')])
+            else:
+                # 문자열 배열인 경우 (기존 방식 호환)
+                keywords_list = ', '.join(keywords)
+        else:
+            keywords_list = str(keywords) if keywords else ''
+        
+        return f"""당신은 특정 상황/활동의 필수 아이템을 추천하는 전문 가이드입니다.
+15년 이상의 온라인 쇼핑 경험과 5,000건 이상의 상품 리뷰 경험을 보유하고 있습니다.
 
-        # 1. AliExpress 링크 데이터 로드
-        aliexpress_links = self._load_aliexpress_links()
+아래 제공되는 정보를 바탕으로, 체계적이고 실용적인 필수 아이템 가이드를 작성해주세요.
 
-        # 2. 키워드별 상세 섹션 생성
-        keyword_sections = self._generate_keyword_sections(keywords, aliexpress_links)
+### 📋 제공된 정보 ###
+**글 제목:** {title}
+**핵심 키워드:** {keywords_list}
 
-        # 3. 관련 상품 더보기 버튼 생성
-        more_products_button = self._create_more_products_button(keywords)
+**사용자 상세 정보:**
+{user_details_formatted}
 
-        # 4. 최종 구조화된 프롬프트 생성
-        return self._create_structured_prompt(title, keywords, user_details, keyword_sections, more_products_button)
+### ✅ 필수템형 작성 요구사항 ###
+
+**E-E-A-T 필수 요소:**
+- Experience: "제가 직접 사용해본 결과", "실제 경험에 따르면"
+- Expertise: "이런 기준으로 선택하세요", "전문가 관점에서"
+- Authoritativeness: 객관적 데이터 (가격, 평점, 판매량) 적극 활용
+- Trustworthiness: "다만 이런 점은 주의하세요", 솔직한 장단점
+
+**글 구조 (총 2500-3000자):**
+
+1. **🎯 도입부 (200-250자):**
+   - 상황 공감: "○○○ 할 때 이런 경험 있으시죠?"
+   - 문제 제기: 사용자 제공 '해결하는 문제' 정보 활용
+   - 핵심 키워드 2회 자연스럽게 언급
+
+2. **📋 각 키워드별 필수 아이템 분석 (키워드당 400-500자):**
+   - H2 태그: "[키워드명] - 왜 필수일까요?"
+   - 필요한 이유 (사용자 제공 효율성 분석 활용)
+   - 핵심 기능/특징 (사용자 제공 스펙 정보 활용)
+   - 실제 사용 시나리오 (사용자 제공 사용 정보 활용)
+   - 선택 기준 + 주의사항 (사용자 제공 장점/주의사항 활용)
+
+3. **💡 스마트 선택 가이드 (300-400자):**
+   - 구매 우선순위 결정법
+   - 예산별 선택 전략
+   - 사용자 맞춤 추천 (제공된 타겟 사용자 정보 활용)
+
+4. **✅ 결론 및 체크리스트 (200-250자):**
+   - 최종 정리: "이 정도면 ○○○ 준비 완료!"
+   - 강력한 행동 유도: "지금 바로 준비하세요"
+   - 키워드 재언급
+
+### ⚠️ 작성 원칙 ###
+- 톤앤매너: 실용적이고 체계적, "꼭 필요해요", "놓치면 안 되는"
+- 키워드 최적화: 주요 키워드 3-5회 자연스럽게 배치
+- HTML 태그: H2, H3, p 태그 사용 (마크다운 금지)
+- 사용자 정보 최대한 활용하여 개인화된 콘텐츠 생성
+
+### 🎯 구매 전환율 최적화 ###
+- 구매 동기: "이것만 있으면 [상황]이 완전히 달라집니다"
+- 사회적 증거: 판매량, 평점 정보 활용
+- 긴급성: "지금 바로 준비하세요"
+- 명확한 가치 제안: 구체적 혜택 제시
+
+핵심 키워드 '{keywords_list.split(", ")[0] if isinstance(keywords_list, str) else keywords_list[0]}'를 중심으로 체계적이고 실용적인 필수 아이템 가이드를 작성해주세요."""
 
     @staticmethod
     def _friend_review_prompt(title, keywords, user_details):
